@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>🍺 Бар</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<!-- EDIT ORDER MODAL -->
+<div class="edit-overlay hidden" id="editOverlay">
+  <div class="edit-modal">
+    <h2>✏️ ИЗМЕНИТЬ ЗАКАЗ</h2>
+    <div class="em-sub" id="editSub"></div>
+    <div style="margin-bottom:10px">
+      <label>Приоритет</label>
+      <select id="editPriority">
+        <option value="normal">Обычный</option>
+        <option value="urgent">🔥 Срочный</option>
+      </select>
+    </div>
+    <div style="margin-bottom:10px">
+      <label>Позиции — каждая с новой строки</label>
+      <textarea id="editItems" style="min-height:120px" placeholder="2 Пиво светлое&#10;1 Чипсы"></textarea>
+    </div>
+    <div style="margin-bottom:16px">
+      <label>Примечание</label>
+      <input type="text" id="editNote" placeholder="Без льда, аллергия...">
+    </div>
+    <button class="modal-btn" onclick="saveEditOrder()">💾 СОХРАНИТЬ</button>
+    <span class="modal-close" onclick="closeEditModal()">Отмена</span>
+  </div>
+</div>
+
+<!-- ROLE MODAL -->
+<div class="overlay hidden" id="roleOverlay">
+  <div class="modal">
+    <h2>Роль</h2>
+    <p>Выберите кто вы на этом устройстве</p>
+    <div class="role-grid">
+      <div class="rc rw" onclick="pickRole('waiter')">
+        <span class="ri">🛎️</span><div class="rn">Официант</div><div class="rd">Заказы и доставка</div>
+      </div>
+      <div class="rc rb" onclick="pickRole('barman')">
+        <span class="ri">🍹</span><div class="rn">Бармен</div><div class="rd">Готовить позиции</div>
+      </div>
+      <div class="rc ra" onclick="pickRole('admin')">
+        <span class="ri">👑</span><div class="rn">Менеджер</div><div class="rd">Полный доступ</div>
+      </div>
+    </div>
+    <button class="modal-btn" onclick="confirmRole()">ВОЙТИ</button>
+    <span class="modal-close" id="roleClose" onclick="closeRoleModal()">Отмена</span>
+  </div>
+</div>
+
+<header>
+  <div class="logo">🍺 <span>БАР</span></div>
+  <div class="hright">
+    <span class="rbadge" id="hRole" onclick="openRoleModal()"></span>
+    <div class="dot"></div>
+    <span class="htime" id="hTime"></span>
+  </div>
+</header>
+
+<div class="tabs" id="tabsBar"></div>
+
+<!-- BOTTOM NAV (mobile only, shown via CSS) -->
+<nav id="bottomNav" style="display:none;"></nav>
+
+<div class="flash f-ok"  id="fOk"></div>
+<div class="flash f-info" id="fInfo"></div>
+
+<!-- DESKTOP LAYOUT WRAPPER -->
+<div id="desktopLayout">
+  <!-- SIDEBAR (desktop only, built by JS) -->
+  <aside id="sidebar" style="display:none;"></aside>
+
+  <!-- MAIN CONTENT -->
+  <div id="mainContent">
+<main>
+  <!-- NEW ORDER -->
+  <div class="section-page" id="page-new">
+    <div class="add-form">
+      <h2>📋 Новый заказ</h2>
+      <div class="row">
+        <div class="field">
+          <label>Стол №</label>
+          <input type="text" id="inpTable" placeholder="1" inputmode="text" autocomplete="off" oninput="buildQuickTableBtns()" style="font-size:clamp(22px,6vw,28px);font-family:'Bebas Neue',sans-serif;letter-spacing:2px;text-align:center;padding:clamp(10px,2.5vw,14px);text-transform:uppercase;">
+        </div>
+        <div class="field">
+          <label>Приоритет</label>
+          <select id="inpPriority">
+            <option value="normal">Обычный</option>
+            <option value="urgent">🔥 Срочный</option>
+          </select>
+        </div>
+      </div>
+      <div id="quickTableBtns" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:var(--sp-sm);margin-top:2px;"></div>
+      <div style="margin-bottom:10px">
+        <label>Позиции — каждая с новой строки</label>
+        <textarea id="inpItems" placeholder="2 Пиво светлое&#10;3 Лимонад&#10;1 Чипсы&#10;2x Водка 50мл"></textarea>
+      </div>
+      <div style="margin-bottom:14px">
+        <label>Примечание</label>
+        <input type="text" id="inpNote" placeholder="Без льда, аллергия...">
+      </div>
+      <button class="btn-add" onclick="addOrder()">ДОБАВИТЬ ЗАКАЗ</button>
+    </div>
+  </div>
+
+  <!-- QUEUE -->
+  <div class="section-page" id="page-queue">
+    <div class="stats-bar">
+      <div class="sc"><span class="n" id="sN">0</span><span>заказов</span></div>
+      <div class="sc"><span class="n b" id="sP">0</span><span>в работе</span></div>
+      <div class="sc"><span class="n g" id="sR">0</span><span>готово</span></div>
+    </div>
+    <div class="filter-bar" id="qFilters"></div>
+    <div class="orders-list" id="qList"></div>
+  </div>
+
+  <!-- READY (waiter pickup) -->
+  <div class="section-page" id="page-ready">
+    <div class="orders-list" id="rList"></div>
+  </div>
+
+  <!-- CLOSED TABLES -->
+  <div class="section-page" id="page-done">
+    <div class="date-nav" style="margin-bottom:12px;">
+      <button onclick="shiftClosedDate(-1)">◀</button>
+      <div class="date-label" id="closedDateLabel"></div>
+      <button onclick="shiftClosedDate(+1)">▶</button>
+    </div>
+    <div id="closedDateQuickNav" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px;overflow-x:auto;scrollbar-width:none;padding-bottom:2px;"></div>
+    <div id="closedTablesList"></div>
+  </div>
+
+  <!-- TABLES BILL -->
+  <div class="section-page" id="page-tables">
+    <div class="date-nav">
+      <button onclick="shiftDate(-1)">◀</button>
+      <div class="date-label" id="dateLabel"></div>
+      <button onclick="shiftDate(+1)">▶</button>
+    </div>
+    <div id="dateQuickNav" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px;overflow-x:auto;scrollbar-width:none;padding-bottom:2px;"></div>
+    <div id="tablesBillList"></div>
+  </div>
+</main>
+  </div><!-- /mainContent -->
+</div><!-- /desktopLayout -->
+
+<script type="module" src="main.js"></script>
+</body>
+</html>
