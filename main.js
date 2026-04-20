@@ -143,35 +143,63 @@ function unlockAudio(){
 document.addEventListener('touchstart',unlockAudio,{once:true,passive:true});
 document.addEventListener('click',unlockAudio,{once:true,passive:true});
 
-// Кнопка включения уведомлений — показывается в сайдбаре и хедере
+// Кнопка уведомлений — полноценный переключатель вкл/выкл
+// notifMuted хранится в localStorage — пользователь может выключить звук/вибрацию
+let notifMuted=localStorage.getItem('bar_notif_muted')==='1';
+
 function updateNotifBtn(){
   const btns=document.querySelectorAll('.notif-btn');
-  if(!('Notification' in window)){btns.forEach(b=>b.remove());return;}
-  const perm=Notification.permission;
+  if(!('Notification' in window)&&!('vibrate' in navigator)){
+    btns.forEach(b=>b.style.display='none');return;
+  }
+  const perm=typeof Notification!=='undefined'?Notification.permission:'granted';
   btns.forEach(b=>{
-    if(perm==='granted'){
-      b.textContent='🔔 Уведомления вкл.';
-      b.style.color='var(--green)';
-      b.style.opacity='0.6';
-      b.style.pointerEvents='none';
-    } else if(perm==='denied'){
-      b.textContent='🔕 Уведомления запрещены';
+    b.style.pointerEvents='auto';
+    b.style.opacity='1';
+    if(perm==='denied'){
+      // Браузер запретил — объясняем где снять запрет
+      b.textContent='🔕 Запрещено в настройках';
       b.style.color='var(--red)';
       b.style.opacity='0.6';
       b.style.pointerEvents='none';
+    } else if(notifMuted){
+      b.textContent='🔕 Уведомления выкл.';
+      b.style.color='var(--muted)';
+    } else if(perm==='granted'){
+      b.textContent='🔔 Уведомления вкл.';
+      b.style.color='var(--green)';
     } else {
       b.textContent='🔔 Включить уведомления';
       b.style.color='var(--accent)';
-      b.style.opacity='1';
-      b.style.pointerEvents='auto';
     }
   });
 }
 
-// Вызывается по нажатию кнопки
 async function enableNotifications(){
+  const perm=typeof Notification!=='undefined'?Notification.permission:'default';
+  if(perm==='denied') return; // нельзя снять запрет программно
+  if(notifMuted){
+    // Включаем обратно
+    notifMuted=false;
+    localStorage.setItem('bar_notif_muted','0');
+    updateNotifBtn();
+    fl('fOk','🔔 Уведомления включены');
+    return;
+  }
+  if(perm==='granted'){
+    // Выключаем
+    notifMuted=true;
+    localStorage.setItem('bar_notif_muted','1');
+    updateNotifBtn();
+    fl('fInfo','🔕 Уведомления выключены');
+    return;
+  }
+  // Ещё не запрашивали — запрашиваем разрешение
   unlockAudio();
   await requestNotificationPermission();
+  notifMuted=false;
+  localStorage.setItem('bar_notif_muted','0');
+  updateNotifBtn();
 }
 
 function playBeep(){
@@ -199,6 +227,7 @@ function playBeep(){
 }
 
 function notifyNewOrder(order){
+  if(notifMuted) return; // пользователь выключил
   if(navigator.vibrate) navigator.vibrate([150,80,150,80,150]);
   playBeep();
   const table=order?.table||'?';
@@ -352,13 +381,8 @@ function applyRole(){
   }
   // Показываем только барменам и менеджерам — они принимают заказы
   if(role==='barman'||role==='admin'){
-    // Скрываем если уже разрешено
-    if('Notification' in window && Notification.permission==='granted'){
-      hnotif.style.display='none';
-    } else {
-      hnotif.style.display='flex';
-      updateNotifBtn();
-    }
+    hnotif.style.display='flex';
+    updateNotifBtn();
   } else {
     hnotif.style.display='none';
   }
