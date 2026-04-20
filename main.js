@@ -57,7 +57,7 @@ function aggStatus(items){
 //  FIREBASE SDK (real-time)
 // ═══════════════════════════
 import{initializeApp}from'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
-import{getDatabase,ref,push,update,set,onValue,serverTimestamp}from'https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js';
+import{getDatabase,ref,push,update,set,remove,onValue,serverTimestamp}from'https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js';
 
 const fbApp=initializeApp({databaseURL:'https://project-3061022303410047846-default-rtdb.firebaseio.com'});
 const db=getDatabase(fbApp);
@@ -476,7 +476,7 @@ async function reopenOrder(id){
 
 async function delOrder(id){
   if(!confirm('Удалить заказ?'))return;
-  await update(ref(db,'orders/'+id),null);
+  await remove(ref(db,'orders/'+id));
 }
 
 function setQF(f,btn){
