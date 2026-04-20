@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html>
+<body>
+<canvas id="c192" width="192" height="192"></canvas>
+<canvas id="c512" width="512" height="512"></canvas>
+<script>
+function drawIcon(canvas, size) {
+  const ctx = canvas.getContext('2d');
+  const r = size * 0.12;
+  
+  // Background
+  ctx.fillStyle = '#0d0d0d';
+  ctx.beginPath();
+  ctx.roundRect(0, 0, size, size, r);
+  ctx.fill();
+  
+  // Border
+  ctx.strokeStyle = '#f5a623';
+  ctx.lineWidth = size * 0.04;
+  ctx.beginPath();
+  ctx.roundRect(size*0.04, size*0.04, size*0.92, size*0.92, r);
+  ctx.stroke();
+  
+  // Beer emoji text
+  ctx.font = `${size * 0.55}px serif`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('🍺', size/2, size/2);
+}
+
+drawIcon(document.getElementById('c192'), 192);
+drawIcon(document.getElementById('c512'), 512);
+
+// Download both
+['c192','c512'].forEach(id => {
+  const c = document.getElementById(id);
+  const a = document.createElement('a');
+  a.download = id === 'c192' ? 'icon-192.png' : 'icon-512.png';
+  a.href = c.toDataURL('image/png');
+  a.click();
+});
+</script>
+</body>
+</html>

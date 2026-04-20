@@ -105,40 +105,47 @@ function normalizeOrder(o){
 }
 
 // ═══════════════════════════
-//  NOTIFICATIONS
+//  SERVICE WORKER + NOTIFICATIONS
 // ═══════════════════════════
 let knownOrderIds=new Set();
 let audioCtx=null;
 let audioUnlocked=false;
+let swReg=null;
 
-// Mobile browsers require AudioContext to be created/resumed inside a user gesture
+async function registerSW(){
+  if(!('serviceWorker' in navigator))return;
+  try{
+    swReg=await navigator.serviceWorker.register('/bar-kviz-dubna/sw.js',{scope:'/bar-kviz-dubna/'});
+    console.log('SW registered');
+  }catch(e){console.warn('SW registration failed',e);}
+}
+
+async function requestNotificationPermission(){
+  if(!('Notification' in window))return;
+  if(Notification.permission==='default') await Notification.requestPermission();
+}
+
 function unlockAudio(){
   if(audioUnlocked)return;
   try{
     audioCtx=new(window.AudioContext||window.webkitAudioContext)();
-    // Play a silent buffer to fully unlock
     const buf=audioCtx.createBuffer(1,1,22050);
     const src=audioCtx.createBufferSource();
     src.buffer=buf;src.connect(audioCtx.destination);src.start(0);
     audioUnlocked=true;
   }catch(e){}
+  requestNotificationPermission();
 }
-// Unlock on any touch/click — covers the moment user opens app and taps role button etc.
-document.addEventListener('touchstart',unlockAudio,{once:false,passive:true});
-document.addEventListener('click',unlockAudio,{once:false,passive:true});
+document.addEventListener('touchstart',unlockAudio,{once:true,passive:true});
+document.addEventListener('click',unlockAudio,{once:true,passive:true});
 
-function notifyNewOrder(){
-  // Vibrate on mobile (works in Chrome Android, not iOS Safari)
-  if(navigator.vibrate) navigator.vibrate([150,80,150,80,150]);
-  // Beep via Web Audio API
+function playBeep(){
   try{
     if(!audioCtx) audioCtx=new(window.AudioContext||window.webkitAudioContext)();
-    // Resume if suspended (happens on mobile after inactivity)
     const play=()=>{
       const osc=audioCtx.createOscillator();
       const gain=audioCtx.createGain();
       osc.connect(gain);gain.connect(audioCtx.destination);
-      // Two-tone beep: high then low
       osc.frequency.setValueAtTime(1000,audioCtx.currentTime);
       osc.frequency.setValueAtTime(700,audioCtx.currentTime+0.15);
       osc.type='sine';
@@ -151,30 +158,37 @@ function notifyNewOrder(){
       osc.start(audioCtx.currentTime);
       osc.stop(audioCtx.currentTime+0.35);
     };
-    if(audioCtx.state==='suspended'){
-      audioCtx.resume().then(play);
-    } else {
-      play();
-    }
-  }catch(e){console.warn('audio notify error',e);}
+    if(audioCtx.state==='suspended') audioCtx.resume().then(play);
+    else play();
+  }catch(e){}
+}
+
+function notifyNewOrder(order){
+  if(navigator.vibrate) navigator.vibrate([150,80,150,80,150]);
+  playBeep();
+  const table=order?.table||'?';
+  const count=order?.items?Object.keys(order.items).length:'';
+  if(swReg&&Notification.permission==='granted'){
+    swReg.active?.postMessage({type:'NOTIFY_NEW_ORDER',table,count});
+  } else if(Notification.permission==='granted'){
+    new Notification('🍺 Новый заказ!',{body:`Стол ${table} — ${count} позиц.`,icon:'/bar-kviz-dubna/icon-192.png'});
+  }
 }
 
 function checkNewOrders(newOrders){
   if(knownOrderIds.size===0){
-    // First load — just populate, no notification
     newOrders.forEach(o=>knownOrderIds.add(o.id));
     return;
   }
-  let hasNew=false;
+  const newOnes=[];
   newOrders.forEach(o=>{
-    if(!knownOrderIds.has(o.id)){
-      knownOrderIds.add(o.id);
-      hasNew=true;
-    }
+    if(!knownOrderIds.has(o.id)){knownOrderIds.add(o.id);newOnes.push(o);}
   });
-  // Notify barman and admin only (not the waiter who created it)
-  if(hasNew&&(role==='barman'||role==='admin')) notifyNewOrder();
+  if(newOnes.length&&(role==='barman'||role==='admin')){
+    notifyNewOrder(newOnes[newOnes.length-1]);
+  }
 }
+
 
 async function loadAll(){
   setConnStatus(false);
@@ -1152,6 +1166,7 @@ Object.assign(window,{
 //  BOOT
 // ═══════════════════════════
 (async()=>{
+  registerSW(); // регистрируем SW как можно раньше
   const sr=localStorage.getItem('bar_role');
   if(sr){role=sr;applyRole();}
   else openRoleModal();
