@@ -1148,10 +1148,22 @@ function openEditModal(orderId){
   document.getElementById('editSub').textContent='Заказ #'+o.num+' · Стол '+o.table;
   document.getElementById('editPriority').value=o.priority||'normal';
   document.getElementById('editNote').value=o.note||'';
-  const lines=(o.items||[])
-    .filter(it=>it.status!=='done')
-    .map(it=>it.qty+' '+it.name).join('\n');
-  document.getElementById('editItems').value=lines;
+  // Показываем все позиции кроме уже доставленных
+  const activeItems=(o.items||[]).filter(it=>it.status!=='done');
+  const doneItems=(o.items||[]).filter(it=>it.status==='done');
+  const lines=[
+    ...activeItems.map(it=>it.qty+' '+it.name),
+    // Доставленные показываем закомментированными чтобы было видно что было
+    ...doneItems.map(it=>'# '+it.qty+' '+it.name+' (доставлено)')
+  ].join('\n');
+  document.getElementById('editItems').value=activeItems.length?activeItems.map(it=>it.qty+' '+it.name).join('\n'):'';
+  // Показываем справку если есть доставленные
+  const sub=document.getElementById('editSub');
+  if(doneItems.length){
+    sub.innerHTML=`Заказ #${o.num} · Стол ${o.table}<br><span style="color:var(--muted);font-size:10px;">✅ Доставлено: ${doneItems.map(it=>it.qty+'× '+it.name).join(', ')}</span>`;
+  } else {
+    sub.textContent='Заказ #'+o.num+' · Стол '+o.table;
+  }
   document.getElementById('editOverlay').classList.remove('hidden');
 }
 function closeEditModal(){
