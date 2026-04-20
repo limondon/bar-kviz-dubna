@@ -109,24 +109,54 @@ function normalizeOrder(o){
 // ═══════════════════════════
 let knownOrderIds=new Set();
 let audioCtx=null;
+let audioUnlocked=false;
+
+// Mobile browsers require AudioContext to be created/resumed inside a user gesture
+function unlockAudio(){
+  if(audioUnlocked)return;
+  try{
+    audioCtx=new(window.AudioContext||window.webkitAudioContext)();
+    // Play a silent buffer to fully unlock
+    const buf=audioCtx.createBuffer(1,1,22050);
+    const src=audioCtx.createBufferSource();
+    src.buffer=buf;src.connect(audioCtx.destination);src.start(0);
+    audioUnlocked=true;
+  }catch(e){}
+}
+// Unlock on any touch/click — covers the moment user opens app and taps role button etc.
+document.addEventListener('touchstart',unlockAudio,{once:false,passive:true});
+document.addEventListener('click',unlockAudio,{once:false,passive:true});
 
 function notifyNewOrder(){
-  // Vibrate on mobile
-  if(navigator.vibrate) navigator.vibrate([120,60,120]);
-  // Beep via Web Audio API (no external file needed)
+  // Vibrate on mobile (works in Chrome Android, not iOS Safari)
+  if(navigator.vibrate) navigator.vibrate([150,80,150,80,150]);
+  // Beep via Web Audio API
   try{
     if(!audioCtx) audioCtx=new(window.AudioContext||window.webkitAudioContext)();
-    const osc=audioCtx.createOscillator();
-    const gain=audioCtx.createGain();
-    osc.connect(gain);gain.connect(audioCtx.destination);
-    osc.frequency.value=880;
-    osc.type='sine';
-    gain.gain.setValueAtTime(0,audioCtx.currentTime);
-    gain.gain.linearRampToValueAtTime(0.4,audioCtx.currentTime+0.01);
-    gain.gain.linearRampToValueAtTime(0,audioCtx.currentTime+0.3);
-    osc.start(audioCtx.currentTime);
-    osc.stop(audioCtx.currentTime+0.3);
-  }catch(e){}
+    // Resume if suspended (happens on mobile after inactivity)
+    const play=()=>{
+      const osc=audioCtx.createOscillator();
+      const gain=audioCtx.createGain();
+      osc.connect(gain);gain.connect(audioCtx.destination);
+      // Two-tone beep: high then low
+      osc.frequency.setValueAtTime(1000,audioCtx.currentTime);
+      osc.frequency.setValueAtTime(700,audioCtx.currentTime+0.15);
+      osc.type='sine';
+      gain.gain.setValueAtTime(0,audioCtx.currentTime);
+      gain.gain.linearRampToValueAtTime(0.5,audioCtx.currentTime+0.02);
+      gain.gain.setValueAtTime(0.5,audioCtx.currentTime+0.13);
+      gain.gain.linearRampToValueAtTime(0,audioCtx.currentTime+0.15);
+      gain.gain.linearRampToValueAtTime(0.4,audioCtx.currentTime+0.17);
+      gain.gain.linearRampToValueAtTime(0,audioCtx.currentTime+0.32);
+      osc.start(audioCtx.currentTime);
+      osc.stop(audioCtx.currentTime+0.35);
+    };
+    if(audioCtx.state==='suspended'){
+      audioCtx.resume().then(play);
+    } else {
+      play();
+    }
+  }catch(e){console.warn('audio notify error',e);}
 }
 
 function checkNewOrders(newOrders){
