@@ -28,9 +28,12 @@ function jumpDate(d){viewDate=d;renderTables();}
 function parseItems(text){
   return text.split('\n').map(l=>l.trim()).filter(Boolean).map((line,i)=>{
     let qty=1, name=line;
-    const m1=line.match(/^(\d+)\s*[xXхХ]\s*(.+)/);
+    // m1: "2x Пиво" or "2х Пиво" — x/х must be followed by space (not part of word)
+    const m1=line.match(/^(\d+)\s*[xXхХ]\s+(.+)/);
+    // m2: "2 Пиво светлое"
     const m2=line.match(/^(\d+)\s+(.+)/);
-    const m3=line.match(/^(.+?)\s*[xXхХ]\s*(\d+)$/);
+    // m3: "Пиво x2" or "Пиво х2" — x/х preceded by space
+    const m3=line.match(/^(.+?)\s+[xXхХ](\d+)$/);
     if(m1){qty=parseInt(m1[1]);name=m1[2].trim();}
     else if(m2){qty=parseInt(m2[1]);name=m2[2].trim();}
     else if(m3){qty=parseInt(m3[2]);name=m3[1].trim();}
@@ -101,6 +104,48 @@ function normalizeOrder(o){
   return o;
 }
 
+// ═══════════════════════════
+//  NOTIFICATIONS
+// ═══════════════════════════
+let knownOrderIds=new Set();
+let audioCtx=null;
+
+function notifyNewOrder(){
+  // Vibrate on mobile
+  if(navigator.vibrate) navigator.vibrate([120,60,120]);
+  // Beep via Web Audio API (no external file needed)
+  try{
+    if(!audioCtx) audioCtx=new(window.AudioContext||window.webkitAudioContext)();
+    const osc=audioCtx.createOscillator();
+    const gain=audioCtx.createGain();
+    osc.connect(gain);gain.connect(audioCtx.destination);
+    osc.frequency.value=880;
+    osc.type='sine';
+    gain.gain.setValueAtTime(0,audioCtx.currentTime);
+    gain.gain.linearRampToValueAtTime(0.4,audioCtx.currentTime+0.01);
+    gain.gain.linearRampToValueAtTime(0,audioCtx.currentTime+0.3);
+    osc.start(audioCtx.currentTime);
+    osc.stop(audioCtx.currentTime+0.3);
+  }catch(e){}
+}
+
+function checkNewOrders(newOrders){
+  if(knownOrderIds.size===0){
+    // First load — just populate, no notification
+    newOrders.forEach(o=>knownOrderIds.add(o.id));
+    return;
+  }
+  let hasNew=false;
+  newOrders.forEach(o=>{
+    if(!knownOrderIds.has(o.id)){
+      knownOrderIds.add(o.id);
+      hasNew=true;
+    }
+  });
+  // Notify barman and admin only (not the waiter who created it)
+  if(hasNew&&(role==='barman'||role==='admin')) notifyNewOrder();
+}
+
 async function loadAll(){
   setConnStatus(false);
   onValue(ref(db,'orders'),(snap)=>{
@@ -121,6 +166,7 @@ async function loadAll(){
       }
     }
     orders=raw?Object.values(raw).map(normalizeOrder):[];
+    checkNewOrders(orders);
     setConnStatus(true);
     renderAll();
   },(e)=>{console.error(e);setConnStatus(false);});
@@ -144,6 +190,8 @@ function startPoll(){
   setInterval(()=>{
     document.getElementById('hTime').textContent=new Date().toLocaleTimeString('ru',{hour:'2-digit',minute:'2-digit'});
   },1000);
+  // Refresh order cards every minute to update waiting timers
+  setInterval(()=>{ if(role) renderAll(); },60000);
 }
 
 // ═══════════════════════════
@@ -161,7 +209,8 @@ async function closeTable(date,tNum,sid){
   m.status='closed';m.closedAt=Date.now();
   if(!m.closedSessions)m.closedSessions=[];
   m.closedSessions.push({sid:sid||m.sid||'default',closedAt:m.closedAt,openedAt:m.openedAt});
-  await saveAll();renderTables();renderClosed();fl('fOk','✅ Стол '+tNum+' закрыт');
+  await fbUpdate('tables',tablesMeta);
+  renderTables();renderClosed();fl('fOk','✅ Стол '+tNum+' закрыт');
 }
 async function reopenTable(date,tNum){
   const m=getTMeta(date,tNum);
@@ -170,7 +219,7 @@ async function reopenTable(date,tNum){
   if(m.closedSessions&&m.closedSessions.length){
     m.closedSessions.pop();
   }
-  await saveAll();
+  await fbUpdate('tables',tablesMeta);
   renderTables();
   renderClosed();
   fl('fOk','↩ Стол '+tNum+' переоткрыт');
@@ -368,39 +417,46 @@ function sw(tab){
 //  ADD ORDER
 // ═══════════════════════════
 async function addOrder(){
-  const tableRaw=document.getElementById('inpTable').value.trim().toUpperCase();
-  const rawItems=document.getElementById('inpItems').value.trim();
-  const note=document.getElementById('inpNote').value.trim();
-  const prio=document.getElementById('inpPriority').value;
-  if(!tableRaw){alert('Укажите номер стола!');return;}
-  if(!rawItems){alert('Введите позиции!');return;}
-  const tNum=tableRaw;
-  const items=parseItems(rawItems);
-  if(!items.length){alert('Не удалось распознать позиции!');return;}
-  const num=(orders.length?Math.max(...orders.map(o=>o.num||0)):0)+1;
-  const date=todayStr();
-  const existingMeta=getTMeta(date,tNum);
-  if(existingMeta.status==='closed'){
-    const newSid=Date.now().toString(36);
-    existingMeta.sessions=existingMeta.sessions||[];
-    existingMeta.sessions.push({sid:existingMeta.sid,closedAt:existingMeta.closedAt,openedAt:existingMeta.openedAt});
-    existingMeta.sid=newSid;
-    existingMeta.status='open';
-    existingMeta.openedAt=Date.now();
-    delete existingMeta.closedAt;
+  const btn=document.querySelector('.btn-add');
+  if(btn&&btn.disabled)return;
+  if(btn){btn.disabled=true;btn.style.opacity='.5';}
+  try{
+    const tableRaw=document.getElementById('inpTable').value.trim().toUpperCase();
+    const rawItems=document.getElementById('inpItems').value.trim();
+    const note=document.getElementById('inpNote').value.trim();
+    const prio=document.getElementById('inpPriority').value;
+    if(!tableRaw){fl('fInfo','Укажите номер стола!');return;}
+    if(!rawItems){fl('fInfo','Введите позиции!');return;}
+    const tNum=tableRaw;
+    const items=parseItems(rawItems);
+    if(!items.length){fl('fInfo','Не удалось распознать позиции!');return;}
+    const num=(orders.length?Math.max(...orders.map(o=>o.num||0)):0)+1;
+    const date=todayStr();
+    const existingMeta=getTMeta(date,tNum);
+    if(existingMeta.status==='closed'){
+      const newSid=Date.now().toString(36);
+      existingMeta.sessions=existingMeta.sessions||[];
+      existingMeta.sessions.push({sid:existingMeta.sid,closedAt:existingMeta.closedAt,openedAt:existingMeta.openedAt});
+      existingMeta.sid=newSid;
+      existingMeta.status='open';
+      existingMeta.openedAt=Date.now();
+      delete existingMeta.closedAt;
+    }
+    const sid=existingMeta.sid||(existingMeta.sid=Date.now().toString(36));
+    const newRef=push(ref(db,'orders'));
+    const itemsObj={};
+    items.forEach(it=>itemsObj[it.id]=it);
+    const newOrder={id:newRef.key,table:tNum,items:itemsObj,note,priority:prio,status:'new',createdAt:Date.now(),num,date,sid};
+    await fbUpdate('orders/'+newRef.key,newOrder);
+    await fbUpdate('tables',tablesMeta);
+    fl('fOk','✅ Заказ #'+num+' — Стол '+tNum+' ('+items.length+' поз.)');
+    ['inpTable','inpItems','inpNote'].forEach(id=>document.getElementById(id).value='');
+    document.getElementById('inpPriority').value='normal';
+    buildQuickTableBtns();
+    if(role==='waiter')sw('queue');
+  }finally{
+    if(btn){btn.disabled=false;btn.style.opacity='';}
   }
-  const sid=existingMeta.sid||(existingMeta.sid=Date.now().toString(36));
-  const newRef=push(ref(db,'orders'));
-  const itemsObj={};
-  items.forEach(it=>itemsObj[it.id]=it);
-  const newOrder={id:newRef.key,table:tNum,items:itemsObj,note,priority:prio,status:'new',createdAt:Date.now(),num,date,sid};
-  await fbUpdate('orders/'+newRef.key,newOrder);
-  await fbUpdate('tables',tablesMeta);
-  fl('fOk','✅ Заказ #'+num+' — Стол '+tNum+' ('+items.length+' поз.)');
-  ['inpTable','inpItems','inpNote'].forEach(id=>document.getElementById(id).value='');
-  document.getElementById('inpPriority').value='normal';
-  buildQuickTableBtns();
-  if(role==='waiter')sw('queue');
 }
 
 // ═══════════════════════════
@@ -516,7 +572,7 @@ function renderAll(){
   const openTablesSet=new Set(
     orders.filter(o=>o.date===today).filter(o=>{
       const meta=getTMeta(today,o.table);
-      const sid=o.sid||meta.sid||'default';
+      const sid=o.sid||'default';
       const isCurrentSession=meta.sid===sid||(!meta.sid&&sid==='default');
       return isCurrentSession && meta.status!=='closed';
     }).map(o=>o.table)
@@ -628,6 +684,14 @@ function orderCard(o,isDone){
     if(role==='admin') acts+=` <button class="btn-sm bx" data-action="del" data-oid="${oid}">🗑</button>`;
   }
 
+  // Waiting timer — only for active (non-done) orders
+  const waitMins=isDone?0:Math.floor((Date.now()-o.createdAt)/60000);
+  const waitLbl=!isDone&&waitMins>0
+    ?`<span style="font-size:var(--fs-xs);padding:2px 8px;border-radius:8px;font-weight:700;margin-left:6px;
+        background:${waitMins>=15?'rgba(229,57,53,.18)':'rgba(255,255,255,.06)'};
+        color:${waitMins>=15?'var(--red)':'var(--muted)'};">
+        ⏱ ${waitMins} мин${waitMins>=15?' !':''}</span>`:'';
+
   return`
   <div class="order-card ${borderCls}">
     <div class="cnum">#${o.num}</div>
@@ -636,7 +700,7 @@ function orderCard(o,isDone){
       <div class="tags">${pTag}${stTag}</div>
     </div>
     ${banner}
-    <div class="order-time">принят в ${fmt(o.createdAt)}</div>
+    <div class="order-time">принят в ${fmt(o.createdAt)}${waitLbl}</div>
     ${note}
     ${prog}
     ${itemsHtml}
@@ -949,15 +1013,26 @@ function renderClosed(){
     const closedSessionHist=(meta.closedSessions||[]).find(s=>s.sid===sid);
     const closedAt=isCurrentSession?meta.closedAt:closedSessionHist?.closedAt;
 
-    const sumMap={};
+    // Итого: доставленные — обычно, недоставленные — зачёркнуто
+    const sumMap={},pendingMap={};
     tOrders.forEach(o=>(o.items||[]).forEach(it=>{
       const k=it.name.trim().toLowerCase();
-      if(!sumMap[k])sumMap[k]={name:it.name,qty:0};
-      sumMap[k].qty+=it.qty;
+      if(it.status==='done'){
+        if(!sumMap[k])sumMap[k]={name:it.name,qty:0};
+        sumMap[k].qty+=it.qty;
+      } else {
+        if(!pendingMap[k])pendingMap[k]={name:it.name,qty:0};
+        pendingMap[k].qty+=it.qty;
+      }
     }));
-    const sumLines=Object.values(sumMap).sort((a,b)=>a.name.localeCompare(b.name)).map(x=>
-      `<div class="sum-line"><span class="sum-item">${esc(x.name)}</span><span class="sum-cnt">${x.qty} шт.</span></div>`
-    ).join('');
+    const sumLines=[
+      ...Object.values(sumMap).sort((a,b)=>a.name.localeCompare(b.name)).map(x=>
+        `<div class="sum-line"><span class="sum-item">${esc(x.name)}</span><span class="sum-cnt">${x.qty} шт.</span></div>`
+      ),
+      ...Object.values(pendingMap).sort((a,b)=>a.name.localeCompare(b.name)).map(x=>
+        `<div class="sum-line" style="opacity:.4;text-decoration:line-through;"><span class="sum-item">${esc(x.name)}</span><span class="sum-cnt">${x.qty} шт.</span></div>`
+      )
+    ].join('');
 
     const ordersHtml=tOrders.map(o=>{
       const sico={new:'🕐',making:'🍹',ready:'🟢',done:'✅'}[o.status]||'';
