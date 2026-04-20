@@ -121,8 +121,13 @@ async function registerSW(){
 }
 
 async function requestNotificationPermission(){
-  if(!('Notification' in window))return;
-  if(Notification.permission==='default') await Notification.requestPermission();
+  if(!('Notification' in window))return false;
+  if(Notification.permission==='granted') return true;
+  if(Notification.permission==='denied') return false;
+  // iOS требует вызова строго внутри user gesture (click/touch)
+  const result=await Notification.requestPermission();
+  updateNotifBtn();
+  return result==='granted';
 }
 
 function unlockAudio(){
@@ -134,10 +139,40 @@ function unlockAudio(){
     src.buffer=buf;src.connect(audioCtx.destination);src.start(0);
     audioUnlocked=true;
   }catch(e){}
-  requestNotificationPermission();
 }
 document.addEventListener('touchstart',unlockAudio,{once:true,passive:true});
 document.addEventListener('click',unlockAudio,{once:true,passive:true});
+
+// Кнопка включения уведомлений — показывается в сайдбаре и хедере
+function updateNotifBtn(){
+  const btns=document.querySelectorAll('.notif-btn');
+  if(!('Notification' in window)){btns.forEach(b=>b.remove());return;}
+  const perm=Notification.permission;
+  btns.forEach(b=>{
+    if(perm==='granted'){
+      b.textContent='🔔 Уведомления вкл.';
+      b.style.color='var(--green)';
+      b.style.opacity='0.6';
+      b.style.pointerEvents='none';
+    } else if(perm==='denied'){
+      b.textContent='🔕 Уведомления запрещены';
+      b.style.color='var(--red)';
+      b.style.opacity='0.6';
+      b.style.pointerEvents='none';
+    } else {
+      b.textContent='🔔 Включить уведомления';
+      b.style.color='var(--accent)';
+      b.style.opacity='1';
+      b.style.pointerEvents='auto';
+    }
+  });
+}
+
+// Вызывается по нажатию кнопки
+async function enableNotifications(){
+  unlockAudio();
+  await requestNotificationPermission();
+}
 
 function playBeep(){
   try{
@@ -299,6 +334,23 @@ function applyRole(){
   hr.textContent=lbl[role];hr.className='rbadge '+cls[role];
   buildTabs();renderAll();
   buildQuickTableBtns();
+  // Показываем кнопку уведомлений в хедере на телефоне (для бармена и менеджера)
+  let hnotif=document.getElementById('hNotif');
+  if(!hnotif){
+    hnotif=document.createElement('span');
+    hnotif.id='hNotif';
+    hnotif.className='notif-btn';
+    hnotif.style.cssText='font-size:11px;cursor:pointer;padding:4px 8px;border-radius:12px;border:1px solid;white-space:nowrap;display:none;';
+    hnotif.onclick=enableNotifications;
+    document.querySelector('.hright').insertBefore(hnotif,document.querySelector('.dot'));
+  }
+  // Показываем только барменам и менеджерам — они принимают заказы
+  if(role==='barman'||role==='admin'){
+    hnotif.style.display='flex';
+    updateNotifBtn();
+  } else {
+    hnotif.style.display='none';
+  }
 }
 
 function buildQuickTableBtns(){
@@ -411,8 +463,10 @@ function buildSidebar(tabs){
       </div>`).join('')}
     <div style="margin-top:auto;padding:16px 20px 0;border-top:1px solid var(--border);margin-top:16px;">
       <div onclick="openRoleModal()" style="font-size:11px;color:var(--muted);cursor:pointer;padding:8px 0;">⚙️ Сменить роль</div>
+      <div class="notif-btn" onclick="enableNotifications()" style="font-size:11px;cursor:pointer;padding:8px 0;"></div>
     </div>
   `;
+  updateNotifBtn();
 }
 
 function applyDeviceLayout(device){
@@ -876,6 +930,7 @@ function renderTables(){
         <div class="tbo-hdr">
           <span class="tbo-num">#${o.num} ${sico}</span>
           <span class="tbo-time">${fmt(o.createdAt)}</span>
+          <button class="btn-edit" data-action="edit" data-oid="${esc(o.id)}" style="padding:3px 10px;font-size:11px;min-height:32px;">✏️</button>
         </div>
         <div class="tbo-lines">${lines}</div>
         ${note}
@@ -891,7 +946,11 @@ function renderTables(){
 
     const actions=isOpen
       ?`<button class="btn-pay" onclick="closeTable('${viewDate}','${tNum}','${sid}')">💳 ЗАКРЫТЬ / ОПЛАЧЕН</button>`
-      :(role==='admin'?`<button class="btn-reopen" onclick="reopenTable('${viewDate}','${tNum}')">↩ Переоткрыть</button>`:'');
+      :`<button class="btn-reopen" onclick="reopenTable('${viewDate}','${tNum}')">↩ Переоткрыть</button>`;
+
+    const mgmtBtns=`
+      <button class="btn-sm bu" onclick="renameTable('${viewDate}','${tNum}','${sid}')">✏️ Переименовать</button>
+      <button class="btn-sm bx" onclick="deleteTable('${viewDate}','${tNum}','${sid}')">🗑 Удалить стол</button>`;
 
     const cardId='tb-'+tNum+'_'+sid;
     return`
@@ -912,7 +971,7 @@ function renderTables(){
       <div class="tb-body" id="body-${cardId}">
         ${ordersHtml}
         <div class="tb-summary"><h4>📋 ИТОГО ДЛЯ ЧЕКА</h4>${sumLines||'<div style="color:var(--muted);font-size:12px">Нет позиций</div>'}</div>
-        ${actions?`<div class="tb-actions">${actions}</div>`:''}
+        <div class="tb-actions">${actions}${mgmtBtns}</div>
       </div>
     </div>`;
   }).join('');
@@ -924,6 +983,57 @@ function toggleBill(cardId){
   if(!b)return;
   const open=b.classList.contains('open');
   b.classList.toggle('open',!open);c.classList.toggle('open',!open);
+}
+
+// ═══════════════════════════
+//  TABLE MANAGEMENT
+// ═══════════════════════════
+async function renameTable(date,oldTNum,sid){
+  const newName=prompt(`Новый номер/название стола (сейчас: ${oldTNum})`,'');
+  if(!newName||!newName.trim())return;
+  const newTNum=newName.trim().toUpperCase();
+  if(newTNum===String(oldTNum)){return;}
+
+  // Переименовываем во всех заказах этой сессии
+  const upd={};
+  orders.forEach(o=>{
+    const oSid=o.sid||'default';
+    if(o.date===date&&String(o.table)===String(oldTNum)&&oSid===sid){
+      upd[`orders/${o.id}/table`]=newTNum;
+      o.table=newTNum;
+    }
+  });
+
+  // Переносим meta на новый ключ
+  const oldKey=tKey(date,oldTNum);
+  const newKey=tKey(date,newTNum);
+  if(tablesMeta[oldKey]){
+    tablesMeta[newKey]={...tablesMeta[oldKey],tNum:newTNum};
+    delete tablesMeta[oldKey];
+    upd[`tables/${oldKey}`]=null;
+    upd[`tables/${newKey}`]=tablesMeta[newKey];
+  }
+
+  await update(ref(db),upd);
+  renderTables();renderClosed();
+  fl('fOk',`✅ Стол ${oldTNum} → ${newTNum}`);
+}
+
+async function deleteTable(date,tNum,sid){
+  const tOrders=orders.filter(o=>o.date===date&&String(o.table)===String(tNum)&&(o.sid||'default')===sid);
+  if(!confirm(`Удалить стол ${tNum} и ${tOrders.length} ${pl(tOrders.length,'заказ','заказа','заказов')}? Это нельзя отменить.`))return;
+
+  const upd={};
+  tOrders.forEach(o=>{
+    upd[`orders/${o.id}`]=null;
+  });
+  // Удаляем meta
+  const k=tKey(date,tNum);
+  upd[`tables/${k}`]=null;
+  delete tablesMeta[k];
+
+  await update(ref(db),upd);
+  fl('fOk',`🗑 Стол ${tNum} удалён`);
 }
 
 // ═══════════════════════════
@@ -1091,6 +1201,7 @@ function renderClosed(){
         <div class="tbo-hdr">
           <span class="tbo-num">#${o.num} ${sico}</span>
           <span class="tbo-time">${fmt(o.createdAt)}</span>
+          <button class="btn-edit" data-action="edit" data-oid="${esc(o.id)}" style="padding:3px 10px;font-size:11px;min-height:32px;">✏️</button>
         </div>
         <div class="tbo-lines">${lines}</div>
         ${note}
@@ -1119,7 +1230,11 @@ function renderClosed(){
       <div class="tb-body" id="body-${cardId}">
         ${ordersHtml}
         <div class="tb-summary"><h4>📋 ИТОГО</h4>${sumLines||'<div style="color:var(--muted);font-size:12px">Нет позиций</div>'}</div>
-        ${role==='admin'?`<div class="tb-actions"><button class="btn-reopen" onclick="reopenTable('${closedViewDate}','${tNum}')">↩ Переоткрыть</button></div>`:''}
+        <div class="tb-actions">
+          <button class="btn-reopen" onclick="reopenTable('${closedViewDate}','${tNum}')">↩ Переоткрыть</button>
+          <button class="btn-sm bu" onclick="renameTable('${closedViewDate}','${tNum}','${sid}')">✏️ Переименовать</button>
+          <button class="btn-sm bx" onclick="deleteTable('${closedViewDate}','${tNum}','${sid}')">🗑 Удалить стол</button>
+        </div>
       </div>
     </div>`;
   }).join('');
@@ -1156,10 +1271,11 @@ document.addEventListener('click',async e=>{
 Object.assign(window,{
   pickRole,confirmRole,openRoleModal,closeRoleModal,
   sw,addOrder,barItemAction,waiterDeliverItem,waiterDeliverAll,
-  pickTable,
+  pickTable,enableNotifications,
   closeTable,reopenTable,reopenOrder,delOrder,setQF,toggleBill,shiftDate,jumpDate,
   renderTables,openEditModal,closeEditModal,saveEditOrder,
-  shiftClosedDate,jumpClosedDate,renderClosed
+  shiftClosedDate,jumpClosedDate,renderClosed,
+  renameTable,deleteTable
 });
 
 // ═══════════════════════════
