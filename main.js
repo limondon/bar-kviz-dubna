@@ -256,21 +256,22 @@ async function loadAll(){
   });
 }
 
-async function saveAll(){
-  const ordersObj={};
-  orders.forEach(o=>ordersObj[o.id]=o);
-  await Promise.all([
-    fbUpdate('orders',ordersObj),
-    fbUpdate('tables',tablesMeta)
-  ]);
-}
-
 function startPoll(){
   setInterval(()=>{
     document.getElementById('hTime').textContent=new Date().toLocaleTimeString('ru',{hour:'2-digit',minute:'2-digit'});
   },1000);
-  // Refresh order cards every minute to update waiting timers
-  setInterval(()=>{ if(role) renderAll(); },60000);
+  // Обновляем только тексты таймеров раз в минуту — без перерисовки карточек
+  setInterval(()=>{
+    document.querySelectorAll('[data-created]').forEach(el=>{
+      const created=parseInt(el.dataset.created);
+      if(!created)return;
+      const mins=Math.floor((Date.now()-created)/60000);
+      const urgent=mins>=15;
+      el.textContent=mins>0?`⏱ ${mins} мин${urgent?' !':''}`:'' ;
+      el.style.background=urgent?'rgba(229,57,53,.18)':'rgba(255,255,255,.06)';
+      el.style.color=urgent?'var(--red)':'var(--muted)';
+    });
+  },60000);
 }
 
 // ═══════════════════════════
@@ -283,7 +284,12 @@ function getTMeta(date,tNum){
   return tablesMeta[k];
 }
 async function closeTable(date,tNum,sid){
-  if(!confirm('Закрыть стол '+tNum+'? Отметить как оплачен.'))return;
+  const ok=await showConfirm(
+    `💳 Закрыть стол ${tNum}?`,
+    'Отметить как оплачен. Стол переместится в "Закрытые".',
+    'ЗАКРЫТЬ / ОПЛАЧЕН'
+  );
+  if(!ok)return;
   const m=getTMeta(date,tNum);
   m.status='closed';m.closedAt=Date.now();
   if(!m.closedSessions)m.closedSessions=[];
@@ -346,8 +352,13 @@ function applyRole(){
   }
   // Показываем только барменам и менеджерам — они принимают заказы
   if(role==='barman'||role==='admin'){
-    hnotif.style.display='flex';
-    updateNotifBtn();
+    // Скрываем если уже разрешено
+    if('Notification' in window && Notification.permission==='granted'){
+      hnotif.style.display='none';
+    } else {
+      hnotif.style.display='flex';
+      updateNotifBtn();
+    }
   } else {
     hnotif.style.display='none';
   }
@@ -523,35 +534,39 @@ async function addOrder(){
     const rawItems=document.getElementById('inpItems').value.trim();
     const note=document.getElementById('inpNote').value.trim();
     const prio=document.getElementById('inpPriority').value;
-    if(!tableRaw){fl('fInfo','Укажите номер стола!');return;}
-    if(!rawItems){fl('fInfo','Введите позиции!');return;}
-    const tNum=tableRaw;
-    const items=parseItems(rawItems);
-    if(!items.length){fl('fInfo','Не удалось распознать позиции!');return;}
-    const num=(orders.length?Math.max(...orders.map(o=>o.num||0)):0)+1;
-    const date=todayStr();
-    const existingMeta=getTMeta(date,tNum);
-    if(existingMeta.status==='closed'){
-      const newSid=Date.now().toString(36);
-      existingMeta.sessions=existingMeta.sessions||[];
-      existingMeta.sessions.push({sid:existingMeta.sid,closedAt:existingMeta.closedAt,openedAt:existingMeta.openedAt});
-      existingMeta.sid=newSid;
-      existingMeta.status='open';
-      existingMeta.openedAt=Date.now();
-      delete existingMeta.closedAt;
+    if(!tableRaw){fl('fInfo','Укажите номер стола!');}
+    else if(!rawItems){fl('fInfo','Введите позиции!');}
+    else{
+      const tNum=tableRaw;
+      const items=parseItems(rawItems);
+      if(!items.length){fl('fInfo','Не удалось распознать позиции!');}
+      else{
+        const num=(orders.length?Math.max(...orders.map(o=>o.num||0)):0)+1;
+        const date=todayStr();
+        const existingMeta=getTMeta(date,tNum);
+        if(existingMeta.status==='closed'){
+          const newSid=Date.now().toString(36);
+          existingMeta.sessions=existingMeta.sessions||[];
+          existingMeta.sessions.push({sid:existingMeta.sid,closedAt:existingMeta.closedAt,openedAt:existingMeta.openedAt});
+          existingMeta.sid=newSid;
+          existingMeta.status='open';
+          existingMeta.openedAt=Date.now();
+          delete existingMeta.closedAt;
+        }
+        const sid=existingMeta.sid||(existingMeta.sid=Date.now().toString(36));
+        const newRef=push(ref(db,'orders'));
+        const itemsObj={};
+        items.forEach(it=>itemsObj[it.id]=it);
+        const newOrder={id:newRef.key,table:tNum,items:itemsObj,note,priority:prio,status:'new',createdAt:Date.now(),num,date,sid};
+        await fbUpdate('orders/'+newRef.key,newOrder);
+        await fbUpdate('tables',tablesMeta);
+        fl('fOk','✅ Заказ #'+num+' — Стол '+tNum+' ('+items.length+' поз.)');
+        ['inpTable','inpItems','inpNote'].forEach(id=>document.getElementById(id).value='');
+        document.getElementById('inpPriority').value='normal';
+        buildQuickTableBtns();
+        if(role==='waiter')sw('queue');
+      }
     }
-    const sid=existingMeta.sid||(existingMeta.sid=Date.now().toString(36));
-    const newRef=push(ref(db,'orders'));
-    const itemsObj={};
-    items.forEach(it=>itemsObj[it.id]=it);
-    const newOrder={id:newRef.key,table:tNum,items:itemsObj,note,priority:prio,status:'new',createdAt:Date.now(),num,date,sid};
-    await fbUpdate('orders/'+newRef.key,newOrder);
-    await fbUpdate('tables',tablesMeta);
-    fl('fOk','✅ Заказ #'+num+' — Стол '+tNum+' ('+items.length+' поз.)');
-    ['inpTable','inpItems','inpNote'].forEach(id=>document.getElementById(id).value='');
-    document.getElementById('inpPriority').value='normal';
-    buildQuickTableBtns();
-    if(role==='waiter')sw('queue');
   }finally{
     if(btn){btn.disabled=false;btn.style.opacity='';}
   }
@@ -629,7 +644,9 @@ async function reopenOrder(id){
 }
 
 async function delOrder(id){
-  if(!confirm('Удалить заказ?'))return;
+  const o=orders.find(x=>x.id===id);
+  const ok=await showConfirm('🗑 Удалить заказ?',`Заказ #${o?.num||'?'} будет удалён безвозвратно.`);
+  if(!ok)return;
   await remove(ref(db,'orders/'+id));
 }
 
@@ -660,11 +677,14 @@ function renderAll(){
     return a.createdAt-b.createdAt;
   });
 
-  let inProgress=0,readyCnt=0;
-  orders.forEach(o=>o.items&&o.items.forEach(it=>{
-    if(it.status==='making')inProgress++;
-    if(it.status==='ready')readyCnt++;
-  }));
+  let inProgress=0,readyCnt=0,newCnt=0;
+  orders.forEach(o=>{
+    if(o.status==='new') newCnt++;
+    o.items&&o.items.forEach(it=>{
+      if(it.status==='making')inProgress++;
+      if(it.status==='ready')readyCnt++;
+    });
+  });
 
   const today=todayStr();
   const openTablesSet=new Set(
@@ -679,7 +699,7 @@ function renderAll(){
   setBadge('bQ',active.length);
   setBadge('bR',hasReady.length);
   setBadge('bT',openTablesSet.size);
-  setEl('sN',active.length);setEl('sP',inProgress);setEl('sR',readyCnt);
+  setEl('sN',active.length);setEl('sNew',newCnt);setEl('sP',inProgress);setEl('sR',readyCnt);
 
   const tables=[...new Set(active.map(o=>String(o.table)))].sort((a,b)=>{
     const an=parseInt(a),bn=parseInt(b);
@@ -784,11 +804,11 @@ function orderCard(o,isDone){
 
   // Waiting timer — only for active (non-done) orders
   const waitMins=isDone?0:Math.floor((Date.now()-o.createdAt)/60000);
-  const waitLbl=!isDone&&waitMins>0
-    ?`<span style="font-size:var(--fs-xs);padding:2px 8px;border-radius:8px;font-weight:700;margin-left:6px;
+  const waitLbl=!isDone&&o.createdAt
+    ?`<span data-created="${o.createdAt}" style="font-size:var(--fs-xs);padding:2px 8px;border-radius:8px;font-weight:700;margin-left:6px;
         background:${waitMins>=15?'rgba(229,57,53,.18)':'rgba(255,255,255,.06)'};
         color:${waitMins>=15?'var(--red)':'var(--muted)'};">
-        ⏱ ${waitMins} мин${waitMins>=15?' !':''}</span>`:'';
+        ${waitMins>0?`⏱ ${waitMins} мин${waitMins>=15?' !':''}`:'⏱ <1 мин'}</span>`:'';
 
   return`
   <div class="order-card ${borderCls}">
@@ -988,51 +1008,86 @@ function toggleBill(cardId){
 // ═══════════════════════════
 //  TABLE MANAGEMENT
 // ═══════════════════════════
-async function renameTable(date,oldTNum,sid){
-  const newName=prompt(`Новый номер/название стола (сейчас: ${oldTNum})`,'');
-  if(!newName||!newName.trim())return;
-  const newTNum=newName.trim().toUpperCase();
-  if(newTNum===String(oldTNum)){return;}
 
-  // Переименовываем во всех заказах этой сессии
-  const upd={};
-  orders.forEach(o=>{
-    const oSid=o.sid||'default';
-    if(o.date===date&&String(o.table)===String(oldTNum)&&oSid===sid){
-      upd[`orders/${o.id}/table`]=newTNum;
-      o.table=newTNum;
-    }
+// Кастомный confirm — возвращает Promise<boolean>
+let _confirmResolve=null;
+function showConfirm(title,msg,okLabel='УДАЛИТЬ'){
+  return new Promise(resolve=>{
+    _confirmResolve=resolve;
+    document.getElementById('confirmTitle').textContent=title;
+    document.getElementById('confirmMsg').textContent=msg;
+    document.getElementById('confirmOkBtn').textContent=okLabel;
+    document.getElementById('confirmOkBtn').onclick=()=>{closeConfirmModal();resolve(true);};
+    document.getElementById('confirmOverlay').classList.remove('hidden');
   });
+}
+function closeConfirmModal(){
+  document.getElementById('confirmOverlay').classList.add('hidden');
+  if(_confirmResolve){_confirmResolve(false);_confirmResolve=null;}
+}
 
-  // Переносим meta на новый ключ
-  const oldKey=tKey(date,oldTNum);
-  const newKey=tKey(date,newTNum);
-  if(tablesMeta[oldKey]){
-    tablesMeta[newKey]={...tablesMeta[oldKey],tNum:newTNum};
-    delete tablesMeta[oldKey];
-    upd[`tables/${oldKey}`]=null;
-    upd[`tables/${newKey}`]=tablesMeta[newKey];
-  }
+// Кастомный rename modal
+let _renameCb=null;
+function openRenameModal(currentName,cb){
+  _renameCb=cb;
+  document.getElementById('renameSub').textContent='Сейчас: '+currentName;
+  const inp=document.getElementById('renameInput');
+  inp.value='';
+  document.getElementById('renameOverlay').classList.remove('hidden');
+  setTimeout(()=>inp.focus(),100);
+}
+function closeRenameModal(){
+  document.getElementById('renameOverlay').classList.add('hidden');
+  _renameCb=null;
+}
+function confirmRename(){
+  const val=document.getElementById('renameInput').value.trim().toUpperCase();
+  if(!val){fl('fInfo','Введите название!');return;}
+  closeRenameModal();
+  if(_renameCb){_renameCb(val);_renameCb=null;}
+}
 
-  await update(ref(db),upd);
-  renderTables();renderClosed();
-  fl('fOk',`✅ Стол ${oldTNum} → ${newTNum}`);
+async function renameTable(date,oldTNum,sid){
+  openRenameModal(oldTNum,async(newTNum)=>{
+    if(newTNum===String(oldTNum))return;
+    const upd={};
+    orders.forEach(o=>{
+      const oSid=o.sid||'default';
+      if(o.date===date&&String(o.table)===String(oldTNum)&&oSid===sid){
+        upd[`orders/${o.id}/table`]=newTNum;
+        o.table=newTNum;
+      }
+    });
+    const oldKey=tKey(date,oldTNum);
+    const newKey=tKey(date,newTNum);
+    if(tablesMeta[oldKey]){
+      tablesMeta[newKey]={...tablesMeta[oldKey],tNum:newTNum};
+      delete tablesMeta[oldKey];
+      upd[`tables/${oldKey}`]=null;
+      upd[`tables/${newKey}`]=tablesMeta[newKey];
+    }
+    await update(ref(db),upd);
+    renderTables();renderClosed();
+    fl('fOk',`✅ Стол ${oldTNum} → ${newTNum}`);
+  });
 }
 
 async function deleteTable(date,tNum,sid){
   const tOrders=orders.filter(o=>o.date===date&&String(o.table)===String(tNum)&&(o.sid||'default')===sid);
-  if(!confirm(`Удалить стол ${tNum} и ${tOrders.length} ${pl(tOrders.length,'заказ','заказа','заказов')}? Это нельзя отменить.`))return;
-
+  const ok=await showConfirm(
+    `🗑 Удалить стол ${tNum}?`,
+    `Будет удалено ${tOrders.length} ${pl(tOrders.length,'заказ','заказа','заказов')}. Это нельзя отменить.`
+  );
+  if(!ok)return;
   const upd={};
-  tOrders.forEach(o=>{
-    upd[`orders/${o.id}`]=null;
-  });
-  // Удаляем meta
+  tOrders.forEach(o=>{upd[`orders/${o.id}`]=null;});
   const k=tKey(date,tNum);
   upd[`tables/${k}`]=null;
   delete tablesMeta[k];
-
   await update(ref(db),upd);
+  // Локально убираем сразу — не ждём Firebase
+  orders=orders.filter(o=>!(o.date===date&&String(o.table)===String(tNum)&&(o.sid||'default')===sid));
+  renderTables();renderClosed();renderAll();
   fl('fOk',`🗑 Стол ${tNum} удалён`);
 }
 
@@ -1101,6 +1156,16 @@ async function saveEditOrder(){
   });
 
   try{
+    // Сохраняем снапшот предыдущей версии в историю
+    const snapshot={
+      items:Object.fromEntries(o.items.map(it=>{const {_fbKey,...clean}=it;return[it._fbKey||it.id,clean];})),
+      note:o.note||'',
+      priority:o.priority||'normal',
+      editedAt:Date.now(),
+      editedBy:role||'unknown'
+    };
+    await update(ref(db,'orders/'+editOrderId),{history:null}); // сброс перед записью
+    await set(ref(db,'orders/'+editOrderId+'/history/'+Date.now()), snapshot);
     await set(ref(db,'orders/'+editOrderId+'/items'), itemsObj);
     await update(ref(db,'orders/'+editOrderId), {note, priority:prio});
     closeEditModal();
@@ -1275,7 +1340,8 @@ Object.assign(window,{
   closeTable,reopenTable,reopenOrder,delOrder,setQF,toggleBill,shiftDate,jumpDate,
   renderTables,openEditModal,closeEditModal,saveEditOrder,
   shiftClosedDate,jumpClosedDate,renderClosed,
-  renameTable,deleteTable
+  renameTable,deleteTable,
+  closeConfirmModal,closeRenameModal,confirmRename
 });
 
 // ═══════════════════════════

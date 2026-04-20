@@ -17,6 +17,32 @@
 </head>
 <body>
 
+<!-- RENAME TABLE MODAL -->
+<div class="edit-overlay hidden" id="renameOverlay">
+  <div class="edit-modal" style="max-width:360px;">
+    <h2>✏️ ПЕРЕИМЕНОВАТЬ СТОЛ</h2>
+    <div class="em-sub" id="renameSub"></div>
+    <div style="margin-bottom:20px;">
+      <label>Новый номер / название</label>
+      <input type="text" id="renameInput" placeholder="например: 5 или PS3" autocomplete="off"
+        style="font-size:clamp(22px,6vw,28px);font-family:'Bebas Neue',sans-serif;letter-spacing:2px;text-align:center;text-transform:uppercase;"
+        onkeydown="if(event.key==='Enter')confirmRename()">
+    </div>
+    <button class="modal-btn" onclick="confirmRename()">СОХРАНИТЬ</button>
+    <span class="modal-close" onclick="closeRenameModal()">Отмена</span>
+  </div>
+</div>
+
+<!-- CONFIRM MODAL (вместо браузерного confirm) -->
+<div class="edit-overlay hidden" id="confirmOverlay">
+  <div class="edit-modal" style="max-width:360px;">
+    <h2 id="confirmTitle">Подтверждение</h2>
+    <div class="em-sub" id="confirmMsg" style="font-size:14px;line-height:1.5;margin-bottom:20px;"></div>
+    <button class="modal-btn" id="confirmOkBtn" style="background:var(--red);color:#fff;">УДАЛИТЬ</button>
+    <span class="modal-close" onclick="closeConfirmModal()">Отмена</span>
+  </div>
+</div>
+
 <!-- EDIT ORDER MODAL -->
 <div class="edit-overlay hidden" id="editOverlay">
   <div class="edit-modal">
@@ -121,7 +147,8 @@
   <!-- QUEUE -->
   <div class="section-page" id="page-queue">
     <div class="stats-bar">
-      <div class="sc"><span class="n" id="sN">0</span><span>заказов</span></div>
+      <div class="sc"><span class="n" id="sN">0</span><span>всего</span></div>
+      <div class="sc"><span class="n" id="sNew" style="color:var(--accent2);">0</span><span>новых</span></div>
       <div class="sc"><span class="n b" id="sP">0</span><span>в работе</span></div>
       <div class="sc"><span class="n g" id="sR">0</span><span>готово</span></div>
     </div>
