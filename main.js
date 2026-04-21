@@ -1036,29 +1036,47 @@ function toggleBill(cardId){
 // Кастомный confirm — возвращает Promise<boolean>
 let _confirmResolve=null;
 function showConfirm(title,msg,okLabel='УДАЛИТЬ'){
-  return new Promise(resolve=>{
-    _confirmResolve=resolve;
-    document.getElementById('confirmTitle').textContent=title;
-    document.getElementById('confirmMsg').textContent=msg;
-    document.getElementById('confirmOkBtn').textContent=okLabel;
-    document.getElementById('confirmOkBtn').onclick=()=>{closeConfirmModal();resolve(true);};
-    document.getElementById('confirmOverlay').classList.remove('hidden');
-  });
+  // Если модал есть в DOM — используем его
+  const overlay=document.getElementById('confirmOverlay');
+  if(overlay){
+    return new Promise(resolve=>{
+      _confirmResolve=resolve;
+      document.getElementById('confirmTitle').textContent=title;
+      document.getElementById('confirmMsg').textContent=msg;
+      const btn=document.getElementById('confirmOkBtn');
+      btn.textContent=okLabel;
+      // Клонируем кнопку чтобы убрать старые обработчики
+      const newBtn=btn.cloneNode(true);
+      btn.parentNode.replaceChild(newBtn,btn);
+      newBtn.onclick=()=>{closeConfirmModal();resolve(true);};
+      overlay.classList.remove('hidden');
+    });
+  }
+  // Fallback — нативный confirm (если index.html не обновлён)
+  return Promise.resolve(window.confirm(title+'\n'+msg));
 }
 function closeConfirmModal(){
-  document.getElementById('confirmOverlay').classList.add('hidden');
+  const overlay=document.getElementById('confirmOverlay');
+  if(overlay)overlay.classList.add('hidden');
   if(_confirmResolve){_confirmResolve(false);_confirmResolve=null;}
 }
 
 // Кастомный rename modal
 let _renameCb=null;
 function openRenameModal(currentName,cb){
-  _renameCb=cb;
-  document.getElementById('renameSub').textContent='Сейчас: '+currentName;
-  const inp=document.getElementById('renameInput');
-  inp.value='';
-  document.getElementById('renameOverlay').classList.remove('hidden');
-  setTimeout(()=>inp.focus(),100);
+  const overlay=document.getElementById('renameOverlay');
+  if(overlay){
+    _renameCb=cb;
+    document.getElementById('renameSub').textContent='Сейчас: '+currentName;
+    const inp=document.getElementById('renameInput');
+    inp.value='';
+    overlay.classList.remove('hidden');
+    setTimeout(()=>inp.focus(),100);
+    return;
+  }
+  // Fallback — нативный prompt
+  const val=(window.prompt('Новое название стола (сейчас: '+currentName+')','')||'').trim().toUpperCase();
+  if(val&&val!==String(currentName)) cb(val);
 }
 function closeRenameModal(){
   document.getElementById('renameOverlay').classList.add('hidden');
