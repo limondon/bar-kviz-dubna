@@ -574,7 +574,11 @@ function renderMenuEditor(){
         <div style="font-family:'Bebas Neue',sans-serif;font-size:14px;color:var(--accent);letter-spacing:1px;">
           ${esc(cat.cat)}
         </div>
-        <button onclick="removeMenuCategory(${ci})" style="background:transparent;border:none;color:var(--muted);cursor:pointer;font-size:12px;padding:2px 6px;" title="Удалить категорию">🗑</button>
+        <div style="display:flex;align-items:center;gap:4px;">
+          ${ci>0?`<button onclick="moveMenuCat(${ci},-1)" style="background:transparent;border:1px solid var(--border);color:var(--muted);cursor:pointer;border-radius:4px;padding:2px 7px;font-size:12px;">▲</button>`:'<span style="width:28px;"></span>'}
+          ${ci<menu.length-1?`<button onclick="moveMenuCat(${ci},+1)" style="background:transparent;border:1px solid var(--border);color:var(--muted);cursor:pointer;border-radius:4px;padding:2px 7px;font-size:12px;">▼</button>`:'<span style="width:28px;"></span>'}
+          <button onclick="removeMenuCategory(${ci})" style="background:transparent;border:none;color:var(--muted);cursor:pointer;font-size:12px;padding:2px 6px;" title="Удалить категорию">🗑</button>
+        </div>
       </div>
       ${cat.items.map((item,ii)=>`
         <div style="display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid rgba(255,255,255,.04);">
@@ -596,6 +600,15 @@ function renderMenuEditor(){
       </div>
     </div>
   `).join('');
+}
+
+async function moveMenuCat(ci, dir){
+  const menu=BUILTIN_MENU_LIVE.length?BUILTIN_MENU_LIVE:BUILTIN_MENU;
+  const ni=ci+dir;
+  if(ni<0||ni>=menu.length)return;
+  [menu[ci],menu[ni]]=[menu[ni],menu[ci]];
+  await saveMenuToFirebase();
+  renderMenuPage();
 }
 
 async function addMenuCategory(){
@@ -1176,8 +1189,11 @@ function orderCard(o,isDone){
       <div class="progress-label">${doneC+readyC} / ${total} готово</div>`:'' ;
 
   let itemsHtml='';
-  if(!isDone&&(role==='barman'||role==='admin')){
+  if(!isDone&&role==='barman'){
     itemsHtml=`<div class="items-list">${allItems.map(it=>barmanItemRow(o.id,it)).join('')}</div>`;
+  } else if(!isDone&&role==='admin'){
+    // Менеджер видит кнопки бармена + кнопку доставки как официант
+    itemsHtml=`<div class="items-list">${allItems.map(it=>adminItemRow(o.id,it)).join('')}</div>`;
   } else if(!isDone&&role==='waiter'){
     itemsHtml=`<div class="items-list">${allItems.map(it=>waiterItemRow(o.id,it)).join('')}</div>`;
   } else {
@@ -1269,6 +1285,30 @@ function waiterItemRow(orderId,it){
     btns=`<span class="item-status-chip isc-making">🍹 готовится</span>`;
   } else if(it.status==='new'){
     btns=`<span class="item-status-chip isc-waiting">ожидает</span>`;
+  }
+  return`<div class="item-row ${cls}">
+    <span class="item-ico">${ico}</span>
+    <span class="item-qty">${it.qty}</span>
+    <span class="item-name">${esc(it.name)}</span>
+    <div class="item-btns">${btns}</div>
+  </div>`;
+}
+
+function adminItemRow(orderId,it){
+  // Менеджер видит кнопки бармена + кнопку доставки если готово
+  const cls={new:'',making:'is-making',ready:'is-ready',done:'is-done'}[it.status]||'';
+  const ico={new:'⬜',making:'🍹',ready:'🟢',done:'✅'}[it.status]||'⬜';
+  const oid=esc(orderId), iid=esc(it._fbKey||it.id);
+  let btns='';
+  if(it.status==='new'){
+    btns=`<button class="ib ib-start"    data-oid="${oid}" data-iid="${iid}" data-st="making">🍹 Начал</button>
+          <button class="ib ib-barready" data-oid="${oid}" data-iid="${iid}" data-st="ready">🟢 Готово</button>`;
+  } else if(it.status==='making'){
+    btns=`<button class="ib ib-barready" data-oid="${oid}" data-iid="${iid}" data-st="ready">🟢 Готово</button>
+          <button class="ib ib-undo"     data-oid="${oid}" data-iid="${iid}" data-st="new">↩</button>`;
+  } else if(it.status==='ready'){
+    btns=`<button class="ib ib-deliver"  data-oid="${oid}" data-iid="${iid}" data-action="deliver">✅ Отнёс</button>
+          <button class="ib ib-undo"     data-oid="${oid}" data-iid="${iid}" data-st="making">↩</button>`;
   }
   return`<div class="item-row ${cls}">
     <span class="item-ico">${ico}</span>
@@ -1915,7 +1955,7 @@ Object.assign(window,{
   renameTable,deleteTable,doRenameTable,
   closeConfirmModal,confirmOk,closeRenameModal,confirmRename,
   openMenuEditor,closeMenuEditor,addNewMenuItem,removeMenuItem,updateMenuItem,renderStats,renderMenuPage,
-  updateMenuCatItem,removeMenuCatItem,addMenuCatItem,addMenuCategory,removeMenuCategory,
+  updateMenuCatItem,removeMenuCatItem,addMenuCatItem,addMenuCategory,removeMenuCategory,moveMenuCat,
   openMenuPicker,closeMenuPicker,confirmMenuPicker,switchPickerCat
 });
 
