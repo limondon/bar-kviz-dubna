@@ -488,8 +488,8 @@ function buildSidebar(tabs){
   sb.innerHTML=`
     <div style="padding:0 20px 16px;border-bottom:1px solid var(--border);margin-bottom:8px;">
       <div style="display:flex;align-items:center;gap:8px;">
-        <img src="icon-192.png" style="width:28px;height:28px;object-fit:contain;">
-        <span style="font-family:'Bebas Neue',sans-serif;font-size:22px;color:var(--accent);letter-spacing:2px;">БАР</span>
+        <img src="1708.png" style="width:32px;height:32px;object-fit:contain;">
+        <span style="font-family:'Bebas Neue',sans-serif;font-size:22px;color:var(--accent);letter-spacing:2px;">1708</span>
       </div>
       <div style="font-size:11px;color:var(--muted);margin-top:2px;">${roleNames[role]||''}</div>
     </div>

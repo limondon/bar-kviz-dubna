@@ -1,13 +1,13 @@
 {
-  "name": "Бар — Заказы",
-  "short_name": "Бар",
+  "name": "1708 — Заказы",
+  "short_name": "1708",
   "description": "Система управления заказами бара",
   "start_url": "/bar-kviz-dubna/",
   "scope": "/bar-kviz-dubna/",
   "display": "standalone",
   "orientation": "portrait",
   "background_color": "#0d0d0d",
-  "theme_color": "#f5a623",
+  "theme_color": "#c9a96e",
   "icons": [
     {
       "src": "icon-192.png",
