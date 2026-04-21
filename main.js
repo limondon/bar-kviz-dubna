@@ -974,7 +974,7 @@ function renderTables(){
         <div class="tbo-hdr">
           <span class="tbo-num">#${o.num} ${sico}</span>
           <span class="tbo-time">${fmt(o.createdAt)}</span>
-          <button class="btn-edit" data-action="edit" data-oid="${esc(o.id)}" style="padding:3px 10px;font-size:11px;min-height:32px;">✏️</button>
+          <button class="btn-edit" data-action="edit" data-oid="${esc(o.id)}" data-bill="1" style="padding:3px 10px;font-size:11px;min-height:32px;">✏️</button>
         </div>
         <div class="tbo-lines">${lines}</div>
         ${note}
@@ -1158,34 +1158,44 @@ function fl(id,msg){
 // ═══════════════════════════
 //  EDIT ORDER MODAL
 // ═══════════════════════════
-function openEditModal(orderId){
+let editBillMode=false; // true = правка чека (из Столики), false = правка заказа (из Очереди)
+
+function openEditModal(orderId, billMode=false){
   const o=orders.find(x=>x.id===orderId);if(!o)return;
   editOrderId=orderId;
-  document.getElementById('editSub').textContent='Заказ #'+o.num+' · Стол '+o.table;
+  editBillMode=billMode;
+
   document.getElementById('editPriority').value=o.priority||'normal';
   document.getElementById('editNote').value=o.note||'';
-  // Показываем все позиции кроме уже доставленных
-  const activeItems=(o.items||[]).filter(it=>it.status!=='done');
+
   const doneItems=(o.items||[]).filter(it=>it.status==='done');
-  const lines=[
-    ...activeItems.map(it=>it.qty+' '+it.name),
-    // Доставленные показываем закомментированными чтобы было видно что было
-    ...doneItems.map(it=>'# '+it.qty+' '+it.name+' (доставлено)')
-  ].join('\n');
-  document.getElementById('editItems').value=activeItems.length?activeItems.map(it=>it.qty+' '+it.name).join('\n'):'';
-  // Показываем справку если есть доставленные
+  const activeItems=(o.items||[]).filter(it=>it.status!=='done');
+
   const sub=document.getElementById('editSub');
-  if(doneItems.length){
-    sub.innerHTML=`Заказ #${o.num} · Стол ${o.table}<br><span style="color:var(--muted);font-size:10px;">✅ Доставлено: ${doneItems.map(it=>it.qty+'× '+it.name).join(', ')}</span>`;
+
+  if(billMode){
+    // Режим правки чека — показываем ВСЕ позиции для редактирования
+    sub.innerHTML=`Заказ #${o.num} · Стол ${o.table}<br><span style="color:var(--accent);font-size:10px;">📋 Правка чека — позиции сохранятся как доставленные</span>`;
+    const allItems=(o.items||[]);
+    document.getElementById('editItems').value=allItems.map(it=>it.qty+' '+it.name).join('\n');
   } else {
-    sub.textContent='Заказ #'+o.num+' · Стол '+o.table;
+    // Обычный режим — только активные позиции, доставленные показываем справкой
+    document.getElementById('editItems').value=activeItems.map(it=>it.qty+' '+it.name).join('\n');
+    if(doneItems.length){
+      sub.innerHTML=`Заказ #${o.num} · Стол ${o.table}<br><span style="color:var(--muted);font-size:10px;">✅ Доставлено: ${doneItems.map(it=>it.qty+'× '+it.name).join(', ')}</span>`;
+    } else {
+      sub.textContent='Заказ #'+o.num+' · Стол '+o.table;
+    }
   }
   document.getElementById('editOverlay').classList.remove('hidden');
 }
+
 function closeEditModal(){
   document.getElementById('editOverlay').classList.add('hidden');
   editOrderId=null;
+  editBillMode=false;
 }
+
 async function saveEditOrder(){
   if(!editOrderId){fl('fInfo','❌ ID заказа не найден');return;}
   const o=orders.find(x=>x.id===editOrderId);
@@ -1194,11 +1204,19 @@ async function saveEditOrder(){
   const rawItems=document.getElementById('editItems').value.trim();
   const note=document.getElementById('editNote').value.trim();
   const prio=document.getElementById('editPriority').value;
-  if(!rawItems){alert('Введите позиции!');return;}
+  if(!rawItems){fl('fInfo','Введите позиции!');return;}
 
-  const doneItems=o.items.filter(it=>it.status==='done');
-  const newParsed=parseItems(rawItems);
-  const mergedItems=[...doneItems,...newParsed];
+  let mergedItems;
+  if(editBillMode){
+    // Правка чека — все позиции помечаем как done (уже в чеке)
+    const parsed=parseItems(rawItems);
+    mergedItems=parsed.map(it=>({...it,status:'done',doneAt:Date.now()}));
+  } else {
+    // Обычное редактирование — сохраняем доставленные, новые — в очередь (new)
+    const doneItems=o.items.filter(it=>it.status==='done');
+    const newParsed=parseItems(rawItems);
+    mergedItems=[...doneItems,...newParsed];
+  }
 
   const itemsObj={};
   mergedItems.forEach(it=>{
@@ -1208,18 +1226,15 @@ async function saveEditOrder(){
   });
 
   try{
-    // Сохраняем снапшот предыдущей версии в историю
+    // Снапшот истории
     const snapshot={
       items:Object.fromEntries(o.items.map(it=>{const {_fbKey,...clean}=it;return[it._fbKey||it.id,clean];})),
-      note:o.note||'',
-      priority:o.priority||'normal',
-      editedAt:Date.now(),
-      editedBy:role||'unknown'
+      note:o.note||'',priority:o.priority||'normal',
+      editedAt:Date.now(),editedBy:role||'unknown'
     };
-    await update(ref(db,'orders/'+editOrderId),{history:null}); // сброс перед записью
-    await set(ref(db,'orders/'+editOrderId+'/history/'+Date.now()), snapshot);
-    await set(ref(db,'orders/'+editOrderId+'/items'), itemsObj);
-    await update(ref(db,'orders/'+editOrderId), {note, priority:prio});
+    await set(ref(db,'orders/'+editOrderId+'/history/'+Date.now()),snapshot);
+    await set(ref(db,'orders/'+editOrderId+'/items'),itemsObj);
+    await update(ref(db,'orders/'+editOrderId),{note,priority:prio});
     closeEditModal();
     fl('fOk','✅ Заказ #'+o.num+' обновлён');
   }catch(e){
@@ -1318,7 +1333,7 @@ function renderClosed(){
         <div class="tbo-hdr">
           <span class="tbo-num">#${o.num} ${sico}</span>
           <span class="tbo-time">${fmt(o.createdAt)}</span>
-          <button class="btn-edit" data-action="edit" data-oid="${esc(o.id)}" style="padding:3px 10px;font-size:11px;min-height:32px;">✏️</button>
+          <button class="btn-edit" data-action="edit" data-oid="${esc(o.id)}" data-bill="1" style="padding:3px 10px;font-size:11px;min-height:32px;">✏️</button>
         </div>
         <div class="tbo-lines">${lines}</div>
         ${note}
@@ -1379,7 +1394,7 @@ document.addEventListener('click',async e=>{
   if(action==='deliverall'&&oid){ await waiterDeliverAll(oid); return; }
   if(action==='reopen'&&oid)    { await reopenOrder(oid);       return; }
   if(action==='del'&&oid)       { await delOrder(oid);          return; }
-  if(action==='edit'&&oid)      { openEditModal(oid);           return; }
+  if(action==='edit'&&oid){ openEditModal(oid, btn.dataset.bill==='1'); return; }
 });
 
 // ═══════════════════════════
