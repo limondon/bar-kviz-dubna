@@ -1318,6 +1318,18 @@ function adminItemRow(orderId,it){
   </div>`;
 }
 
+// Поиск цены позиции в меню
+function getItemPrice(name){
+  const menu=BUILTIN_MENU_LIVE.length?BUILTIN_MENU_LIVE:BUILTIN_MENU;
+  const key=name.trim().toLowerCase();
+  for(const cat of menu){
+    for(const item of (cat.items||[])){
+      if(item.name.trim().toLowerCase()===key) return item.price||0;
+    }
+  }
+  return 0;
+}
+
 // ═══════════════════════════
 //  TABLES PAGE
 // ═══════════════════════════
@@ -1373,12 +1385,21 @@ function renderTables(){
     const sumMap={};
     tOrders.forEach(o=>(o.items||[]).forEach(it=>{
       const k=it.name.trim().toLowerCase();
-      if(!sumMap[k])sumMap[k]={name:it.name,qty:0};
+      if(!sumMap[k])sumMap[k]={name:it.name,qty:0,price:getItemPrice(it.name)};
       sumMap[k].qty+=it.qty;
     }));
-    const sumLines=Object.values(sumMap).sort((a,b)=>a.name.localeCompare(b.name)).map(x=>
-      `<div class="sum-line"><span class="sum-item">${esc(x.name)}</span><span class="sum-cnt">${x.qty} шт.</span></div>`
-    ).join('');
+    const sumItems=Object.values(sumMap).sort((a,b)=>a.name.localeCompare(b.name));
+    const totalSum=sumItems.reduce((s,x)=>s+(x.price*x.qty),0);
+    const sumLines=sumItems.map(x=>`
+      <div class="sum-line">
+        <span class="sum-item">${esc(x.name)}</span>
+        <span class="sum-cnt">${x.qty} шт.${x.price?` · <b style="color:var(--text)">${x.price*x.qty}₽</b>`:''}</span>
+      </div>`
+    ).join('')+(totalSum?`
+      <div class="sum-line" style="border-top:2px solid var(--border);margin-top:6px;padding-top:6px;">
+        <span class="sum-item" style="font-family:'Bebas Neue',sans-serif;letter-spacing:1px;color:var(--accent);">ИТОГО</span>
+        <span class="sum-cnt" style="font-family:'Bebas Neue',sans-serif;font-size:20px;color:var(--accent);">${totalSum}₽</span>
+      </div>`:'');
 
     const ordersHtml=tOrders.map(o=>{
       const sico={new:'🕐',making:'🍹',ready:'🟢',done:'✅'}[o.status]||'';
@@ -1737,20 +1758,26 @@ function renderClosed(){
     tOrders.forEach(o=>(o.items||[]).forEach(it=>{
       const k=it.name.trim().toLowerCase();
       if(it.status==='done'){
-        if(!sumMap[k])sumMap[k]={name:it.name,qty:0};
+        if(!sumMap[k])sumMap[k]={name:it.name,qty:0,price:getItemPrice(it.name)};
         sumMap[k].qty+=it.qty;
       } else {
         if(!pendingMap[k])pendingMap[k]={name:it.name,qty:0};
         pendingMap[k].qty+=it.qty;
       }
     }));
+    const doneItems=Object.values(sumMap).sort((a,b)=>a.name.localeCompare(b.name));
+    const totalSum=doneItems.reduce((s,x)=>s+(x.price*x.qty),0);
     const sumLines=[
-      ...Object.values(sumMap).sort((a,b)=>a.name.localeCompare(b.name)).map(x=>
-        `<div class="sum-line"><span class="sum-item">${esc(x.name)}</span><span class="sum-cnt">${x.qty} шт.</span></div>`
+      ...doneItems.map(x=>
+        `<div class="sum-line"><span class="sum-item">${esc(x.name)}</span><span class="sum-cnt">${x.qty} шт.${x.price?` · <b style="color:var(--text)">${x.price*x.qty}₽</b>`:''}</span></div>`
       ),
       ...Object.values(pendingMap).sort((a,b)=>a.name.localeCompare(b.name)).map(x=>
         `<div class="sum-line" style="opacity:.4;text-decoration:line-through;"><span class="sum-item">${esc(x.name)}</span><span class="sum-cnt">${x.qty} шт.</span></div>`
-      )
+      ),
+      totalSum?`<div class="sum-line" style="border-top:2px solid var(--border);margin-top:6px;padding-top:6px;">
+        <span class="sum-item" style="font-family:'Bebas Neue',sans-serif;letter-spacing:1px;color:var(--accent);">ИТОГО</span>
+        <span class="sum-cnt" style="font-family:'Bebas Neue',sans-serif;font-size:20px;color:var(--accent);">${totalSum}₽</span>
+      </div>`:''
     ].join('');
 
     const ordersHtml=tOrders.map(o=>{
