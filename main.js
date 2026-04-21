@@ -570,8 +570,11 @@ function renderMenuEditor(){
   }
   el.innerHTML=menu.map((cat,ci)=>`
     <div style="margin-bottom:16px;">
-      <div style="font-family:'Bebas Neue',sans-serif;font-size:14px;color:var(--accent);letter-spacing:1px;margin-bottom:6px;padding-bottom:4px;border-bottom:1px solid var(--border);">
-        ${esc(cat.cat)}
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;padding-bottom:4px;border-bottom:1px solid var(--border);">
+        <div style="font-family:'Bebas Neue',sans-serif;font-size:14px;color:var(--accent);letter-spacing:1px;">
+          ${esc(cat.cat)}
+        </div>
+        <button onclick="removeMenuCategory(${ci})" style="background:transparent;border:none;color:var(--muted);cursor:pointer;font-size:12px;padding:2px 6px;" title="Удалить категорию">🗑</button>
       </div>
       ${cat.items.map((item,ii)=>`
         <div style="display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid rgba(255,255,255,.04);">
@@ -595,7 +598,31 @@ function renderMenuEditor(){
   `).join('');
 }
 
-async function saveMenuToFirebase(){
+async function addMenuCategory(){
+  const emoji=(document.getElementById('newCatEmoji')?.value||'').trim();
+  const name=(document.getElementById('newCatName')?.value||'').trim();
+  if(!name){fl('fInfo','Введите название категории');return;}
+  const cat=emoji?`${emoji} ${name}`:name;
+  const menu=BUILTIN_MENU_LIVE.length?[...BUILTIN_MENU_LIVE]:[...BUILTIN_MENU];
+  menu.push({cat,items:[]});
+  BUILTIN_MENU_LIVE.length=0;
+  menu.forEach(c=>BUILTIN_MENU_LIVE.push(c));
+  await saveMenuToFirebase();
+  document.getElementById('newCatEmoji').value='';
+  document.getElementById('newCatName').value='';
+  renderMenuPage();
+  fl('fOk','✅ Категория "'+cat+'" создана');
+}
+
+async function removeMenuCategory(ci){
+  const menu=BUILTIN_MENU_LIVE.length?BUILTIN_MENU_LIVE:BUILTIN_MENU;
+  const ok=await showConfirm(`Удалить категорию "${menu[ci]?.cat}"?`,'Все позиции в ней тоже удалятся.');
+  if(!ok)return;
+  menu.splice(ci,1);
+  await saveMenuToFirebase();
+  renderMenuPage();
+  fl('fOk','Категория удалена');
+}
   const menu=BUILTIN_MENU_LIVE.length?BUILTIN_MENU_LIVE:BUILTIN_MENU;
   await set(ref(db,'menu2'), menu);
 }
@@ -1823,14 +1850,14 @@ function renderMenuPage(){
   if(!el)return;
   el.innerHTML=`
     <div style="background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:var(--sp-md);margin-bottom:var(--sp-md);">
-      <div style="font-family:'Bebas Neue',sans-serif;font-size:16px;letter-spacing:1px;color:var(--accent);margin-bottom:var(--sp-md);">➕ ДОБАВИТЬ ПОЗИЦИЮ</div>
+      <div style="font-family:'Bebas Neue',sans-serif;font-size:16px;letter-spacing:1px;color:var(--accent);margin-bottom:var(--sp-md);">➕ НОВАЯ КАТЕГОРИЯ</div>
       <div style="display:flex;gap:var(--sp-sm);flex-wrap:wrap;">
-        <input type="number" id="newMenuItemQty" value="1" min="1" max="99" placeholder="Кол-во"
-          style="width:70px;text-align:center;font-family:'IBM Plex Mono',monospace;font-size:14px;padding:8px;">
-        <input type="text" id="newMenuItemName" placeholder="Название позиции"
-          style="flex:1;min-width:150px;font-family:'IBM Plex Mono',monospace;font-size:14px;padding:8px;"
-          onkeydown="if(event.key==='Enter')addNewMenuItem()">
-        <button onclick="addNewMenuItem()" class="btn-sm bd" style="min-width:80px;">+ Добавить</button>
+        <input type="text" id="newCatEmoji" placeholder="🍕" maxlength="4"
+          style="width:58px;text-align:center;font-size:20px;padding:8px;font-family:'IBM Plex Mono',monospace;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);">
+        <input type="text" id="newCatName" placeholder="Пицца, Роллы..."
+          style="flex:1;min-width:150px;font-family:'IBM Plex Mono',monospace;font-size:14px;padding:8px;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);"
+          onkeydown="if(event.key==='Enter')addMenuCategory()">
+        <button onclick="addMenuCategory()" class="btn-sm bd" style="min-width:100px;">+ Создать</button>
       </div>
     </div>
     <div style="background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:var(--sp-md);">
@@ -1886,7 +1913,7 @@ Object.assign(window,{
   renameTable,deleteTable,doRenameTable,
   closeConfirmModal,confirmOk,closeRenameModal,confirmRename,
   openMenuEditor,closeMenuEditor,addNewMenuItem,removeMenuItem,updateMenuItem,renderStats,renderMenuPage,
-  updateMenuCatItem,removeMenuCatItem,addMenuCatItem,
+  updateMenuCatItem,removeMenuCatItem,addMenuCatItem,addMenuCategory,removeMenuCategory,
   openMenuPicker,closeMenuPicker,confirmMenuPicker,switchPickerCat
 });
 
