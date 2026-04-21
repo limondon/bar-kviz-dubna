@@ -1088,28 +1088,39 @@ function confirmRename(){
 }
 
 async function renameTable(date,oldTNum,sid){
-  openRenameModal(oldTNum,async(newTNum)=>{
-    if(newTNum===String(oldTNum))return;
-    const upd={};
-    orders.forEach(o=>{
-      const oSid=o.sid||'default';
-      if(o.date===date&&String(o.table)===String(oldTNum)&&oSid===sid){
-        upd[`orders/${o.id}/table`]=newTNum;
-        o.table=newTNum;
-      }
+  // Пробуем кастомный модал, иначе нативный prompt
+  const overlay=document.getElementById('renameOverlay');
+  if(overlay){
+    openRenameModal(oldTNum,async(newTNum)=>{
+      await doRenameTable(date,oldTNum,sid,newTNum);
     });
-    const oldKey=tKey(date,oldTNum);
-    const newKey=tKey(date,newTNum);
-    if(tablesMeta[oldKey]){
-      tablesMeta[newKey]={...tablesMeta[oldKey],tNum:newTNum};
-      delete tablesMeta[oldKey];
-      upd[`tables/${oldKey}`]=null;
-      upd[`tables/${newKey}`]=tablesMeta[newKey];
+  } else {
+    const val=(window.prompt('Новое название стола (сейчас: '+oldTNum+'):',oldTNum)||'').trim().toUpperCase();
+    if(val&&val!==String(oldTNum)) await doRenameTable(date,oldTNum,sid,val);
+  }
+}
+
+async function doRenameTable(date,oldTNum,sid,newTNum){
+  if(!newTNum||newTNum===String(oldTNum))return;
+  const upd={};
+  orders.forEach(o=>{
+    const oSid=o.sid||'default';
+    if(o.date===date&&String(o.table)===String(oldTNum)&&oSid===sid){
+      upd[`orders/${o.id}/table`]=newTNum;
+      o.table=newTNum;
     }
-    await update(ref(db),upd);
-    renderTables();renderClosed();
-    fl('fOk',`✅ Стол ${oldTNum} → ${newTNum}`);
   });
+  const oldKey=tKey(date,oldTNum);
+  const newKey=tKey(date,newTNum);
+  if(tablesMeta[oldKey]){
+    tablesMeta[newKey]={...tablesMeta[oldKey],tNum:newTNum};
+    delete tablesMeta[oldKey];
+    upd[`tables/${oldKey}`]=null;
+    upd[`tables/${newKey}`]=tablesMeta[newKey];
+  }
+  await update(ref(db),upd);
+  renderTables();renderClosed();
+  fl('fOk',`✅ Стол ${oldTNum} → ${newTNum}`);
 }
 
 async function deleteTable(date,tNum,sid){
@@ -1407,7 +1418,7 @@ Object.assign(window,{
   closeTable,reopenTable,reopenOrder,delOrder,setQF,toggleBill,shiftDate,jumpDate,
   renderTables,openEditModal,closeEditModal,saveEditOrder,
   shiftClosedDate,jumpClosedDate,renderClosed,
-  renameTable,deleteTable,
+  renameTable,deleteTable,doRenameTable,
   closeConfirmModal,confirmOk,closeRenameModal,confirmRename
 });
 
