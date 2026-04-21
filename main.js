@@ -4,6 +4,7 @@
 const OKEY='bar_orders_v10';
 const TKEY='bar_tables_v10';
 let orders=[], tablesMeta={}, menuItems=[];
+let BUILTIN_MENU_LIVE=[]; // меню из Firebase (категории + позиции)
 let role=null, activeTab='', lastHash='', qf='all';
 let viewDate=todayStr(), closedViewDate=todayStr(), pendingRole=null, editOrderId=null, editBillMode=false;
 
@@ -294,10 +295,21 @@ async function loadAll(){
     if(activeTab==='tables')renderTables();
   });
 
-  onValue(ref(db,'menu'),(snap)=>{
-    menuItems=snap.val()||[];
-    if(!Array.isArray(menuItems)) menuItems=Object.values(menuItems);
-    buildMenuButtons();
+  onValue(ref(db,'menu2'),(snap)=>{
+    const raw=snap.val();
+    if(!raw){
+      // Первый запуск — заливаем встроенное меню в Firebase
+      set(ref(db,'menu2'), BUILTIN_MENU).catch(e=>console.error('menu seed',e));
+    } else {
+      // Firebase возвращает объект — конвертируем в массив
+      const cats=Array.isArray(raw)?raw:Object.values(raw);
+      // Конвертируем items внутри каждой категории
+      BUILTIN_MENU_LIVE=cats.map(cat=>({
+        ...cat,
+        items:Array.isArray(cat.items)?cat.items:Object.values(cat.items||{})
+      }));
+      if(activeTab==='menu') renderMenuPage();
+    }
   });
 }
 
@@ -406,6 +418,7 @@ function buildMenuButtons(){
 function openMenuPicker(){
   pickerState={};
   pickerCat=0;
+  const menu=BUILTIN_MENU_LIVE.length?BUILTIN_MENU_LIVE:BUILTIN_MENU;
   // Предзаполняем из textarea если что-то уже введено
   const ta=document.getElementById('inpItems');
   if(ta&&ta.value.trim()){
@@ -426,7 +439,8 @@ function closeMenuPicker(){
 function renderPickerTabs(){
   const el=document.getElementById('menuPickerTabs');
   if(!el)return;
-  el.innerHTML=BUILTIN_MENU.map((cat,i)=>`
+  const menu=BUILTIN_MENU_LIVE.length?BUILTIN_MENU_LIVE:BUILTIN_MENU;
+  el.innerHTML=menu.map((cat,i)=>`
     <div onclick="switchPickerCat(${i})" style="
       flex-shrink:0;padding:10px 14px;cursor:pointer;white-space:nowrap;
       font-size:13px;font-family:'IBM Plex Mono',monospace;
@@ -446,7 +460,8 @@ function switchPickerCat(i){
 function renderPickerList(){
   const el=document.getElementById('menuPickerList');
   if(!el)return;
-  const cat=BUILTIN_MENU[pickerCat];
+  const menu=BUILTIN_MENU_LIVE.length?BUILTIN_MENU_LIVE:BUILTIN_MENU;
+  const cat=menu[pickerCat];
   el.innerHTML=cat.items.map(item=>{
     const st=pickerState[item.name]||{qty:0,note:''};
     const hasQty=st.qty>0;
@@ -504,7 +519,8 @@ function confirmMenuPicker(){
 
   // Строим текст для textarea
   const lines=[];
-  BUILTIN_MENU.forEach(cat=>{
+  const menu=BUILTIN_MENU_LIVE.length?BUILTIN_MENU_LIVE:BUILTIN_MENU;
+  menu.forEach(cat=>{
     cat.items.forEach(item=>{
       const st=pickerState[item.name];
       if(st&&st.qty>0){
@@ -547,46 +563,78 @@ function closeMenuEditor(){
 function renderMenuEditor(){
   const el=document.getElementById('menuEditorList');
   if(!el)return;
-  if(!menuItems.length){
+  const menu=BUILTIN_MENU_LIVE.length?BUILTIN_MENU_LIVE:BUILTIN_MENU;
+  if(!menu.length){
     el.innerHTML=`<div style="color:var(--muted);font-size:12px;padding:8px 0;">Меню пусто</div>`;
     return;
   }
-  el.innerHTML=menuItems.map((item,i)=>`
-    <div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--border);">
-      <input type="number" value="${item.qty||1}" min="1" max="99"
-        onchange="updateMenuItem(${i},'qty',+this.value)"
-        style="width:48px;text-align:center;font-family:'IBM Plex Mono',monospace;font-size:13px;padding:4px;">
-      <input type="text" value="${esc(item.name)}"
-        onchange="updateMenuItem(${i},'name',this.value)"
-        style="flex:1;font-family:'IBM Plex Mono',monospace;font-size:13px;padding:4px;">
-      <button onclick="removeMenuItem(${i})" style="background:rgba(229,57,53,.15);color:var(--red);border:1px solid rgba(229,57,53,.3);border-radius:6px;padding:4px 10px;cursor:pointer;font-size:13px;">✕</button>
+  el.innerHTML=menu.map((cat,ci)=>`
+    <div style="margin-bottom:16px;">
+      <div style="font-family:'Bebas Neue',sans-serif;font-size:14px;color:var(--accent);letter-spacing:1px;margin-bottom:6px;padding-bottom:4px;border-bottom:1px solid var(--border);">
+        ${esc(cat.cat)}
+      </div>
+      ${cat.items.map((item,ii)=>`
+        <div style="display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid rgba(255,255,255,.04);">
+          <input type="text" value="${esc(item.name)}"
+            onchange="updateMenuCatItem(${ci},${ii},'name',this.value)"
+            style="flex:1;font-family:'IBM Plex Mono',monospace;font-size:12px;padding:5px 8px;background:var(--bg);border:1px solid var(--border);border-radius:5px;color:var(--text);">
+          <input type="number" value="${item.price||0}" min="0"
+            onchange="updateMenuCatItem(${ci},${ii},'price',+this.value)"
+            style="width:65px;text-align:center;font-family:'IBM Plex Mono',monospace;font-size:12px;padding:5px;background:var(--bg);border:1px solid var(--border);border-radius:5px;color:var(--muted);">
+          <span style="font-size:11px;color:var(--muted);">₽</span>
+          <button onclick="removeMenuCatItem(${ci},${ii})" style="background:rgba(229,57,53,.15);color:var(--red);border:1px solid rgba(229,57,53,.3);border-radius:6px;padding:4px 8px;cursor:pointer;font-size:12px;flex-shrink:0;">✕</button>
+        </div>
+      `).join('')}
+      <div style="display:flex;gap:6px;margin-top:6px;">
+        <input type="text" id="newItem_${ci}" placeholder="Новая позиция"
+          style="flex:1;font-family:'IBM Plex Mono',monospace;font-size:12px;padding:5px 8px;background:var(--bg);border:1px dashed var(--border);border-radius:5px;color:var(--text);"
+          onkeydown="if(event.key==='Enter')addMenuCatItem(${ci})">
+        <button onclick="addMenuCatItem(${ci})" style="background:rgba(76,175,80,.15);color:var(--green);border:1px solid rgba(76,175,80,.3);border-radius:6px;padding:4px 10px;cursor:pointer;font-size:12px;">+ Добавить</button>
+      </div>
     </div>
   `).join('');
 }
 
-async function updateMenuItem(i, field, val){
-  menuItems[i][field]=val;
-  await fbUpdate('menu', Object.fromEntries(menuItems.map((m,j)=>[j,m])));
+async function saveMenuToFirebase(){
+  const menu=BUILTIN_MENU_LIVE.length?BUILTIN_MENU_LIVE:BUILTIN_MENU;
+  await set(ref(db,'menu2'), menu);
 }
 
-async function removeMenuItem(i){
-  menuItems.splice(i,1);
-  await set(ref(db,'menu'), menuItems.length ? Object.fromEntries(menuItems.map((m,j)=>[j,m])) : null);
+async function updateMenuCatItem(ci,ii,field,val){
+  const menu=BUILTIN_MENU_LIVE.length?BUILTIN_MENU_LIVE:BUILTIN_MENU;
+  if(!menu[ci]||!menu[ci].items[ii])return;
+  menu[ci].items[ii][field]=val;
+  await saveMenuToFirebase();
+}
+
+async function removeMenuCatItem(ci,ii){
+  const menu=BUILTIN_MENU_LIVE.length?BUILTIN_MENU_LIVE:BUILTIN_MENU;
+  if(!menu[ci])return;
+  menu[ci].items.splice(ii,1);
+  await saveMenuToFirebase();
   renderMenuEditor();
+  fl('fOk','Позиция удалена');
 }
 
+async function addMenuCatItem(ci){
+  const menu=BUILTIN_MENU_LIVE.length?BUILTIN_MENU_LIVE:BUILTIN_MENU;
+  if(!menu[ci])return;
+  const inp=document.getElementById('newItem_'+ci);
+  const name=(inp?.value||'').trim();
+  if(!name){fl('fInfo','Введите название');return;}
+  menu[ci].items.push({name,price:0});
+  await saveMenuToFirebase();
+  if(inp)inp.value='';
+  renderMenuEditor();
+  fl('fOk','✅ '+name+' добавлено');
+}
+
+// Старые функции оставляем для совместимости
+async function updateMenuItem(){}
+async function removeMenuItem(){}
 async function addNewMenuItem(){
-  const nameInp=document.getElementById('newMenuItemName');
-  const qtyInp=document.getElementById('newMenuItemQty');
-  const name=(nameInp?.value||'').trim();
-  const qty=parseInt(qtyInp?.value)||1;
-  if(!name){fl('fInfo','Введите название позиции');return;}
-  menuItems.push({name,qty});
-  await set(ref(db,'menu'), Object.fromEntries(menuItems.map((m,j)=>[j,m])));
-  if(nameInp)nameInp.value='';
-  if(qtyInp)qtyInp.value='1';
-  renderMenuEditor();
-  fl('fOk','✅ '+name+' добавлено в меню');
+  // Перенаправляем на новую логику — добавление в первую категорию
+  fl('fInfo','Используй кнопку "+ Добавить" в нужной категории');
 }
 function tKey(date,tNum){return date+'_'+tNum;}
 function getTMeta(date,tNum){
@@ -1838,6 +1886,7 @@ Object.assign(window,{
   renameTable,deleteTable,doRenameTable,
   closeConfirmModal,confirmOk,closeRenameModal,confirmRename,
   openMenuEditor,closeMenuEditor,addNewMenuItem,removeMenuItem,updateMenuItem,renderStats,renderMenuPage,
+  updateMenuCatItem,removeMenuCatItem,addMenuCatItem,
   openMenuPicker,closeMenuPicker,confirmMenuPicker,switchPickerCat
 });
 
