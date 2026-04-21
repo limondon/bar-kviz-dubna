@@ -320,34 +320,218 @@ function startPoll(){
 }
 
 // ═══════════════════════════
-//  MENU
+//  ВСТРОЕННОЕ МЕНЮ (категории + позиции)
 // ═══════════════════════════
+const BUILTIN_MENU=[
+  {cat:'🍺 Пиво', items:[
+    {name:'Hoegarden',price:250},
+    {name:'Spaten',price:300},
+    {name:'Corona Extra',price:300},
+    {name:'Stella Artois',price:250},
+    {name:'Сидр Chester',price:250,note:true,notePlaceholder:'вкус: яблоко, груша, клубника, кокос, ягоды'},
+    {name:'Безалкогольное пиво',price:200},
+    {name:'Козел тёмный',price:250},
+  ]},
+  {cat:'🍵 Фрукт. чай', items:[
+    {name:'Облепиховый чай',price:700},
+    {name:'Имбирно-лимонный чай',price:700},
+    {name:'Вишневый блик',price:700},
+    {name:'Облепиха-груша',price:700},
+    {name:'Сладкий цитрус',price:700},
+    {name:'Итальянские каникулы',price:700},
+    {name:'Ягодный микс',price:700},
+    {name:'Апельсин-корица',price:700},
+    {name:'Имбирно-малиновый чай',price:700},
+    {name:'Марокканский чай',price:700},
+    {name:'Малиновый чай',price:700},
+    {name:'Клюквенный чай',price:700},
+  ]},
+  {cat:'🍃 Лист. чай', items:[
+    {name:'Сенча',price:500},
+    {name:'Ассам',price:500},
+    {name:'Чай с бергамотом',price:500},
+    {name:'Наглый фрукт',price:500},
+    {name:'Каркаде',price:500},
+    {name:'Клубника со сливками',price:500},
+    {name:'Иван-чай',price:500},
+  ]},
+  {cat:'🥤 Лимонады', items:[
+    {name:'Лимонад вишневый',price:400},
+    {name:'Манго Давида',price:400},
+    {name:'Клубнично-малиновый',price:400},
+    {name:'Лимонад цитрусовый',price:400},
+    {name:'Лимонад имбирно-лимонный',price:400},
+    {name:'Тропический',price:400},
+    {name:'Мохито',price:400},
+    {name:'Клюква с черной смородиной',price:400},
+    {name:'Грейпфрут-ваниль',price:400},
+  ]},
+  {cat:'🥤 Напитки', items:[
+    {name:'Сок',price:400,note:true,notePlaceholder:'какой сок'},
+    {name:'Вода газ',price:150},
+    {name:'Вода без газа',price:150},
+    {name:'Натахтари',price:250,note:true,notePlaceholder:'вкус: виноград, фейхоа, ...'},
+    {name:'Red Bull',price:300},
+    {name:'Coca-Cola',price:250},
+    {name:'Fanta',price:250},
+    {name:'Sprite',price:250},
+  ]},
+  {cat:'🍟 Закуски', items:[
+    {name:'Чипсы Lays',price:200},
+    {name:'Сухарики',price:200},
+    {name:'Фисташки',price:200},
+    {name:'Арахис',price:150},
+    {name:'Шоколад',price:200,note:true,notePlaceholder:'какой шоколад'},
+    {name:'Джерки',price:250},
+  ]},
+  {cat:'☕ Кофе', items:[
+    {name:'Эспрессо',price:100},
+    {name:'Двойной эспрессо',price:170},
+    {name:'Американо',price:200},
+    {name:'Латте',price:350},
+    {name:'Капучино',price:350},
+  ]},
+];
+
+// Состояние модала
+let pickerState={}; // {itemName: {qty, note}}
+let pickerCat=0;
+
 function buildMenuButtons(){
+  // Кнопка выбора из меню — уже в HTML, просто скрываем если нет позиций
   const el=document.getElementById('menuBtns');
-  if(!el)return;
-  if(!menuItems.length){
-    el.innerHTML=role==='admin'
-      ?`<div style="font-size:11px;color:var(--muted);">Меню пусто — <span onclick="openMenuEditor()" style="color:var(--accent);cursor:pointer;text-decoration:underline;">добавить позиции</span></div>`
-      :'';
-    return;
+  if(el)el.innerHTML='';
+}
+
+function openMenuPicker(){
+  pickerState={};
+  pickerCat=0;
+  // Предзаполняем из textarea если что-то уже введено
+  const ta=document.getElementById('inpItems');
+  if(ta&&ta.value.trim()){
+    parseItems(ta.value).forEach(it=>{
+      pickerState[it.name]={qty:it.qty,note:''};
+    });
   }
-  el.innerHTML=menuItems.map((item,i)=>`
-    <button data-action="menuitem" data-item="${esc(item.name)}" data-qty="${item.qty||1}" style="
-      padding:6px 12px;min-height:38px;
-      background:var(--card);border:1px solid var(--border);
-      border-radius:8px;color:var(--text);font-family:'IBM Plex Mono',monospace;
-      font-size:12px;cursor:pointer;transition:all .15s;text-align:left;
-    ">${item.qty>1?item.qty+'× ':''}${esc(item.name)}</button>
+  renderPickerTabs();
+  renderPickerList();
+  updatePickerBtn();
+  document.getElementById('menuPickerOverlay').classList.remove('hidden');
+}
+
+function closeMenuPicker(){
+  document.getElementById('menuPickerOverlay').classList.add('hidden');
+}
+
+function renderPickerTabs(){
+  const el=document.getElementById('menuPickerTabs');
+  if(!el)return;
+  el.innerHTML=BUILTIN_MENU.map((cat,i)=>`
+    <div onclick="switchPickerCat(${i})" style="
+      flex-shrink:0;padding:10px 14px;cursor:pointer;white-space:nowrap;
+      font-size:13px;font-family:'IBM Plex Mono',monospace;
+      border-bottom:3px solid ${i===pickerCat?'var(--accent)':'transparent'};
+      color:${i===pickerCat?'var(--accent)':'var(--muted)'};
+      transition:all .15s;
+    ">${cat.cat}</div>
   `).join('');
 }
 
-function addMenuItemToOrder(name, qty){
-  const ta=document.getElementById('inpItems');
-  if(!ta)return;
-  const cur=ta.value.trim();
-  ta.value=cur?(cur+'\n'+qty+' '+name):(qty+' '+name);
-  ta.focus();
+function switchPickerCat(i){
+  pickerCat=i;
+  renderPickerTabs();
+  renderPickerList();
 }
+
+function renderPickerList(){
+  const el=document.getElementById('menuPickerList');
+  if(!el)return;
+  const cat=BUILTIN_MENU[pickerCat];
+  el.innerHTML=cat.items.map(item=>{
+    const st=pickerState[item.name]||{qty:0,note:''};
+    const hasQty=st.qty>0;
+    return`
+    <div style="padding:10px 16px;border-bottom:1px solid var(--border);${hasQty?'background:rgba(245,166,35,.04);':''}">
+      <div style="display:flex;align-items:center;gap:10px;">
+        <div style="flex:1;">
+          <div style="font-size:14px;${hasQty?'color:var(--text);font-weight:600;':'color:var(--muted);'}">${esc(item.name)}</div>
+          <div style="font-size:11px;color:var(--muted);">${item.price}₽</div>
+        </div>
+        <div style="display:flex;align-items:center;gap:0;flex-shrink:0;">
+          <button data-picker-action="minus" data-item="${esc(item.name)}" style="
+            width:40px;height:40px;border:1px solid var(--border);border-radius:8px 0 0 8px;
+            background:var(--card);color:var(--text);font-size:20px;cursor:pointer;
+            ${!hasQty?'opacity:.35;':''}
+          ">−</button>
+          <div style="
+            width:40px;height:40px;display:flex;align-items:center;justify-content:center;
+            border-top:1px solid var(--border);border-bottom:1px solid var(--border);
+            font-family:'Bebas Neue',sans-serif;font-size:22px;
+            color:${hasQty?'var(--accent)':'var(--muted)'};background:var(--bg);
+          ">${st.qty}</div>
+          <button data-picker-action="plus" data-item="${esc(item.name)}" style="
+            width:40px;height:40px;border:1px solid var(--border);border-radius:0 8px 8px 0;
+            background:var(--accent);color:#000;font-size:20px;cursor:pointer;font-weight:700;
+          ">+</button>
+        </div>
+      </div>
+      ${hasQty&&item.note?`
+        <input type="text" placeholder="${item.notePlaceholder||'уточнить...'}"
+          value="${esc(st.note||'')}"
+          data-picker-note="${esc(item.name)}"
+          style="width:100%;margin-top:8px;padding:7px 10px;border-radius:6px;
+            border:1px solid var(--border);background:var(--bg);color:var(--text);
+            font-family:'IBM Plex Mono',monospace;font-size:13px;"
+        >
+      `:''}
+    </div>`;
+  }).join('');
+}
+
+function updatePickerBtn(){
+  const btn=document.getElementById('menuPickerBtn');
+  if(!btn)return;
+  const total=Object.values(pickerState).reduce((s,v)=>s+(v.qty||0),0);
+  btn.textContent=total>0?`ГОТОВО (${total} позиц.)`:'ГОТОВО';
+}
+
+function confirmMenuPicker(){
+  // Сохраняем уточнения из инпутов
+  document.querySelectorAll('[data-picker-note]').forEach(inp=>{
+    const name=inp.dataset.pickerNote;
+    if(pickerState[name]) pickerState[name].note=inp.value.trim();
+  });
+
+  // Строим текст для textarea
+  const lines=[];
+  BUILTIN_MENU.forEach(cat=>{
+    cat.items.forEach(item=>{
+      const st=pickerState[item.name];
+      if(st&&st.qty>0){
+        const note=st.note?` (${st.note})`:'';
+        lines.push(`${st.qty} ${item.name}${note}`);
+      }
+    });
+  });
+
+  const ta=document.getElementById('inpItems');
+  if(ta) ta.value=lines.join('\n');
+  closeMenuPicker();
+}
+
+// Обработчик кнопок +/– в пикере
+document.addEventListener('click',e=>{
+  const btn=e.target.closest('[data-picker-action]');
+  if(!btn)return;
+  const action=btn.dataset.pickerAction;
+  const itemName=btn.dataset.item;
+  if(!pickerState[itemName]) pickerState[itemName]={qty:0,note:''};
+  if(action==='plus') pickerState[itemName].qty++;
+  if(action==='minus') pickerState[itemName].qty=Math.max(0,pickerState[itemName].qty-1);
+  renderPickerList();
+  updatePickerBtn();
+},true);
+
 
 function openMenuEditor(){
   const overlay=document.getElementById('menuEditorOverlay');
@@ -1653,7 +1837,8 @@ Object.assign(window,{
   shiftClosedDate,jumpClosedDate,renderClosed,
   renameTable,deleteTable,doRenameTable,
   closeConfirmModal,confirmOk,closeRenameModal,confirmRename,
-  openMenuEditor,closeMenuEditor,addNewMenuItem,removeMenuItem,updateMenuItem,renderStats,renderMenuPage
+  openMenuEditor,closeMenuEditor,addNewMenuItem,removeMenuItem,updateMenuItem,renderStats,renderMenuPage,toggleMenuMore,
+  openMenuPicker,closeMenuPicker,confirmMenuPicker,switchPickerCat
 });
 
 // ═══════════════════════════
