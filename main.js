@@ -3,9 +3,9 @@
 // ═══════════════════════════
 const OKEY='bar_orders_v10';
 const TKEY='bar_tables_v10';
-let orders=[], tablesMeta={};
+let orders=[], tablesMeta={}, menuItems=[];
 let role=null, activeTab='', lastHash='', qf='all';
-let viewDate=todayStr(), closedViewDate=todayStr(), pendingRole=null, editOrderId=null;
+let viewDate=todayStr(), closedViewDate=todayStr(), pendingRole=null, editOrderId=null, editBillMode=false;
 
 // ═══════════════════════════
 //  DATE HELPERS
@@ -256,6 +256,13 @@ function checkNewOrders(newOrders){
 
 async function loadAll(){
   setConnStatus(false);
+
+  // Вычисляем дату 30 дней назад для фильтрации
+  const cutoffDate=(()=>{
+    const d=new Date();d.setDate(d.getDate()-30);
+    return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate());
+  })();
+
   onValue(ref(db,'orders'),(snap)=>{
     const raw=snap.val();
     if(raw){
@@ -273,7 +280,10 @@ async function loadAll(){
         update(ref(db),cleanupUpd).catch(e=>console.error('cleanup',e));
       }
     }
-    orders=raw?Object.values(raw).map(normalizeOrder):[];
+    // Загружаем только заказы за последние 30 дней
+    orders=raw?Object.values(raw)
+      .filter(o=>!o.date||o.date>=cutoffDate)
+      .map(normalizeOrder):[];
     checkNewOrders(orders);
     setConnStatus(true);
     renderAll();
@@ -282,6 +292,12 @@ async function loadAll(){
   onValue(ref(db,'tables'),(snap)=>{
     tablesMeta=snap.val()||{};
     if(activeTab==='tables')renderTables();
+  });
+
+  onValue(ref(db,'menu'),(snap)=>{
+    menuItems=snap.val()||[];
+    if(!Array.isArray(menuItems)) menuItems=Object.values(menuItems);
+    buildMenuButtons();
   });
 }
 
@@ -304,8 +320,90 @@ function startPoll(){
 }
 
 // ═══════════════════════════
-//  TABLE META
+//  MENU
 // ═══════════════════════════
+function buildMenuButtons(){
+  const el=document.getElementById('menuBtns');
+  if(!el)return;
+  if(!menuItems.length){
+    el.innerHTML=role==='admin'
+      ?`<div style="font-size:11px;color:var(--muted);">Меню пусто — <span onclick="openMenuEditor()" style="color:var(--accent);cursor:pointer;text-decoration:underline;">добавить позиции</span></div>`
+      :'';
+    return;
+  }
+  el.innerHTML=menuItems.map((item,i)=>`
+    <button data-action="menuitem" data-item="${esc(item.name)}" data-qty="${item.qty||1}" style="
+      padding:6px 12px;min-height:38px;
+      background:var(--card);border:1px solid var(--border);
+      border-radius:8px;color:var(--text);font-family:'IBM Plex Mono',monospace;
+      font-size:12px;cursor:pointer;transition:all .15s;text-align:left;
+    ">${item.qty>1?item.qty+'× ':''}${esc(item.name)}</button>
+  `).join('');
+}
+
+function addMenuItemToOrder(name, qty){
+  const ta=document.getElementById('inpItems');
+  if(!ta)return;
+  const cur=ta.value.trim();
+  ta.value=cur?(cur+'\n'+qty+' '+name):(qty+' '+name);
+  ta.focus();
+}
+
+function openMenuEditor(){
+  const overlay=document.getElementById('menuEditorOverlay');
+  if(!overlay)return;
+  renderMenuEditor();
+  overlay.classList.remove('hidden');
+}
+function closeMenuEditor(){
+  const overlay=document.getElementById('menuEditorOverlay');
+  if(overlay)overlay.classList.add('hidden');
+}
+
+function renderMenuEditor(){
+  const el=document.getElementById('menuEditorList');
+  if(!el)return;
+  if(!menuItems.length){
+    el.innerHTML=`<div style="color:var(--muted);font-size:12px;padding:8px 0;">Меню пусто</div>`;
+    return;
+  }
+  el.innerHTML=menuItems.map((item,i)=>`
+    <div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--border);">
+      <input type="number" value="${item.qty||1}" min="1" max="99"
+        onchange="updateMenuItem(${i},'qty',+this.value)"
+        style="width:48px;text-align:center;font-family:'IBM Plex Mono',monospace;font-size:13px;padding:4px;">
+      <input type="text" value="${esc(item.name)}"
+        onchange="updateMenuItem(${i},'name',this.value)"
+        style="flex:1;font-family:'IBM Plex Mono',monospace;font-size:13px;padding:4px;">
+      <button onclick="removeMenuItem(${i})" style="background:rgba(229,57,53,.15);color:var(--red);border:1px solid rgba(229,57,53,.3);border-radius:6px;padding:4px 10px;cursor:pointer;font-size:13px;">✕</button>
+    </div>
+  `).join('');
+}
+
+async function updateMenuItem(i, field, val){
+  menuItems[i][field]=val;
+  await fbUpdate('menu', Object.fromEntries(menuItems.map((m,j)=>[j,m])));
+}
+
+async function removeMenuItem(i){
+  menuItems.splice(i,1);
+  await set(ref(db,'menu'), menuItems.length ? Object.fromEntries(menuItems.map((m,j)=>[j,m])) : null);
+  renderMenuEditor();
+}
+
+async function addNewMenuItem(){
+  const nameInp=document.getElementById('newMenuItemName');
+  const qtyInp=document.getElementById('newMenuItemQty');
+  const name=(nameInp?.value||'').trim();
+  const qty=parseInt(qtyInp?.value)||1;
+  if(!name){fl('fInfo','Введите название позиции');return;}
+  menuItems.push({name,qty});
+  await set(ref(db,'menu'), Object.fromEntries(menuItems.map((m,j)=>[j,m])));
+  if(nameInp)nameInp.value='';
+  if(qtyInp)qtyInp.value='1';
+  renderMenuEditor();
+  fl('fOk','✅ '+name+' добавлено в меню');
+}
 function tKey(date,tNum){return date+'_'+tNum;}
 function getTMeta(date,tNum){
   const k=tKey(date,tNum);
@@ -462,12 +560,15 @@ function getTabDefs(){
     {id:'tables',label:'Столики', ico:'🪑', badge:'bT', badgeCls:'bp'},
     {id:'done',  label:'Закрытые',ico:'✅', badge:'bD'},
   ];
+  // admin
   return[
-    {id:'new',   label:'+ Заказ', ico:'➕'},
-    {id:'queue', label:'Очередь', ico:'📋', badge:'bQ'},
-    {id:'ready', label:'Забрать', ico:'🛎️', badge:'bR', badgeCls:'bg'},
-    {id:'tables',label:'Столики', ico:'🪑', badge:'bT', badgeCls:'bp'},
-    {id:'done',  label:'Закрытые',ico:'✅', badge:'bD'},
+    {id:'new',    label:'+ Заказ',  ico:'➕'},
+    {id:'queue',  label:'Очередь',  ico:'📋', badge:'bQ'},
+    {id:'ready',  label:'Забрать',  ico:'🛎️', badge:'bR', badgeCls:'bg'},
+    {id:'tables', label:'Столики',  ico:'🪑', badge:'bT', badgeCls:'bp'},
+    {id:'done',   label:'Закрытые', ico:'✅', badge:'bD'},
+    {id:'stats',  label:'Статист.', ico:'📊'},
+    {id:'menu',   label:'Меню',     ico:'📋'},
   ];
 }
 
@@ -547,6 +648,8 @@ function sw(tab){
   const pg=document.getElementById('page-'+tab);if(pg)pg.classList.add('active');
   if(tab==='tables')renderTables();
   if(tab==='done')renderClosed();
+  if(tab==='stats')renderStats();
+  if(tab==='menu')renderMenuPage();
 }
 
 // ═══════════════════════════
@@ -1188,7 +1291,6 @@ function fl(id,msg){
 // ═══════════════════════════
 //  EDIT ORDER MODAL
 // ═══════════════════════════
-let editBillMode=false; // true = правка чека (из Столики), false = правка заказа (из Очереди)
 
 function openEditModal(orderId, billMode=false){
   const o=orders.find(x=>x.id===orderId);if(!o)return;
@@ -1404,6 +1506,110 @@ function renderClosed(){
 function jumpClosedDate(d){closedViewDate=d;renderClosed();}
 
 // ═══════════════════════════
+//  STATISTICS PAGE
+// ═══════════════════════════
+function renderStats(){
+  const el=document.getElementById('statsContent');
+  if(!el)return;
+
+  const today=todayStr();
+  const todayOrders=orders.filter(o=>o.date===today);
+  const todayDone=todayOrders.filter(o=>o.status==='done');
+
+  // Популярные позиции за всё время (30 дней)
+  const popMap={};
+  orders.forEach(o=>(o.items||[]).forEach(it=>{
+    const k=it.name.trim().toLowerCase();
+    if(!popMap[k])popMap[k]={name:it.name,count:0};
+    popMap[k].count+=it.qty;
+  }));
+  const popular=Object.values(popMap).sort((a,b)=>b.count-a.count).slice(0,10);
+
+  // Статистика по дням (последние 7 дней)
+  const dayStats={};
+  for(let i=6;i>=0;i--){
+    const d=shiftDS(today,-i);
+    dayStats[d]={date:d,orders:0,tables:new Set()};
+  }
+  orders.forEach(o=>{
+    if(dayStats[o.date]){
+      dayStats[o.date].orders++;
+      dayStats[o.date].tables.add(o.table);
+    }
+  });
+  const maxOrders=Math.max(...Object.values(dayStats).map(d=>d.orders),1);
+
+  el.innerHTML=`
+    <div style="display:flex;flex-direction:column;gap:var(--sp-md);">
+
+      <!-- Сегодня -->
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:var(--sp-sm);">
+        <div class="sc"><span class="n">${todayOrders.length}</span><span>заказов сегодня</span></div>
+        <div class="sc"><span class="n" style="color:var(--green);">${todayDone.length}</span><span>выполнено</span></div>
+        <div class="sc"><span class="n" style="color:var(--blue);">${new Set(todayOrders.map(o=>o.table)).size}</span><span>столов</span></div>
+      </div>
+
+      <!-- График по дням -->
+      <div style="background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:var(--sp-md);">
+        <div style="font-family:'Bebas Neue',sans-serif;font-size:14px;letter-spacing:1px;color:var(--accent);margin-bottom:var(--sp-sm);">📅 ЗАКАЗЫ ЗА 7 ДНЕЙ</div>
+        <div style="display:flex;align-items:flex-end;gap:6px;height:80px;">
+          ${Object.values(dayStats).map(d=>{
+            const h=d.orders?Math.max(8,Math.round(d.orders/maxOrders*70)):2;
+            const isToday=d.date===today;
+            const lbl=d.date.slice(8);
+            return`<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;">
+              <div style="font-size:9px;color:var(--muted);">${d.orders||''}</div>
+              <div style="width:100%;height:${h}px;background:${isToday?'var(--accent)':'rgba(201,169,110,.35)'};border-radius:3px 3px 0 0;"></div>
+              <div style="font-size:9px;color:${isToday?'var(--accent)':'var(--muted)'};">${lbl}</div>
+            </div>`;
+          }).join('')}
+        </div>
+      </div>
+
+      <!-- Топ позиций -->
+      <div style="background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:var(--sp-md);">
+        <div style="font-family:'Bebas Neue',sans-serif;font-size:14px;letter-spacing:1px;color:var(--accent);margin-bottom:var(--sp-sm);">🏆 ТОП ПОЗИЦИЙ (30 дней)</div>
+        ${popular.length?popular.map((p,i)=>`
+          <div style="display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid var(--border);">
+            <div style="display:flex;align-items:center;gap:8px;">
+              <span style="font-family:'Bebas Neue',sans-serif;font-size:16px;color:var(--muted);min-width:20px;">${i+1}</span>
+              <span style="font-size:13px;">${esc(p.name)}</span>
+            </div>
+            <span style="font-family:'Bebas Neue',sans-serif;font-size:18px;color:var(--accent);">${p.count}</span>
+          </div>`).join('')
+        :'<div style="color:var(--muted);font-size:12px;">Нет данных</div>'}
+      </div>
+    </div>
+  `;
+}
+
+// ═══════════════════════════
+//  MENU PAGE
+// ═══════════════════════════
+function renderMenuPage(){
+  const el=document.getElementById('menuPageContent');
+  if(!el)return;
+  el.innerHTML=`
+    <div style="background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:var(--sp-md);margin-bottom:var(--sp-md);">
+      <div style="font-family:'Bebas Neue',sans-serif;font-size:16px;letter-spacing:1px;color:var(--accent);margin-bottom:var(--sp-md);">➕ ДОБАВИТЬ ПОЗИЦИЮ</div>
+      <div style="display:flex;gap:var(--sp-sm);flex-wrap:wrap;">
+        <input type="number" id="newMenuItemQty" value="1" min="1" max="99" placeholder="Кол-во"
+          style="width:70px;text-align:center;font-family:'IBM Plex Mono',monospace;font-size:14px;padding:8px;">
+        <input type="text" id="newMenuItemName" placeholder="Название позиции"
+          style="flex:1;min-width:150px;font-family:'IBM Plex Mono',monospace;font-size:14px;padding:8px;"
+          onkeydown="if(event.key==='Enter')addNewMenuItem()">
+        <button onclick="addNewMenuItem()" class="btn-sm bd" style="min-width:80px;">+ Добавить</button>
+      </div>
+    </div>
+    <div style="background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:var(--sp-md);">
+      <div style="font-family:'Bebas Neue',sans-serif;font-size:16px;letter-spacing:1px;color:var(--accent);margin-bottom:var(--sp-sm);">📋 ТЕКУЩЕЕ МЕНЮ</div>
+      <div id="menuEditorList"></div>
+    </div>
+  `;
+  renderMenuEditor();
+}
+
+// ═══════════════════════════
 //  EVENT DELEGATION
 // ═══════════════════════════
 document.addEventListener('click',async e=>{
@@ -1426,7 +1632,7 @@ document.addEventListener('click',async e=>{
   if(action==='deliverall'&&oid){ await waiterDeliverAll(oid); return; }
   if(action==='reopen'&&oid)    { await reopenOrder(oid);       return; }
   if(action==='del'&&oid)       { await delOrder(oid);          return; }
-  if(action==='edit'&&oid){ openEditModal(oid, btn.dataset.bill==='1'); return; }
+  if(action==='menuitem'){ addMenuItemToOrder(btn.dataset.item, btn.dataset.qty||1); return; }
 
   // Table management
   if(action==='closeTable'&&date&&tnum&&sid){ await closeTable(date,tnum,sid); return; }
@@ -1446,7 +1652,8 @@ Object.assign(window,{
   renderTables,openEditModal,closeEditModal,saveEditOrder,
   shiftClosedDate,jumpClosedDate,renderClosed,
   renameTable,deleteTable,doRenameTable,
-  closeConfirmModal,confirmOk,closeRenameModal,confirmRename
+  closeConfirmModal,confirmOk,closeRenameModal,confirmRename,
+  openMenuEditor,closeMenuEditor,addNewMenuItem,removeMenuItem,updateMenuItem,renderStats,renderMenuPage
 });
 
 // ═══════════════════════════
