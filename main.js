@@ -989,12 +989,12 @@ function renderTables(){
     const totalItems=tOrders.reduce((s,o)=>s+(o.items?o.items.reduce((a,i)=>a+i.qty,0):0),0);
 
     const actions=isOpen
-      ?`<button class="btn-pay" onclick="closeTable('${viewDate}','${tNum}','${sid}')">💳 ЗАКРЫТЬ / ОПЛАЧЕН</button>`
-      :`<button class="btn-reopen" onclick="reopenTable('${viewDate}','${tNum}')">↩ Переоткрыть</button>`;
+      ?`<button class="btn-pay" data-action="closeTable" data-date="${viewDate}" data-tnum="${tNum}" data-sid="${sid}">💳 ЗАКРЫТЬ / ОПЛАЧЕН</button>`
+      :`<button class="btn-reopen" data-action="reopenTable" data-date="${viewDate}" data-tnum="${tNum}">↩ Переоткрыть</button>`;
 
     const mgmtBtns=`
-      <button class="btn-sm bu" onclick="renameTable('${viewDate}','${tNum}','${sid}')">✏️ Переименовать</button>
-      <button class="btn-sm bx" onclick="deleteTable('${viewDate}','${tNum}','${sid}')">🗑 Удалить стол</button>`;
+      <button class="btn-sm bu" data-action="renameTable" data-date="${viewDate}" data-tnum="${tNum}" data-sid="${sid}">✏️ Переименовать</button>
+      <button class="btn-sm bx" data-action="deleteTable" data-date="${viewDate}" data-tnum="${tNum}" data-sid="${sid}">🗑 Удалить стол</button>`;
 
     const cardId='tb-'+tNum+'_'+sid;
     return`
@@ -1374,9 +1374,9 @@ function renderClosed(){
         ${ordersHtml}
         <div class="tb-summary"><h4>📋 ИТОГО</h4>${sumLines||'<div style="color:var(--muted);font-size:12px">Нет позиций</div>'}</div>
         <div class="tb-actions">
-          <button class="btn-reopen" onclick="reopenTable('${closedViewDate}','${tNum}')">↩ Переоткрыть</button>
-          <button class="btn-sm bu" onclick="renameTable('${closedViewDate}','${tNum}','${sid}')">✏️ Переименовать</button>
-          <button class="btn-sm bx" onclick="deleteTable('${closedViewDate}','${tNum}','${sid}')">🗑 Удалить стол</button>
+          <button class="btn-reopen" data-action="reopenTable" data-date="${closedViewDate}" data-tnum="${tNum}">↩ Переоткрыть</button>
+          <button class="btn-sm bu" data-action="renameTable" data-date="${closedViewDate}" data-tnum="${tNum}" data-sid="${sid}">✏️ Переименовать</button>
+          <button class="btn-sm bx" data-action="deleteTable" data-date="${closedViewDate}" data-tnum="${tNum}" data-sid="${sid}">🗑 Удалить стол</button>
         </div>
       </div>
     </div>`;
@@ -1401,11 +1401,19 @@ document.addEventListener('click',async e=>{
 
   const action=btn.dataset.action;
   const oid=btn.dataset.oid, iid=btn.dataset.iid;
+  const date=btn.dataset.date, tnum=btn.dataset.tnum, sid=btn.dataset.sid;
+
   if(action==='deliver'&&oid&&iid){ await waiterDeliverItem(oid,iid); return; }
   if(action==='deliverall'&&oid){ await waiterDeliverAll(oid); return; }
   if(action==='reopen'&&oid)    { await reopenOrder(oid);       return; }
   if(action==='del'&&oid)       { await delOrder(oid);          return; }
   if(action==='edit'&&oid){ openEditModal(oid, btn.dataset.bill==='1'); return; }
+
+  // Table management
+  if(action==='closeTable'&&date&&tnum&&sid){ await closeTable(date,tnum,sid); return; }
+  if(action==='reopenTable'&&date&&tnum)    { await reopenTable(date,tnum);    return; }
+  if(action==='renameTable'&&date&&tnum&&sid){ await renameTable(date,tnum,sid); return; }
+  if(action==='deleteTable'&&date&&tnum&&sid){ await deleteTable(date,tnum,sid); return; }
 });
 
 // ═══════════════════════════
