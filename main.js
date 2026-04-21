@@ -1077,14 +1077,18 @@ function openRenameModal(currentName,cb){
   if(val&&val!==String(currentName)) cb(val);
 }
 function closeRenameModal(){
-  document.getElementById('renameOverlay').classList.add('hidden');
+  const overlay=document.getElementById('renameOverlay');
+  if(overlay)overlay.classList.add('hidden');
   _renameCb=null;
 }
 function confirmRename(){
   const val=document.getElementById('renameInput').value.trim().toUpperCase();
   if(!val){fl('fInfo','Введите название!');return;}
-  closeRenameModal();
-  if(_renameCb){_renameCb(val);_renameCb=null;}
+  const cb=_renameCb; // сохраняем до закрытия
+  _renameCb=null;
+  const overlay=document.getElementById('renameOverlay');
+  if(overlay)overlay.classList.add('hidden');
+  if(cb) cb(val);
 }
 
 async function renameTable(date,oldTNum,sid){
