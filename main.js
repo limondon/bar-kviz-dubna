@@ -1433,7 +1433,7 @@ function renderTables(){
       </div>
       <div class="tb-body" id="body-${cardId}">
         ${ordersHtml}
-        <div class="tb-summary"><h4>📋 ИТОГО ДЛЯ ЧЕКА</h4>${sumLines||'<div style="color:var(--muted);font-size:12px">Нет позиций</div>'}</div>
+        <div class="tb-summary"><h4>📋 ИТОГО</h4>${sumLines||'<div style="color:var(--muted);font-size:12px">Нет позиций</div>'}</div>
         <div class="tb-actions">${actions}${mgmtBtns}</div>
       </div>
     </div>`;
@@ -1933,6 +1933,7 @@ document.addEventListener('click',async e=>{
   if(action==='deliverall'&&oid){ await waiterDeliverAll(oid); return; }
   if(action==='reopen'&&oid)    { await reopenOrder(oid);       return; }
   if(action==='del'&&oid)       { await delOrder(oid);          return; }
+  if(action==='edit'&&oid)      { openEditModal(oid, btn.dataset.bill==='1'); return; }
   if(action==='menuitem'){ /* handled by picker now */ return; }
 
   // Table management
