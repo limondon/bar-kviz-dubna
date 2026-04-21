@@ -453,21 +453,21 @@ function getTabDefs(){
   if(role==='barman') return[
     {id:'queue', label:'Очередь', ico:'📋', badge:'bQ'},
     {id:'tables',label:'Столики', ico:'🪑', badge:'bT', badgeCls:'bp'},
-    {id:'done',  label:'Закрытые',ico:'✅'},
+    {id:'done',  label:'Закрытые',ico:'✅', badge:'bD'},
   ];
   if(role==='waiter') return[
     {id:'new',   label:'+ Заказ', ico:'➕'},
     {id:'ready', label:'Забрать', ico:'🛎️', badge:'bR', badgeCls:'bg'},
     {id:'queue', label:'Очередь', ico:'📋', badge:'bQ'},
     {id:'tables',label:'Столики', ico:'🪑', badge:'bT', badgeCls:'bp'},
-    {id:'done',  label:'Закрытые',ico:'✅'},
+    {id:'done',  label:'Закрытые',ico:'✅', badge:'bD'},
   ];
   return[
     {id:'new',   label:'+ Заказ', ico:'➕'},
     {id:'queue', label:'Очередь', ico:'📋', badge:'bQ'},
     {id:'ready', label:'Забрать', ico:'🛎️', badge:'bR', badgeCls:'bg'},
     {id:'tables',label:'Столики', ico:'🪑', badge:'bT', badgeCls:'bp'},
-    {id:'done',  label:'Закрытые',ico:'✅'},
+    {id:'done',  label:'Закрытые',ico:'✅', badge:'bD'},
   ];
 }
 
@@ -487,7 +487,10 @@ function buildSidebar(tabs){
   const roleNames={waiter:'🛎️ Официант',barman:'🍹 Бармен',admin:'👑 Менеджер'};
   sb.innerHTML=`
     <div style="padding:0 20px 16px;border-bottom:1px solid var(--border);margin-bottom:8px;">
-      <div style="font-family:'Bebas Neue',sans-serif;font-size:22px;color:var(--accent);letter-spacing:2px;">🍺 БАР</div>
+      <div style="display:flex;align-items:center;gap:8px;">
+        <img src="icon-192.png" style="width:28px;height:28px;object-fit:contain;">
+        <span style="font-family:'Bebas Neue',sans-serif;font-size:22px;color:var(--accent);letter-spacing:2px;">БАР</span>
+      </div>
       <div style="font-size:11px;color:var(--muted);margin-top:2px;">${roleNames[role]||''}</div>
     </div>
     ${tabs.map(t=>`
@@ -723,6 +726,18 @@ function renderAll(){
   setBadge('bQ',active.length);
   setBadge('bR',hasReady.length);
   setBadge('bT',openTablesSet.size);
+
+  // Счётчик закрытых столов за сегодня
+  const closedTablesSet=new Set(
+    orders.filter(o=>o.date===today).filter(o=>{
+      const meta=getTMeta(today,o.table);
+      const sid=o.sid||'default';
+      const isCurrentSession=meta.sid===sid||(!meta.sid&&sid==='default');
+      return isCurrentSession&&meta.status==='closed';
+    }).map(o=>o.table)
+  );
+  setBadge('bD',closedTablesSet.size);
+
   setEl('sN',active.length);setEl('sNew',newCnt);setEl('sP',inProgress);setEl('sR',readyCnt);
 
   const tables=[...new Set(active.map(o=>String(o.table)))].sort((a,b)=>{
@@ -1084,7 +1099,7 @@ function closeRenameModal(){
 function confirmRename(){
   const val=document.getElementById('renameInput').value.trim().toUpperCase();
   if(!val){fl('fInfo','Введите название!');return;}
-  const cb=_renameCb; // сохраняем до закрытия
+  const cb=_renameCb;
   _renameCb=null;
   const overlay=document.getElementById('renameOverlay');
   if(overlay)overlay.classList.add('hidden');
