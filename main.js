@@ -1816,7 +1816,7 @@ document.addEventListener('click',async e=>{
   if(action==='deliverall'&&oid){ await waiterDeliverAll(oid); return; }
   if(action==='reopen'&&oid)    { await reopenOrder(oid);       return; }
   if(action==='del'&&oid)       { await delOrder(oid);          return; }
-  if(action==='menuitem'){ addMenuItemToOrder(btn.dataset.item, btn.dataset.qty||1); return; }
+  if(action==='menuitem'){ /* handled by picker now */ return; }
 
   // Table management
   if(action==='closeTable'&&date&&tnum&&sid){ await closeTable(date,tnum,sid); return; }
@@ -1837,7 +1837,7 @@ Object.assign(window,{
   shiftClosedDate,jumpClosedDate,renderClosed,
   renameTable,deleteTable,doRenameTable,
   closeConfirmModal,confirmOk,closeRenameModal,confirmRename,
-  openMenuEditor,closeMenuEditor,addNewMenuItem,removeMenuItem,updateMenuItem,renderStats,renderMenuPage,toggleMenuMore,
+  openMenuEditor,closeMenuEditor,addNewMenuItem,removeMenuItem,updateMenuItem,renderStats,renderMenuPage,
   openMenuPicker,closeMenuPicker,confirmMenuPicker,switchPickerCat
 });
 
