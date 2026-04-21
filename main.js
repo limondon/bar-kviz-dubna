@@ -623,6 +623,8 @@ async function removeMenuCategory(ci){
   renderMenuPage();
   fl('fOk','Категория удалена');
 }
+
+async function saveMenuToFirebase(){
   const menu=BUILTIN_MENU_LIVE.length?BUILTIN_MENU_LIVE:BUILTIN_MENU;
   await set(ref(db,'menu2'), menu);
 }
