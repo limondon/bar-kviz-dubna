@@ -1036,29 +1036,27 @@ function toggleBill(cardId){
 // Кастомный confirm — возвращает Promise<boolean>
 let _confirmResolve=null;
 function showConfirm(title,msg,okLabel='УДАЛИТЬ'){
-  // Если модал есть в DOM — используем его
   const overlay=document.getElementById('confirmOverlay');
   if(overlay){
     return new Promise(resolve=>{
       _confirmResolve=resolve;
       document.getElementById('confirmTitle').textContent=title;
       document.getElementById('confirmMsg').textContent=msg;
-      const btn=document.getElementById('confirmOkBtn');
-      btn.textContent=okLabel;
-      // Клонируем кнопку чтобы убрать старые обработчики
-      const newBtn=btn.cloneNode(true);
-      btn.parentNode.replaceChild(newBtn,btn);
-      newBtn.onclick=()=>{closeConfirmModal();resolve(true);};
+      document.getElementById('confirmOkBtn').textContent=okLabel;
       overlay.classList.remove('hidden');
     });
   }
-  // Fallback — нативный confirm (если index.html не обновлён)
   return Promise.resolve(window.confirm(title+'\n'+msg));
 }
 function closeConfirmModal(){
   const overlay=document.getElementById('confirmOverlay');
   if(overlay)overlay.classList.add('hidden');
   if(_confirmResolve){_confirmResolve(false);_confirmResolve=null;}
+}
+function confirmOk(){
+  const overlay=document.getElementById('confirmOverlay');
+  if(overlay)overlay.classList.add('hidden');
+  if(_confirmResolve){_confirmResolve(true);_confirmResolve=null;}
 }
 
 // Кастомный rename modal
@@ -1395,7 +1393,7 @@ Object.assign(window,{
   renderTables,openEditModal,closeEditModal,saveEditOrder,
   shiftClosedDate,jumpClosedDate,renderClosed,
   renameTable,deleteTable,
-  closeConfirmModal,closeRenameModal,confirmRename
+  closeConfirmModal,confirmOk,closeRenameModal,confirmRename
 });
 
 // ═══════════════════════════
