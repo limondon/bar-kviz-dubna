@@ -1166,11 +1166,10 @@ function renderAll(){
   const hasReady=orders.filter(o=>o.status!=='done'&&o.items&&o.items.some(i=>i.status==='ready'));
 
   active.sort((a,b)=>{
+    // Срочные всегда сверху
     if(a.priority==='urgent'&&b.priority!=='urgent')return -1;
     if(b.priority==='urgent'&&a.priority!=='urgent')return 1;
-    const so={ready:0,making:1,new:2};
-    const as=so[a.status]??2,bs=so[b.status]??2;
-    if(as!==bs)return as-bs;
+    // Остальные строго по времени создания — старые сверху
     return a.createdAt-b.createdAt;
   });
 
