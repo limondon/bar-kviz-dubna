@@ -722,6 +722,88 @@ async function reopenTable(date,tNum){
 }
 
 // ═══════════════════════════
+//  ПАРОЛЬ (хранится в Firebase)
+// ═══════════════════════════
+let appPassword=null; // загружается из Firebase
+
+function checkPassword(){
+  const val=document.getElementById('passwordInput')?.value||'';
+  // Если пароль не установлен — пропускаем
+  if(!appPassword){
+    localStorage.setItem('bar_auth', Date.now().toString());
+    document.getElementById('passwordOverlay').classList.add('hidden');
+    const sr=localStorage.getItem('bar_role');
+    if(!sr) openRoleModal();
+    return;
+  }
+  if(val===appPassword){
+    // Запоминаем на 30 дней
+    localStorage.setItem('bar_auth', Date.now().toString());
+    document.getElementById('passwordOverlay').classList.add('hidden');
+    const sr=localStorage.getItem('bar_role');
+    if(!sr) openRoleModal();
+  } else {
+    const err=document.getElementById('passwordError');
+    if(err){err.textContent='❌ Неверный пароль';setTimeout(()=>err.textContent='',2000);}
+    const inp=document.getElementById('passwordInput');
+    if(inp){inp.value='';inp.focus();}
+  }
+}
+
+function openPasswordModal(){
+  document.getElementById('passwordOverlay').classList.remove('hidden');
+  setTimeout(()=>document.getElementById('passwordInput')?.focus(),100);
+}
+
+// Проверяем нужно ли показывать экран пароля
+function checkAuth(){
+  if(!appPassword) return true; // пароль не установлен — пускаем всех
+  const savedAuth=localStorage.getItem('bar_auth');
+  if(!savedAuth) return false;
+  // Проверяем что прошло не больше 30 дней
+  const savedTime=parseInt(savedAuth);
+  const thirtyDays=30*24*60*60*1000;
+  return Date.now()-savedTime < thirtyDays;
+}
+
+// Смена пароля (только для менеджера)
+async function changePassword(){
+  const newPass=await new Promise(resolve=>{
+    const overlay=document.getElementById('confirmOverlay');
+    if(!overlay){resolve(window.prompt('Новый пароль (оставьте пустым чтобы убрать пароль):',''));return;}
+    document.getElementById('confirmTitle').textContent='🔐 Смена пароля';
+    document.getElementById('confirmMsg').innerHTML=`
+      <input type="password" id="newPasswordInput" placeholder="Новый пароль"
+        style="width:100%;padding:10px;margin-top:8px;background:var(--bg);border:1px solid var(--border);
+        border-radius:6px;color:var(--text);font-family:'IBM Plex Mono',monospace;font-size:16px;text-align:center;letter-spacing:3px;"
+        onkeydown="if(event.key==='Enter')confirmOk()">
+      <div style="font-size:11px;color:var(--muted);margin-top:8px;">Оставьте пустым чтобы убрать пароль</div>
+    `;
+    document.getElementById('confirmOkBtn').textContent='СОХРАНИТЬ';
+    document.getElementById('confirmOkBtn').style.background='var(--accent)';
+    document.getElementById('confirmOkBtn').style.color='#000';
+    overlay.classList.remove('hidden');
+    setTimeout(()=>document.getElementById('newPasswordInput')?.focus(),100);
+    _confirmResolve=()=>{
+      const val=document.getElementById('newPasswordInput')?.value||'';
+      overlay.classList.add('hidden');
+      resolve(val);
+    };
+  });
+
+  if(newPass===null) return; // отмена
+  if(newPass===''){
+    await set(ref(db,'config/password'),null);
+    appPassword=null;
+    fl('fOk','🔓 Пароль удалён');
+  } else {
+    await set(ref(db,'config/password'),newPass);
+    appPassword=newPass;
+    fl('fOk','🔐 Пароль установлен');
+  }
+}
+
+// ═══════════════════════════
 //  ROLE
 // ═══════════════════════════
 function openRoleModal(){
@@ -886,6 +968,7 @@ function buildSidebar(tabs){
       </div>`).join('')}
     <div style="margin-top:auto;padding:16px 20px 0;border-top:1px solid var(--border);margin-top:16px;">
       <div onclick="openRoleModal()" style="font-size:11px;color:var(--muted);cursor:pointer;padding:8px 0;">⚙️ Сменить роль</div>
+      ${role==='admin'?`<div onclick="changePassword()" style="font-size:11px;color:var(--muted);cursor:pointer;padding:8px 0;">🔐 Сменить пароль</div>`:''}
       <div class="notif-btn" onclick="enableNotifications()" style="font-size:11px;cursor:pointer;padding:8px 0;"></div>
     </div>
   `;
@@ -1984,7 +2067,7 @@ document.addEventListener('click',async e=>{
 //  EXPOSE TO HTML
 // ═══════════════════════════
 Object.assign(window,{
-  pickRole,confirmRole,openRoleModal,closeRoleModal,
+  pickRole,confirmRole,openRoleModal,closeRoleModal,checkPassword,changePassword,
   sw,addOrder,barItemAction,waiterDeliverItem,waiterDeliverAll,
   pickTable,enableNotifications,
   closeTable,reopenTable,reopenOrder,delOrder,setQF,toggleBill,shiftDate,jumpDate,
@@ -2003,18 +2086,30 @@ Object.assign(window,{
 (async()=>{
   registerSW();
 
-  // Показываем UI сразу
-  const sr=localStorage.getItem('bar_role');
-  if(sr){role=sr;applyRole();}
-  else openRoleModal();
-
   // Авторизуемся анонимно — Firebase требует токен
   try{
     await signInAnonymously(auth);
   }catch(e){
     console.error('Auth error:',e);
-    // Если авторизация не удалась — всё равно пробуем грузить данные
-    // (на случай если правила ещё не обновлены)
+  }
+
+  // Загружаем пароль из Firebase (один раз)
+  try{
+    const passSnap=await new Promise(resolve=>{
+      const unsub=onValue(ref(db,'config/password'),snap=>{unsub();resolve(snap);});
+    });
+    appPassword=passSnap.val()||null;
+  }catch(e){
+    console.error('Password load error:',e);
+  }
+
+  // Проверяем авторизацию
+  if(!checkAuth()){
+    openPasswordModal();
+  } else {
+    const sr=localStorage.getItem('bar_role');
+    if(sr){role=sr;applyRole();}
+    else openRoleModal();
   }
 
   await loadAll();

@@ -97,6 +97,21 @@
   </div>
 </div>
 
+<!-- PASSWORD MODAL -->
+<div class="overlay hidden" id="passwordOverlay">
+  <div class="modal" style="max-width:360px;">
+    <h2>🔐 1708</h2>
+    <p>Введите пароль для доступа</p>
+    <div style="margin-bottom:16px;">
+      <input type="password" id="passwordInput" placeholder="Пароль"
+        style="font-size:18px;text-align:center;letter-spacing:4px;"
+        onkeydown="if(event.key==='Enter')checkPassword()">
+    </div>
+    <div id="passwordError" style="color:var(--red);font-size:12px;text-align:center;margin-bottom:12px;min-height:16px;"></div>
+    <button class="modal-btn" onclick="checkPassword()">ВОЙТИ</button>
+  </div>
+</div>
+
 <!-- ROLE MODAL -->
 <div class="overlay hidden" id="roleOverlay">
   <div class="modal">
