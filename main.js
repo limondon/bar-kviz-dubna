@@ -64,7 +64,15 @@ import{initializeApp}from'https://www.gstatic.com/firebasejs/10.12.0/firebase-ap
 import{getDatabase,ref,push,update,set,remove,onValue,serverTimestamp}from'https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js';
 import{getAuth,signInAnonymously,onAuthStateChanged}from'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js';
 
-const fbApp=initializeApp({databaseURL:'https://project-3061022303410047846-default-rtdb.firebaseio.com'});
+const fbApp=initializeApp({
+  apiKey:'AIzaSyAdPAuuu7TRsJfI9jxyYkdscPvPObm-6h8',
+  authDomain:'project-3061022303410047846.firebaseapp.com',
+  databaseURL:'https://project-3061022303410047846-default-rtdb.firebaseio.com',
+  projectId:'project-3061022303410047846',
+  storageBucket:'project-3061022303410047846.firebasestorage.app',
+  messagingSenderId:'21905205682',
+  appId:'1:21905205682:web:c2d6935c9b9848a7291cab'
+});
 const db=getDatabase(fbApp);
 const auth=getAuth(fbApp);
 
