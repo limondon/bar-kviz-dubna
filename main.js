@@ -62,9 +62,11 @@ function aggStatus(items){
 // ═══════════════════════════
 import{initializeApp}from'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
 import{getDatabase,ref,push,update,set,remove,onValue,serverTimestamp}from'https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js';
+import{getAuth,signInAnonymously,onAuthStateChanged}from'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js';
 
 const fbApp=initializeApp({databaseURL:'https://project-3061022303410047846-default-rtdb.firebaseio.com'});
 const db=getDatabase(fbApp);
+const auth=getAuth(fbApp);
 
 function setConnStatus(ok){
   const dot=document.querySelector('.dot');
@@ -1991,10 +1993,22 @@ Object.assign(window,{
 //  BOOT
 // ═══════════════════════════
 (async()=>{
-  registerSW(); // регистрируем SW как можно раньше
+  registerSW();
+
+  // Показываем UI сразу
   const sr=localStorage.getItem('bar_role');
   if(sr){role=sr;applyRole();}
   else openRoleModal();
+
+  // Авторизуемся анонимно — Firebase требует токен
+  try{
+    await signInAnonymously(auth);
+  }catch(e){
+    console.error('Auth error:',e);
+    // Если авторизация не удалась — всё равно пробуем грузить данные
+    // (на случай если правила ещё не обновлены)
+  }
+
   await loadAll();
   startPoll();
 })();
