@@ -48,8 +48,8 @@ self.addEventListener('push', e => {
   const title = data.title || '🍺 Новый заказ!';
   const options = {
     body: data.body || 'Новый заказ в очереди',
-    icon: 'icon-192.png',
-    badge: 'icon-192.png',
+    icon: 'icons/icon-192.png',
+    badge: 'icons/icon-192.png',
     vibrate: [150, 80, 150, 80, 150],
     tag: 'new-order',           // заменяет предыдущее уведомление того же типа
     renotify: true,             // вибрирует даже если уведомление уже есть
@@ -88,7 +88,7 @@ self.addEventListener('message', e => {
     const { table, count } = e.data;
     self.registration.showNotification('🍺 Новый заказ!', {
       body: `Стол ${table} — ${count} позиц.`,
-      icon: 'icon-192.png',
+      icon: 'icons/icon-192.png',
       vibrate: [150, 80, 150, 80, 150],
       tag: 'new-order',
       renotify: true,
