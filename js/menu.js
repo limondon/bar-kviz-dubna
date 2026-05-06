@@ -26,7 +26,7 @@ export function closeMenuPicker(){
 
 export function renderPickerTabs(){
   const el=document.getElementById('menuPickerTabs');if(!el)return;
-  const menu=S.BUILTIN_MENU_LIVE.length?S.BUILTIN_MENU_LIVE:BUILTIN_MENU;
+  const menu=(S.BUILTIN_MENU_LIVE.length?S.BUILTIN_MENU_LIVE:BUILTIN_MENU).filter(c=>!c.hidden);
   el.innerHTML=menu.map((cat,i)=>`
     <div onclick="switchPickerCat(${i})" style="flex-shrink:0;padding:8px 16px;cursor:pointer;white-space:nowrap;font-size:12px;font-weight:500;font-family:'IBM Plex Mono',monospace;border-radius:100px;min-height:44px;display:flex;align-items:center;border:1px solid ${i===pickerCat?'var(--accent)':'rgba(255,255,255,.08)'};background:${i===pickerCat?'var(--accent)':'transparent'};color:${i===pickerCat?'#000':'var(--muted)'};transition:all .2s;">${cat.cat}</div>
   `).join('');
@@ -44,7 +44,7 @@ export function pickerToggleGroup(group){
 
 export function renderPickerList(){
   const el=document.getElementById('menuPickerList');if(!el)return;
-  const menu=S.BUILTIN_MENU_LIVE.length?S.BUILTIN_MENU_LIVE:BUILTIN_MENU;
+  const menu=(S.BUILTIN_MENU_LIVE.length?S.BUILTIN_MENU_LIVE:BUILTIN_MENU).filter(c=>!c.hidden);
   const cat=menu[pickerCat];if(!cat)return;
   const items=cat.items||[];
   const groups=items.reduce((acc,item)=>{const key=item.group?.trim()?item.group.trim():'__no_group__';if(!acc[key])acc[key]=[];acc[key].push(item);return acc;},{});
@@ -154,6 +154,25 @@ export async function addMenuCategory(){
   document.getElementById('newCatEmoji').value='';document.getElementById('newCatName').value='';
   renderMenuPage();fl('fOk','✅ Категория "'+cat+'" создана');
 }
+export async function updateMenuCat(ci,field,val){
+  const menu=S.BUILTIN_MENU_LIVE.length?S.BUILTIN_MENU_LIVE:BUILTIN_MENU;
+  if(!menu[ci])return;
+  if(field==='emoji'||field==='catname'){
+    const spaceIdx=menu[ci].cat.indexOf(' ');
+    const curEmoji=spaceIdx>0?menu[ci].cat.substring(0,spaceIdx):'';
+    const curName=spaceIdx>0?menu[ci].cat.substring(spaceIdx+1):menu[ci].cat;
+    menu[ci].cat=field==='emoji'?(val.trim()+' '+curName).trim():(curEmoji?(curEmoji+' '+val.trim()):val.trim());
+  } else {
+    menu[ci][field]=val;
+  }
+  await saveMenuToFirebase();
+}
+export async function toggleMenuCatHidden(ci){
+  const menu=S.BUILTIN_MENU_LIVE.length?S.BUILTIN_MENU_LIVE:BUILTIN_MENU;
+  if(!menu[ci])return;
+  menu[ci].hidden=!menu[ci].hidden;
+  await saveMenuToFirebase();renderMenuEditor();
+}
 export async function removeMenuCategory(ci){
   const menu=S.BUILTIN_MENU_LIVE.length?S.BUILTIN_MENU_LIVE:BUILTIN_MENU;
   const ok=await showConfirm(`Удалить категорию "${menu[ci]?.cat}"?`,'Все позиции в ней тоже удалятся.');
@@ -164,14 +183,21 @@ export function renderMenuEditor(){
   const el=document.getElementById('menuEditorList');if(!el)return;
   const menu=S.BUILTIN_MENU_LIVE.length?S.BUILTIN_MENU_LIVE:BUILTIN_MENU;
   if(!menu.length){el.innerHTML=`<div style="color:var(--muted);font-size:12px;padding:8px 0;">Меню пусто</div>`;return;}
-  el.innerHTML=menu.map((cat,ci)=>`
-    <div class="menu-editor-category" draggable="true" data-menu-cat="${ci}" style="margin-bottom:16px;">
+  el.innerHTML=menu.map((cat,ci)=>{
+    const spaceIdx=cat.cat.indexOf(' ');
+    const catEmoji=spaceIdx>0?cat.cat.substring(0,spaceIdx):'';
+    const catName=spaceIdx>0?cat.cat.substring(spaceIdx+1):cat.cat;
+    const isHidden=cat.hidden||false;
+    return`
+    <div class="menu-editor-category" draggable="true" data-menu-cat="${ci}" style="margin-bottom:16px;${isHidden?'opacity:.5;':''}">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;padding-bottom:4px;border-bottom:1px solid var(--border);">
-        <div style="display:flex;align-items:center;gap:8px;">
+        <div style="display:flex;align-items:center;gap:6px;flex:1;min-width:0;">
           <div class="drag-handle" style="width:24px;height:24px;display:flex;align-items:center;justify-content:center;cursor:grab;color:var(--muted);font-size:14px;user-select:none;flex-shrink:0;">≡</div>
-          <div style="font-family:'Bebas Neue',sans-serif;font-size:14px;color:var(--accent);letter-spacing:1px;">${esc(cat.cat)}</div>
+          <input type="text" value="${esc(catEmoji)}" placeholder="🍺" onchange="updateMenuCat(${ci},'emoji',this.value)" style="width:36px;text-align:center;font-size:18px;padding:3px;background:var(--bg);border:1px solid var(--border);border-radius:5px;color:var(--text);">
+          <input type="text" value="${esc(catName)}" onchange="updateMenuCat(${ci},'catname',this.value)" style="flex:1;min-width:0;font-family:'Bebas Neue',sans-serif;font-size:14px;color:var(--accent);letter-spacing:1px;padding:3px 6px;background:var(--bg);border:1px solid var(--border);border-radius:5px;">
         </div>
-        <div style="display:flex;align-items:center;gap:4px;">
+        <div style="display:flex;align-items:center;gap:4px;flex-shrink:0;margin-left:6px;">
+          <button onclick="toggleMenuCatHidden(${ci})" title="${isHidden?'Показать в меню':'Скрыть из меню'}" style="background:transparent;border:1px solid var(--border);cursor:pointer;border-radius:4px;padding:2px 6px;font-size:14px;">${isHidden?'🙈':'👁'}</button>
           ${ci>0?`<button onclick="moveMenuCat(${ci},-1)" style="background:transparent;border:1px solid var(--border);color:var(--muted);cursor:pointer;border-radius:4px;padding:2px 7px;font-size:12px;">▲</button>`:'<span style="width:28px;"></span>'}
           ${ci<menu.length-1?`<button onclick="moveMenuCat(${ci},+1)" style="background:transparent;border:1px solid var(--border);color:var(--muted);cursor:pointer;border-radius:4px;padding:2px 7px;font-size:12px;">▼</button>`:'<span style="width:28px;"></span>'}
           <button onclick="removeMenuCategory(${ci})" style="background:transparent;border:none;color:var(--muted);cursor:pointer;font-size:12px;padding:2px 6px;">🗑</button>
@@ -192,7 +218,7 @@ export function renderMenuEditor(){
         <input type="text" id="newItem_${ci}" placeholder="Новая позиция" style="flex:1;font-family:'IBM Plex Mono',monospace;font-size:12px;padding:5px 8px;background:var(--bg);border:1px dashed var(--border);border-radius:5px;color:var(--text);" onkeydown="if(event.key==='Enter')addMenuCatItem(${ci})">
         <button onclick="addMenuCatItem(${ci})" style="background:rgba(76,175,80,.15);color:var(--green);border:1px solid rgba(76,175,80,.3);border-radius:6px;padding:4px 10px;cursor:pointer;font-size:12px;">+ Добавить</button>
       </div>
-    </div>`).join('');
+    </div>`;}).join('');
 }
 
 // Drag & drop
