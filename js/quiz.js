@@ -27,10 +27,18 @@ function printQuizQR(tokens,base){
   if(!win){fl('fInfo','Разрешите всплывающие окна для печати');return;}
   const tables=Object.entries(tokens);
   const html=`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>QR для квиза — 1708</title>
-  <style>body{font-family:monospace;background:#fff;margin:0;padding:16px;}.grid{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;max-width:900px;margin:0 auto;}.card{border:2px solid #000;border-radius:8px;padding:12px;text-align:center;page-break-inside:avoid;}canvas{display:block;margin:0 auto 8px;}h2{margin:0 0 4px;font-size:18px;}p{margin:0;font-size:11px;color:#555;}@media print{body{padding:0;}}</style>
+  <style>
+    @page{margin:10mm;}
+    *{box-sizing:border-box;}
+    body{font-family:monospace;background:#fff;margin:0;padding:8mm;}
+    .grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8mm;width:100%;}
+    .card{border:2px solid #000;border-radius:6px;padding:8px;text-align:center;page-break-inside:avoid;break-inside:avoid;}
+    canvas{display:block;margin:0 auto 6px;max-width:100%;}
+    h2{margin:0;font-size:16px;font-family:monospace;}
+  </style>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"><\/script></head>
-  <body><div class="grid">${tables.map(([t,tok])=>`<div class="card"><h2>Стол ${t}</h2><div id="qr_${t}"></div><p>${base}guest.html?table=${encodeURIComponent(t)}&token=${tok}</p></div>`).join('')}</div>
-  <script>document.querySelectorAll('[id^="qr_"]').forEach(el=>{const t=el.id.replace('qr_','');const tok={"${tables.map(([t,tok])=>`${t}":"${tok}`).join('","')}"}[t];if(tok)new QRCode(el,{text:'${base}guest.html?table='+encodeURIComponent(t)+'&token='+tok,width:160,height:160});});<\/script></body></html>`;
+  <body><div class="grid">${tables.map(([t,tok])=>`<div class="card"><h2>Стол ${t}</h2><div id="qr_${t}"></div></div>`).join('')}</div>
+  <script>document.querySelectorAll('[id^="qr_"]').forEach(el=>{const t=el.id.replace('qr_','');const tok={"${tables.map(([t,tok])=>`${t}":"${tok}`).join('","')}"}[t];if(tok)new QRCode(el,{text:'${base}guest.html?table='+encodeURIComponent(t)+'&token='+tok,width:150,height:150});});<\/script></body></html>`;
   win.document.write(html);win.document.close();
   setTimeout(()=>win.print(),1000);
 }
