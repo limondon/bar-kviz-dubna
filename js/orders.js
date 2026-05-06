@@ -84,7 +84,13 @@ export async function waiterDeliverAll(orderId){
   const o=S.orders.find(x=>x.id===orderId);if(!o)return;
   let count=0;const upd={};
   o.items.forEach(it=>{
-    if(it.status==='ready'){it.status='done';it.doneAt=Date.now();count++;const fbKey=it._fbKey||it.id;upd[`orders/${orderId}/items/${fbKey}/status`]='done';upd[`orders/${orderId}/items/${fbKey}/doneAt`]=it.doneAt;}
+    if(it.status==='done')return;
+    if(it.status==='ready'||isInstantItem(it.name)){
+      it.status='done';it.doneAt=Date.now();count++;
+      const fbKey=it._fbKey||it.id;
+      upd[`orders/${orderId}/items/${fbKey}/status`]='done';
+      upd[`orders/${orderId}/items/${fbKey}/doneAt`]=it.doneAt;
+    }
   });
   o.status=aggStatus(o.items);
   if(o.status==='done'){o.doneAt=Date.now();upd[`orders/${orderId}/doneAt`]=o.doneAt;}
@@ -105,6 +111,7 @@ export async function reopenOrder(id){
   });
   o.status='new';delete o.doneAt;
   await update(ref(db),upd);
+  await applyStockDeltas(o.items.map(it=>({name:it.name,delta:-it.qty})));
 }
 
 export async function delOrder(id){

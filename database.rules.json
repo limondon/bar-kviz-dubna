@@ -1,0 +1,10 @@
+{
+  "rules": {
+    "orders":      { ".read": "auth != null", ".write": "auth != null" },
+    "tables":      { ".read": "auth != null", ".write": "auth != null" },
+    "menu2":       { ".read": "auth != null", ".write": "auth != null" },
+    "config":      { ".read": "auth != null", ".write": "auth != null" },
+    "waiterCalls": { ".read": "auth != null", ".write": "auth != null" },
+    "quiz_tokens": { ".read": "auth != null", ".write": "auth != null" }
+  }
+}
