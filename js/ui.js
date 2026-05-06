@@ -3,7 +3,7 @@ import{db,ref,set,onValue}from'./firebase.js';
 import{fl}from'./utils.js';
 import{updateNotifBtn,enableNotifications}from'./notifications.js';
 import{renderAll,buildQuickTableBtns,renderStats}from'./render.js';
-import{renderTables,renderClosed,showQR}from'./tables.js';
+import{renderTables,renderClosed,showQR,openQrPicker}from'./tables.js';
 import{renderMenuPage}from'./menu.js';
 import{renderCalls}from'./calls.js';
 
@@ -114,7 +114,7 @@ export function applyRole(){
   hnotif.style.display=(S.role==='barman'||S.role==='admin')?'flex':'none';
   if(S.role==='barman'||S.role==='admin')updateNotifBtn();
   let hQR=document.getElementById('hQR');
-  if(!hQR){hQR=document.createElement('span');hQR.id='hQR';hQR.onclick=()=>showQR(S.qf);hQR.style.cssText='font-size:20px;cursor:pointer;padding:4px 6px;min-height:44px;display:none;align-items:center;';hQR.title='Показать QR гостям';hQR.textContent='📱';document.querySelector('.hright').insertBefore(hQR,document.querySelector('.dot'));}
+  if(!hQR){hQR=document.createElement('span');hQR.id='hQR';hQR.onclick=()=>{if(!S.qf||S.qf==='all')openQrPicker();else showQR(S.qf);};hQR.style.cssText='font-size:20px;cursor:pointer;padding:4px 6px;min-height:44px;display:none;align-items:center;';hQR.title='Показать QR гостям';hQR.textContent='📱';document.querySelector('.hright').insertBefore(hQR,document.querySelector('.dot'));}
   hQR.style.display=(S.role==='waiter'||S.role==='admin')?'flex':'none';
 }
 
