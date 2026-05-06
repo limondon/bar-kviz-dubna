@@ -249,6 +249,22 @@ document.addEventListener('drop',async e=>{
   if(cat&&dragMenuCategorySource){const toIndex=Number(cat.dataset.menuCat),fromIndex=dragMenuCategorySource.ci;e.preventDefault();cat.classList.remove('drag-over');dragMenuCategorySource=null;if(fromIndex===toIndex)return;reorderMenuCategory(fromIndex,toIndex);await saveMenuToFirebase();renderMenuEditor();}
 });
 
+export async function restructureLemonades(){
+  const menu=S.BUILTIN_MENU_LIVE.length?S.BUILTIN_MENU_LIVE:BUILTIN_MENU;
+  const ci=menu.findIndex(c=>c.cat.toLowerCase().includes('лимонад'));
+  if(ci===-1){fl('fInfo','Категория лимонадов не найдена');return;}
+  const origItems=menu[ci].items;
+  const newItems=[];
+  origItems.forEach(item=>{
+    const baseName=item.name.replace(/\s*\d[\.,]\d\s*л?\.?$/i,'').trim();
+    newItems.push({name:baseName+' 0.5л',price:400,group:baseName});
+    newItems.push({name:baseName+' 1.0л',price:700,group:baseName});
+  });
+  menu[ci].items=newItems;
+  await saveMenuToFirebase();
+  renderMenuPage();
+  fl('fOk','✅ Лимонады обновлены — '+origItems.length+' вкусов × 2 размера');
+}
 export function openMenuEditor(){const overlay=document.getElementById('menuEditorOverlay');if(!overlay)return;renderMenuEditor();overlay.classList.remove('hidden');}
 export function closeMenuEditor(){document.getElementById('menuEditorOverlay')?.classList.add('hidden');}
 export async function updateMenuItem(){}
