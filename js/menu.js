@@ -56,7 +56,7 @@ export function renderPickerList(){
     const stock=item.stock===undefined||item.stock===null||item.stock===''?null:Math.max(0,parseInt(item.stock,10)||0);
     const isSoldOut=stock===0;
     const stockLabel=stock===null?'':(isSoldOut?'Нет в наличии':`Осталось: ${stock}`);
-    const showNote=hasQty&&item.note;
+    const showNote=false;
     const pad=compact?'10px 20px 10px 32px':'13px 20px';
     let btn;
     if(isSoldOut)btn=`<span style="font-size:10px;color:var(--red);background:rgba(229,57,53,.12);border:1px solid rgba(229,57,53,.25);border-radius:8px;padding:2px 7px;">Нет</span>`;
