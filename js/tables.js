@@ -128,7 +128,7 @@ export function toggleBill(cardId){
 // ─── QR CODE ─────────────────────────────────────────
 export async function showQR(tNum){
   const date=todayStr();const meta=getTMeta(date,tNum);
-  await fbUpdate('tables',S.tablesMeta);
+  await fbUpdate('tables/'+date+'_'+tNum,meta);
   const token=meta.token;
   const base=location.href.substring(0,location.href.lastIndexOf('/')+1);
   const guestUrl=`${base}guest.html?table=${encodeURIComponent(tNum)}&token=${token}`;
