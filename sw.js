@@ -1,10 +1,24 @@
-const CACHE_NAME = 'bar-v1';
+const CACHE_NAME = 'bar-v2';
 const ASSETS = [
   './',
   'index.html',
+  'guest.html',
   'style.css',
-  'main.js',
   'manifest.json',
+  'js/main.js',
+  'js/state.js',
+  'js/firebase.js',
+  'js/utils.js',
+  'js/render.js',
+  'js/orders.js',
+  'js/tables.js',
+  'js/menu.js',
+  'js/ui.js',
+  'js/stock.js',
+  'js/notifications.js',
+  'js/calls.js',
+  'js/quiz.js',
+  'js/menu-data.js',
 ];
 
 // ═══════════════════════════
