@@ -7,11 +7,13 @@ const QUIZ_TABLES=[1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,'PS1','PS2'];
 export async function prepareQuiz(){
   const ok=await showConfirm('🎯 Подготовить квиз?','Будут сгенерированы QR-коды для всех столов.','ПОДГОТОВИТЬ');
   if(!ok)return;
+  const win=window.open('','_blank');
+  if(!win){fl('fInfo','Разрешите всплывающие окна для печати');return;}
   const base=location.href.substring(0,location.href.lastIndexOf('/')+1);
   const upd={};const tokens={};
   QUIZ_TABLES.forEach(t=>{const tok=genToken();tokens[t]=tok;upd['quiz_tokens/'+tok]={table:String(t),createdAt:Date.now()};});
   await update(ref(db),upd);
-  printQuizQR(tokens,base);
+  printQuizQR(win,tokens,base);
   fl('fOk','✅ Квиз подготовлен — QR открываются для печати');
 }
 
@@ -22,8 +24,7 @@ export async function finishQuiz(){
   fl('fOk','✅ Квиз завершён — все QR деактивированы');
 }
 
-function printQuizQR(tokens,base){
-  const win=window.open('','_blank');
+function printQuizQR(win,tokens,base){
   if(!win){fl('fInfo','Разрешите всплывающие окна для печати');return;}
   const tables=Object.entries(tokens);
   const html=`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>QR для квиза — 1708</title>
