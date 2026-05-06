@@ -144,8 +144,9 @@ export async function showQR(tNum){
     for(let r=0;r<cells;r++)for(let c=0;c<cells;c++)if(qr.isDark(r,c))ctx.fillRect(offset+c*cellSize,offset+r*cellSize,cellSize-1,cellSize-1);
   }catch(e){ctx.fillStyle='#fff';ctx.fillRect(0,0,220,220);ctx.fillStyle='#333';ctx.font='11px monospace';ctx.textAlign='center';ctx.fillText('QR недоступен',110,110);}
   document.getElementById('qrOverlay').classList.remove('hidden');
+  document.body.classList.add('modal-open');
 }
-export function closeQrModal(){document.getElementById('qrOverlay').classList.add('hidden');}
+export function closeQrModal(){document.getElementById('qrOverlay').classList.add('hidden');document.body.classList.remove('modal-open');}
 export function openQrPicker(){
   const TABLES=[1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,'PS1','PS2'];
   const overlay=document.getElementById('qrPickerOverlay');
@@ -155,8 +156,9 @@ export function openQrPicker(){
     `<button onclick="showQR('${t}');closeQrPicker();" style="min-height:52px;padding:8px 12px;background:var(--card);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:'Bebas Neue',sans-serif;font-size:20px;cursor:pointer;">${t}</button>`
   ).join('');
   overlay.classList.remove('hidden');
+  document.body.classList.add('modal-open');
 }
-export function closeQrPicker(){document.getElementById('qrPickerOverlay')?.classList.add('hidden');}
+export function closeQrPicker(){document.getElementById('qrPickerOverlay')?.classList.add('hidden');document.body.classList.remove('modal-open');}
 
 // ─── RENDER TABLES ────────────────────────────────────
 export function shiftDate(n){S.viewDate=shiftDS(S.viewDate,n);renderTables();}

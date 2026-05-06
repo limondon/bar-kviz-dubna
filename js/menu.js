@@ -265,8 +265,8 @@ export async function restructureLemonades(){
   renderMenuPage();
   fl('fOk','✅ Лимонады обновлены — '+origItems.length+' вкусов × 2 размера');
 }
-export function openMenuEditor(){const overlay=document.getElementById('menuEditorOverlay');if(!overlay)return;renderMenuEditor();overlay.classList.remove('hidden');}
-export function closeMenuEditor(){document.getElementById('menuEditorOverlay')?.classList.add('hidden');}
+export function openMenuEditor(){const overlay=document.getElementById('menuEditorOverlay');if(!overlay)return;renderMenuEditor();overlay.classList.remove('hidden');document.body.classList.add('modal-open');}
+export function closeMenuEditor(){document.getElementById('menuEditorOverlay')?.classList.add('hidden');document.body.classList.remove('modal-open');}
 export async function updateMenuItem(){}
 export async function removeMenuItem(){}
 export async function addNewMenuItem(){fl('fInfo','Используй кнопку "+ Добавить" в нужной категории');}

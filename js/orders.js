@@ -147,6 +147,7 @@ export function openEditModal(orderId,billMode=false){
   }
   renderEditItemsList(itemsToEdit.map(it=>({qty:it.qty,name:it.name})));
   document.getElementById('editOverlay').classList.remove('hidden');
+  document.body.classList.add('modal-open');
 }
 
 function renderEditItemsList(items){
@@ -178,6 +179,7 @@ function syncEditItemsToTextarea(items){
 
 export function closeEditModal(){
   document.getElementById('editOverlay').classList.add('hidden');
+  document.body.classList.remove('modal-open');
   S.editOrderId=null;S.editBillMode=false;
 }
 

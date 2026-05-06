@@ -457,6 +457,7 @@ textarea{resize:vertical;min-height:clamp(70px,18vw,100px);}
   background:var(--surface);border:1px solid var(--border);
   border-radius:16px;padding:var(--sp-xl) var(--sp-lg);
   width:100%;max-width:460px;max-height:90vh;overflow-y:auto;
+  overscroll-behavior:contain;touch-action:pan-y;
 }
 .edit-modal h2{
   font-family:'Bebas Neue',sans-serif;font-size:var(--fs-xl);
