@@ -36,7 +36,7 @@ export async function addOrder(){
         const itemsObj={};items.forEach(it=>itemsObj[it.id]=it);
         const newOrder={id:newRef.key,table:tNum,items:itemsObj,note,priority:prio,status:'new',createdAt:Date.now(),num,date,sid};
         await update(ref(db,'orders/'+newRef.key),newOrder);
-        await update(ref(db,'tables'),S.tablesMeta);
+        await update(ref(db,'tables/'+date+'_'+tNum),existingMeta);
         await deductMenuStock(items);
         fl('fOk','✅ Заказ #'+num+' — Стол '+tNum+' ('+items.length+' поз.)');
         ['inpTable','inpItems','inpNote'].forEach(id=>document.getElementById(id).value='');
