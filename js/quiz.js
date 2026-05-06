@@ -1,4 +1,4 @@
-import{db,ref,update}from'./firebase.js';
+import{db,ref,update,remove}from'./firebase.js';
 import{fl,showConfirm}from'./utils.js';
 import{genToken}from'./tables.js';
 
@@ -18,7 +18,7 @@ export async function prepareQuiz(){
 export async function finishQuiz(){
   const ok=await showConfirm('🏁 Завершить квиз?','Все QR-коды квиза станут недействительными.','ЗАВЕРШИТЬ');
   if(!ok)return;
-  await update(ref(db,'quiz_tokens'),null);
+  await remove(ref(db,'quiz_tokens'));
   fl('fOk','✅ Квиз завершён — все QR деактивированы');
 }
 
