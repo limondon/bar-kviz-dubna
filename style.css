@@ -86,7 +86,6 @@ header{
   background:var(--surface);border-bottom:2px solid var(--accent);
   padding:var(--sp-sm) var(--sp-md);
   display:flex;align-items:center;justify-content:space-between;
-  position:sticky;top:0;z-index:100;
   height:var(--header-h);
   flex-shrink:0;
 }
@@ -117,7 +116,7 @@ header{
   display:flex;background:var(--surface);
   border-bottom:1px solid var(--border);
   overflow-x:auto;scrollbar-width:none;
-  position:sticky;top:var(--header-h);z-index:99;
+  position:sticky;top:0;z-index:99;
 }
 .tabs::-webkit-scrollbar{display:none;}
 .tab{
