@@ -72,6 +72,18 @@ export function setBadge(id,val){
 }
 export function setEl(id,val){const el=document.getElementById(id);if(el)el.textContent=val;}
 
+let _scrollY=0;
+export function lockScroll(){
+  _scrollY=window.scrollY;
+  document.body.classList.add('modal-open');
+  document.body.style.top=`-${_scrollY}px`;
+}
+export function unlockScroll(){
+  document.body.classList.remove('modal-open');
+  document.body.style.top='';
+  window.scrollTo(0,_scrollY);
+}
+
 let ft={};
 export function fl(id,msg){
   const el=document.getElementById(id);if(!el)return;

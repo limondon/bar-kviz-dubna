@@ -1,6 +1,6 @@
 import{S}from'./state.js';
 import{db,ref,update,fbUpdate}from'./firebase.js';
-import{todayStr,dateLbl,shiftDS,fmt,fmt2,esc,pl,fl,showConfirm}from'./utils.js';
+import{todayStr,dateLbl,shiftDS,fmt,fmt2,esc,pl,fl,showConfirm,lockScroll,unlockScroll}from'./utils.js';
 import{BUILTIN_MENU}from'./menu-data.js';
 
 // ─── TABLE META ───────────────────────────────────────
@@ -144,9 +144,9 @@ export async function showQR(tNum){
     for(let r=0;r<cells;r++)for(let c=0;c<cells;c++)if(qr.isDark(r,c))ctx.fillRect(offset+c*cellSize,offset+r*cellSize,cellSize-1,cellSize-1);
   }catch(e){ctx.fillStyle='#fff';ctx.fillRect(0,0,220,220);ctx.fillStyle='#333';ctx.font='11px monospace';ctx.textAlign='center';ctx.fillText('QR недоступен',110,110);}
   document.getElementById('qrOverlay').classList.remove('hidden');
-  document.body.classList.add('modal-open');
+  lockScroll();
 }
-export function closeQrModal(){document.getElementById('qrOverlay').classList.add('hidden');document.body.classList.remove('modal-open');}
+export function closeQrModal(){document.getElementById('qrOverlay').classList.add('hidden');unlockScroll();}
 export function openQrPicker(){
   const TABLES=[1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,'PS1','PS2'];
   const overlay=document.getElementById('qrPickerOverlay');
@@ -156,9 +156,9 @@ export function openQrPicker(){
     `<button onclick="showQR('${t}');closeQrPicker();" style="min-height:52px;padding:8px 12px;background:var(--card);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:'Bebas Neue',sans-serif;font-size:20px;cursor:pointer;">${t}</button>`
   ).join('');
   overlay.classList.remove('hidden');
-  document.body.classList.add('modal-open');
+  lockScroll();
 }
-export function closeQrPicker(){document.getElementById('qrPickerOverlay')?.classList.add('hidden');document.body.classList.remove('modal-open');}
+export function closeQrPicker(){document.getElementById('qrPickerOverlay')?.classList.add('hidden');unlockScroll();}
 
 // ─── RENDER TABLES ────────────────────────────────────
 export function shiftDate(n){S.viewDate=shiftDS(S.viewDate,n);renderTables();}
@@ -217,7 +217,7 @@ export function renderTables(){
       ?`<div style="display:flex;gap:var(--sp-sm);flex-wrap:wrap;align-items:center;"><button class="btn-pay" data-action="closeTable" data-date="${S.viewDate}" data-tnum="${tNum}" data-sid="${sid}">💳 ЗАКРЫТЬ / ОПЛАЧЕН</button>${(S.role==='waiter'||S.role==='admin')?`<button onclick="showQR('${tNum}')" style="min-height:var(--touch);padding:0 14px;background:rgba(245,166,35,.12);color:var(--accent);border:1px solid rgba(245,166,35,.3);border-radius:8px;font-family:'IBM Plex Mono',monospace;font-size:13px;font-weight:600;cursor:pointer;">📱 QR</button>`:''}</div>`
       :`<button class="btn-reopen" data-action="reopenTable" data-date="${S.viewDate}" data-tnum="${tNum}">↩ Переоткрыть</button>`;
     const mgmtBtns=`<button class="btn-sm bu" data-action="renameTable" data-date="${S.viewDate}" data-tnum="${tNum}" data-sid="${sid}">✏️ Переименовать</button><button class="btn-sm bx" data-action="deleteTable" data-date="${S.viewDate}" data-tnum="${tNum}" data-sid="${sid}">🗑 Удалить стол</button>`;
-    const loggedBtn=(S.role==='admin'||S.role==='waiter')&&isOpen?loggedAt?`<button class="btn-sm" style="background:rgba(76,175,80,.1);color:var(--green);border:1px solid rgba(76,175,80,.3);" data-action="unlogTable" data-date="${S.viewDate}" data-tnum="${tNum}">✅ Вбито в ${fmt2(loggedAt)} — отменить</button>`:`<button class="btn-sm bu" data-action="logTable" data-date="${S.viewDate}" data-tnum="${tNum}">📋 Вбили в систему</button>`:'';
+    const loggedBtn=(S.role==='admin'||S.role==='waiter')&&isOpen?loggedAt?`<div style="display:flex;gap:6px;flex-wrap:wrap;"><button class="btn-sm bu" data-action="logTable" data-date="${S.viewDate}" data-tnum="${tNum}">📋 Вбили дозаказ</button><button class="btn-sm" style="background:rgba(76,175,80,.1);color:var(--green);border:1px solid rgba(76,175,80,.3);" data-action="unlogTable" data-date="${S.viewDate}" data-tnum="${tNum}">✅ Вбито ${fmt2(loggedAt)} — отменить</button></div>`:`<button class="btn-sm bu" data-action="logTable" data-date="${S.viewDate}" data-tnum="${tNum}">📋 Вбили в систему</button>`:'';
     const cardId='tb-'+tNum+'_'+sid;
     return`<div class="table-bill ${isOpen?'':'closed'}" id="${cardId}"><div class="tb-header" onclick="toggleBill('${cardId}')"><div class="tb-left"><div class="tb-num"><small>СТОЛ</small>${tNum}</div><div class="tb-meta"><b>${tOrders.length} ${pl(tOrders.length,'заказ','заказа','заказов')} · ${totalItems} позиц.</b> с ${fmt(tOrders[0]?.createdAt)}${closedLbl}</div></div><div style="display:flex;align-items:center;gap:8px;"><span class="tb-st ${isOpen?'tb-open':'tb-closed'}">${isOpen?'🟢 Открыт':'✅ Оплачен'}</span><span class="tb-chev" id="chev-${cardId}">▼</span></div></div><div class="tb-body" id="body-${cardId}">${ordersHtml}<div class="tb-summary"><h4>📋 ИТОГО</h4>${sumLines||'<div style="color:var(--muted);font-size:12px">Нет позиций</div>'}</div><div class="tb-actions">${actions}${loggedBtn}${mgmtBtns}</div></div></div>`;
   }).join('');

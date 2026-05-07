@@ -1,7 +1,7 @@
 import{S}from'./state.js';
 import{db,ref,set,update}from'./firebase.js';
 import{BUILTIN_MENU}from'./menu-data.js';
-import{esc,fl,showConfirm,parseItems}from'./utils.js';
+import{esc,fl,showConfirm,parseItems,lockScroll,unlockScroll}from'./utils.js';
 
 // ─── PICKER STATE ─────────────────────────────────────
 let pickerState={};
@@ -17,11 +17,11 @@ export function openMenuPicker(){
   }
   renderPickerTabs();renderPickerList();updatePickerBtn();
   document.getElementById('menuPickerOverlay').classList.remove('hidden');
-  document.body.classList.add('modal-open');
+  lockScroll();
 }
 export function closeMenuPicker(){
   document.getElementById('menuPickerOverlay').classList.add('hidden');
-  document.body.classList.remove('modal-open');
+  unlockScroll();
 }
 
 export function renderPickerTabs(){
@@ -265,8 +265,8 @@ export async function restructureLemonades(){
   renderMenuPage();
   fl('fOk','✅ Лимонады обновлены — '+origItems.length+' вкусов × 2 размера');
 }
-export function openMenuEditor(){const overlay=document.getElementById('menuEditorOverlay');if(!overlay)return;renderMenuEditor();overlay.classList.remove('hidden');document.body.classList.add('modal-open');}
-export function closeMenuEditor(){document.getElementById('menuEditorOverlay')?.classList.add('hidden');document.body.classList.remove('modal-open');}
+export function openMenuEditor(){const overlay=document.getElementById('menuEditorOverlay');if(!overlay)return;renderMenuEditor();overlay.classList.remove('hidden');lockScroll();}
+export function closeMenuEditor(){document.getElementById('menuEditorOverlay')?.classList.add('hidden');unlockScroll();}
 export async function updateMenuItem(){}
 export async function removeMenuItem(){}
 export async function addNewMenuItem(){fl('fInfo','Используй кнопку "+ Добавить" в нужной категории');}

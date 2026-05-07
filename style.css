@@ -40,7 +40,7 @@ body{
   overscroll-behavior:contain;
 }
 .overlay.hidden{display:none;}
-body.modal-open{overflow:hidden;touch-action:none;}
+body.modal-open{position:fixed;overflow:hidden;touch-action:none;width:100%;}
 .modal{
   background:var(--surface);border:1px solid var(--border);
   border-radius:16px;padding:var(--sp-xl) var(--sp-lg);

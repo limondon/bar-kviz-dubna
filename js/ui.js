@@ -1,6 +1,6 @@
 import{S}from'./state.js';
 import{db,ref,set,onValue}from'./firebase.js';
-import{fl}from'./utils.js';
+import{fl,lockScroll,unlockScroll}from'./utils.js';
 import{updateNotifBtn,enableNotifications}from'./notifications.js';
 import{renderAll,buildQuickTableBtns,renderStats}from'./render.js';
 import{renderTables,renderClosed,showQR,openQrPicker}from'./tables.js';
@@ -89,9 +89,9 @@ export function openRoleModal(){
   if(S.role){const m={waiter:'rw',barman:'rb',admin:'ra'};document.querySelector('.rc.'+m[S.role])?.classList.add('sel');}
   document.getElementById('roleClose').style.display=S.role?'block':'none';
   document.getElementById('roleOverlay').classList.remove('hidden');
-  document.body.classList.add('modal-open');
+  lockScroll();
 }
-export function closeRoleModal(){document.getElementById('roleOverlay').classList.add('hidden');document.body.classList.remove('modal-open');}
+export function closeRoleModal(){document.getElementById('roleOverlay').classList.add('hidden');unlockScroll();}
 export function pickRole(r){
   S.pendingRole=r;
   document.querySelectorAll('.rc').forEach(c=>c.classList.remove('sel'));

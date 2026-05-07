@@ -1,6 +1,6 @@
 import{S}from'./state.js';
 import{db,ref,push,update,set,remove}from'./firebase.js';
-import{parseItems,aggStatus,esc,fl,showConfirm,todayStr}from'./utils.js';
+import{parseItems,aggStatus,esc,fl,showConfirm,todayStr,lockScroll,unlockScroll}from'./utils.js';
 import{applyStockDeltas,deductMenuStock}from'./stock.js';
 import{getTMeta}from'./tables.js';
 import{buildQuickTableBtns,isInstantItem}from'./render.js';
@@ -130,6 +130,8 @@ let _editItems=[];
 
 export function openEditModal(orderId,billMode=false){
   const o=S.orders.find(x=>x.id===orderId);if(!o)return;
+  const activeItems=(o.items||[]).filter(it=>it.status!=='done');
+  if(!billMode&&activeItems.length===0)billMode=true;
   S.editOrderId=orderId;S.editBillMode=billMode;
   document.getElementById('editPriority').value=o.priority||'normal';
   document.getElementById('editNote').value=o.note||'';
@@ -147,7 +149,7 @@ export function openEditModal(orderId,billMode=false){
   }
   renderEditItemsList(itemsToEdit.map(it=>({qty:it.qty,name:it.name})));
   document.getElementById('editOverlay').classList.remove('hidden');
-  document.body.classList.add('modal-open');
+  lockScroll();
 }
 
 function renderEditItemsList(items){
@@ -179,7 +181,7 @@ function syncEditItemsToTextarea(items){
 
 export function closeEditModal(){
   document.getElementById('editOverlay').classList.add('hidden');
-  document.body.classList.remove('modal-open');
+  unlockScroll();
   S.editOrderId=null;S.editBillMode=false;
 }
 
