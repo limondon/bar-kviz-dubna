@@ -70,7 +70,8 @@ export function renderPickerList(){
   };
 
   const anyTeaSelected=isTea&&items.some(i=>(pickerState[i.name]?.qty||0)>0);
-  const cupsBar=anyTeaSelected?`<div style="display:flex;align-items:center;gap:12px;padding:14px 20px;background:rgba(245,166,35,.06);border-top:1px solid rgba(245,166,35,.2);position:sticky;bottom:0;"><span style="font-size:13px;color:var(--muted);flex:1;">🫖 ${pl(pickerCups,'Кружка','Кружки','Кружек')} на стол</span><div data-cups-total-action="minus" style="width:36px;height:36px;min-width:36px;border-radius:50%;border:1.5px solid var(--border);color:var(--muted);font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center;">−</div><span style="font-size:20px;font-weight:700;font-family:'Bebas Neue',sans-serif;min-width:28px;text-align:center;color:var(--accent);">${pickerCups}</span><div data-cups-total-action="plus" style="width:36px;height:36px;min-width:36px;border-radius:50%;border:1.5px solid var(--accent);color:var(--accent);font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center;">+</div></div>`:'';
+  const cupsBarEl=document.getElementById('menuPickerCupsBar');
+  if(cupsBarEl)cupsBarEl.innerHTML=anyTeaSelected?`<div style="display:flex;align-items:center;gap:12px;padding:12px 20px;background:rgba(245,166,35,.06);border-top:1px solid rgba(245,166,35,.2);"><span style="font-size:13px;color:var(--muted);flex:1;">🫖 ${pl(pickerCups,'Кружка','Кружки','Кружек')} на стол</span><div data-cups-total-action="minus" style="width:36px;height:36px;min-width:36px;border-radius:50%;border:1.5px solid var(--border);color:var(--muted);font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center;">−</div><span style="font-size:20px;font-weight:700;font-family:'Bebas Neue',sans-serif;min-width:28px;text-align:center;color:var(--accent);">${pickerCups}</span><div data-cups-total-action="plus" style="width:36px;height:36px;min-width:36px;border-radius:50%;border:1.5px solid var(--accent);color:var(--accent);font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center;">+</div></div>`:'';
   el.innerHTML=orderedGroups.map(group=>{
     if(group==='__no_group__')return groups[group].map(i=>renderSingleItem(i,false)).join('');
     const isOpen=pickerOpenGroups.has(group);
@@ -79,7 +80,7 @@ export function renderPickerList(){
     const allOut=groupItems.every(i=>{const s=i.stock===undefined||i.stock===null||i.stock===''?null:parseInt(i.stock,10);return s!==null&&s===0;});
     const sub=allOut?'Нет в наличии':cartTotal>0?`Выбрано: ${cartTotal}`:`${groupItems.length} вариантов`;
     return`<div onclick="pickerToggleGroup('${esc(group)}')" style="display:flex;align-items:center;padding:13px 20px;cursor:pointer;border-bottom:1px solid rgba(255,255,255,.045);"><div style="flex:1;"><div style="font-size:15px;color:var(--text);margin-bottom:3px;">${esc(group)}</div><div style="font-size:11px;color:var(--muted);">${sub}</div></div><span style="font-size:13px;color:var(--accent);display:inline-block;transition:transform .2s;${isOpen?'transform:rotate(180deg);':''}">▼</span></div>${isOpen?`<div>${groupItems.map(i=>renderSingleItem(i,true)).join('')}</div>`:''}`;
-  }).join('')+cupsBar;
+  }).join('');
 }
 
 export function updatePickerBtn(){
