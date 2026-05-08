@@ -116,7 +116,7 @@ export function renderAll(){
   const closedTablesSet=new Set(S.orders.filter(o=>o.date===today).filter(o=>{const meta=getTMeta(today,o.table);const sid=o.sid||'default';return(meta.sid===sid||(!meta.sid&&sid==='default'))&&meta.status==='closed';}).map(o=>o.table));
   setBadge('bD',closedTablesSet.size);
   setEl('sN',active.length);setEl('sNew',newCnt);setEl('sP',inProgress);setEl('sR',readyCnt);
-  const tables=[...new Set(active.map(o=>String(o.table)))].sort((a,b)=>{const an=parseInt(a),bn=parseInt(b);if(!isNaN(an)&&!isNaN(bn))return an-bn;if(!isNaN(an))return-1;if(!isNaN(bn))return 1;return a.localeCompare(b);});
+  const tables=[...new Set(active.filter(o=>o.table!=null&&o.table!==''&&o.table!=='undefined').map(o=>String(o.table)))].sort((a,b)=>{const an=parseInt(a),bn=parseInt(b);if(!isNaN(an)&&!isNaN(bn))return an-bn;if(!isNaN(an))return-1;if(!isNaN(bn))return 1;return a.localeCompare(b);});
   const qfEl=document.getElementById('qFilters');
   if(qfEl)qfEl.innerHTML=mkFb('all','Все')+mkFb('new','🆕 Новые')+mkFb('making','🍹 В работе')+mkFb('ready','🟢 Готово')+tables.map(t=>mkFb('t'+t,'Стол '+t)).join('');
   const ql=document.getElementById('qList');
