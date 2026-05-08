@@ -70,7 +70,7 @@ export function renderPickerList(){
   };
 
   const anyTeaSelected=isTea&&items.some(i=>(pickerState[i.name]?.qty||0)>0);
-  const cupsBar=anyTeaSelected?`<div style="display:flex;align-items:center;gap:12px;padding:14px 20px;background:rgba(245,166,35,.06);border-top:1px solid rgba(245,166,35,.2);position:sticky;bottom:0;"><span style="font-size:13px;color:var(--muted);flex:1;">🫖 Стаканов на стол:</span><div data-cups-total-action="minus" style="width:36px;height:36px;min-width:36px;border-radius:50%;border:1.5px solid var(--border);color:var(--muted);font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center;">−</div><span style="font-size:20px;font-weight:700;font-family:'Bebas Neue',sans-serif;min-width:28px;text-align:center;color:var(--accent);">${pickerCups}</span><div data-cups-total-action="plus" style="width:36px;height:36px;min-width:36px;border-radius:50%;border:1.5px solid var(--accent);color:var(--accent);font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center;">+</div></div>`:'';
+  const cupsBar=anyTeaSelected?`<div style="display:flex;align-items:center;gap:12px;padding:14px 20px;background:rgba(245,166,35,.06);border-top:1px solid rgba(245,166,35,.2);position:sticky;bottom:0;"><span style="font-size:13px;color:var(--muted);flex:1;">🫖 Кружек на стол</span><div data-cups-total-action="minus" style="width:36px;height:36px;min-width:36px;border-radius:50%;border:1.5px solid var(--border);color:var(--muted);font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center;">−</div><span style="font-size:20px;font-weight:700;font-family:'Bebas Neue',sans-serif;min-width:28px;text-align:center;color:var(--accent);">${pickerCups}</span><div data-cups-total-action="plus" style="width:36px;height:36px;min-width:36px;border-radius:50%;border:1.5px solid var(--accent);color:var(--accent);font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center;">+</div></div>`:'';
   el.innerHTML=orderedGroups.map(group=>{
     if(group==='__no_group__')return groups[group].map(i=>renderSingleItem(i,false)).join('');
     const isOpen=pickerOpenGroups.has(group);
@@ -102,7 +102,7 @@ export function confirmMenuPicker(){
       }
     });
   });
-  if(pickerCups>0)lines.push(`${pickerCups} Стаканов`);
+  if(pickerCups>0)lines.push(`${pickerCups} Кружек`);
   const ta=document.getElementById('inpItems');if(ta)ta.value=lines.join('\n');
   closeMenuPicker();
 }
