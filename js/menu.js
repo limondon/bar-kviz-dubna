@@ -92,10 +92,12 @@ export function confirmMenuPicker(){
     cat.items.forEach(item=>{
       const st=pickerState[item.name];
       if(st&&st.qty>0){
-        lines.push(`${st.qty} ${item.name}`);
+        let name=item.name;
         if(isLeafTea&&st.addons){
-          TEA_ADDONS.forEach(a=>{if(st.addons[a])lines.push(`1 ${a} (добавка к чаю)`);});
+          const selected=TEA_ADDONS.filter(a=>st.addons[a]);
+          if(selected.length)name+=` + ${selected.map(a=>a.toLowerCase()).join(', ')}`;
         }
+        lines.push(`${st.qty} ${name}`);
       }
     });
   });

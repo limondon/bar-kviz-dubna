@@ -18,21 +18,14 @@ export function isInstantItem(name){
 
 // ─── ITEM ROWS ────────────────────────────────────────
 export function barmanItemRow(orderId,it){
-  const isAddon=it.name.includes('добавка к чаю');
   const cls={new:'',making:'is-making',ready:'is-ready',done:'is-done'}[it.status]||'';
   const ico={new:'⬜',making:'🍹',ready:'🟢',done:'✅'}[it.status]||'⬜';
   const oid=esc(orderId),iid=esc(it._fbKey||it.id);
   let btns='';
-  if(isAddon){
-    if(it.status==='new'||it.status==='making'){btns=`<button class="ib ib-barready" data-oid="${oid}" data-iid="${iid}" data-st="ready">🟢 Добавил</button>`;}
-    else if(it.status==='ready'){btns=`<span class="item-status-chip isc-ready">✓ готово</span>`;}
-  } else {
-    if(it.status==='new'){btns=`<button class="ib ib-start" data-oid="${oid}" data-iid="${iid}" data-st="making">🍹 Начал</button><button class="ib ib-barready" data-oid="${oid}" data-iid="${iid}" data-st="ready">🟢 Готово</button>`;}
-    else if(it.status==='making'){btns=`<button class="ib ib-barready" data-oid="${oid}" data-iid="${iid}" data-st="ready">🟢 Готово</button><button class="ib ib-undo" data-oid="${oid}" data-iid="${iid}" data-st="new">↩</button>`;}
-    else if(it.status==='ready'){btns=`<span class="item-status-chip isc-ready">✓ ждёт офиц.</span><button class="ib ib-undo" data-oid="${oid}" data-iid="${iid}" data-st="making">↩</button>`;}
-  }
-  const addonStyle=isAddon?'padding-left:20px;opacity:.85;font-size:12px;':'';
-  return`<div class="item-row ${cls}" style="${addonStyle}"><span class="item-ico">${ico}</span><span class="item-qty">${it.qty}</span><span class="item-name">${esc(it.name.replace(' (добавка к чаю)',''))}</span>${isAddon?'<span style="font-size:10px;color:var(--muted);margin-left:4px;">↳ к чаю</span>':''}<div class="item-btns">${btns}</div></div>`;
+  if(it.status==='new'){btns=`<button class="ib ib-start" data-oid="${oid}" data-iid="${iid}" data-st="making">🍹 Начал</button><button class="ib ib-barready" data-oid="${oid}" data-iid="${iid}" data-st="ready">🟢 Готово</button>`;}
+  else if(it.status==='making'){btns=`<button class="ib ib-barready" data-oid="${oid}" data-iid="${iid}" data-st="ready">🟢 Готово</button><button class="ib ib-undo" data-oid="${oid}" data-iid="${iid}" data-st="new">↩</button>`;}
+  else if(it.status==='ready'){btns=`<span class="item-status-chip isc-ready">✓ ждёт офиц.</span><button class="ib ib-undo" data-oid="${oid}" data-iid="${iid}" data-st="making">↩</button>`;}
+  return`<div class="item-row ${cls}"><span class="item-ico">${ico}</span><span class="item-qty">${it.qty}</span><span class="item-name">${esc(it.name)}</span><div class="item-btns">${btns}</div></div>`;
 }
 
 export function waiterItemRow(orderId,it){
