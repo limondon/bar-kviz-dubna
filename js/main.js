@@ -34,6 +34,7 @@ async function loadAll(){
     if(raw){
       const cleanupUpd={};
       Object.entries(raw).forEach(([orderId,o])=>{
+        if(!o.table||o.table==='undefined'||o.table===''){cleanupUpd[`orders/${orderId}`]=null;return;}
         if(o.items&&typeof o.items==='object'&&!Array.isArray(o.items)){
           Object.entries(o.items).forEach(([k,v])=>{if(!v||typeof v!=='object'||!v.name)cleanupUpd[`orders/${orderId}/items/${k}`]=null;});
         }
