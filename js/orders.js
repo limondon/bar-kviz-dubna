@@ -130,13 +130,12 @@ let _editItems=[];
 
 export function openEditModal(orderId,billMode=false){
   const o=S.orders.find(x=>x.id===orderId);if(!o)return;
+  const doneItems=(o.items||[]).filter(it=>it.status==='done');
   const activeItems=(o.items||[]).filter(it=>it.status!=='done');
   if(!billMode&&activeItems.length===0)billMode=true;
   S.editOrderId=orderId;S.editBillMode=billMode;
   document.getElementById('editPriority').value=o.priority||'normal';
   document.getElementById('editNote').value=o.note||'';
-  const doneItems=(o.items||[]).filter(it=>it.status==='done');
-  const activeItems=(o.items||[]).filter(it=>it.status!=='done');
   const sub=document.getElementById('editSub');
   let itemsToEdit;
   if(billMode){
