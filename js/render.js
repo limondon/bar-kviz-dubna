@@ -29,10 +29,11 @@ export function barmanItemRow(orderId,it){
 }
 
 export function waiterItemRow(orderId,it){
-  const cls={new:'',making:'is-making',ready:'is-ready',done:'is-done'}[it.status]||'';
+  const instant=isInstantItem(it.name);
+  const needsDeliver=it.status==='ready'||(instant&&it.status!=='done');
+  const cls=it.status==='done'?'is-done':needsDeliver?'is-ready':(it.status==='making'&&!instant?'is-making':'');
   const ico={new:'⬜',making:'🍹',ready:'🟢',done:'✅'}[it.status]||'⬜';
   const oid=esc(orderId),iid=esc(it._fbKey||it.id);
-  const instant=isInstantItem(it.name);
   let btns='';
   if(it.status==='ready'){btns=`<button class="ib ib-deliver" data-oid="${oid}" data-iid="${iid}" data-action="deliver">✅ Отнёс</button>`;}
   else if(it.status==='making'){btns=instant?`<button class="ib ib-deliver" data-oid="${oid}" data-iid="${iid}" data-action="deliver">✅ Отнёс</button>`:`<span class="item-status-chip isc-making">🍹 готовится</span>`;}
