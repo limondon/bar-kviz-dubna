@@ -120,6 +120,20 @@
   </div>
 </div>
 
+<!-- CORKAGE MODAL -->
+<div class="overlay hidden" id="corkageOverlay">
+  <div class="modal" style="max-width:360px;">
+    <h2>🍾 ПРОБКОВЫЙ СБОР</h2>
+    <p id="corkageSub" style="color:var(--muted);font-size:12px;margin-bottom:16px;"></p>
+    <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:16px;">
+      <button onclick="selectCorkage('Пиво, Лимонады, Напитки',100)" style="min-height:52px;padding:10px 16px;background:rgba(245,166,35,.1);color:var(--accent);border:1px solid rgba(245,166,35,.4);border-radius:10px;font-family:'IBM Plex Mono',monospace;font-size:13px;font-weight:600;cursor:pointer;text-align:left;">🍺 Пиво / Лимонады / Напитки<br><span style="font-size:18px;font-family:'Bebas Neue',sans-serif;letter-spacing:1px;">100 ₽</span></button>
+      <button onclick="selectCorkage('Вино, Шампанское',700)" style="min-height:52px;padding:10px 16px;background:rgba(156,39,176,.1);color:var(--purple);border:1px solid rgba(156,39,176,.4);border-radius:10px;font-family:'IBM Plex Mono',monospace;font-size:13px;font-weight:600;cursor:pointer;text-align:left;">🍷 Вино / Шампанское<br><span style="font-size:18px;font-family:'Bebas Neue',sans-serif;letter-spacing:1px;">700 ₽</span></button>
+      <button onclick="selectCorkage('Крепкий алкоголь',1000)" style="min-height:52px;padding:10px 16px;background:rgba(229,57,53,.1);color:var(--red);border:1px solid rgba(229,57,53,.4);border-radius:10px;font-family:'IBM Plex Mono',monospace;font-size:13px;font-weight:600;cursor:pointer;text-align:left;">🥃 Крепкий алкоголь<br><span style="font-size:18px;font-family:'Bebas Neue',sans-serif;letter-spacing:1px;">1000 ₽</span></button>
+    </div>
+    <span class="modal-close" onclick="closeCorkageModal()">Отмена</span>
+  </div>
+</div>
+
 <!-- PASSWORD MODAL -->
 <div class="overlay hidden" id="passwordOverlay">
   <div class="modal" style="max-width:360px;">

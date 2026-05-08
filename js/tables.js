@@ -1,5 +1,5 @@
 import{S}from'./state.js';
-import{db,ref,update,fbUpdate}from'./firebase.js';
+import{db,ref,update,fbUpdate,push}from'./firebase.js';
 import{todayStr,dateLbl,shiftDS,fmt,fmt2,esc,pl,fl,showConfirm,lockScroll,unlockScroll}from'./utils.js';
 import{BUILTIN_MENU}from'./menu-data.js';
 
@@ -160,6 +160,32 @@ export function openQrPicker(){
 }
 export function closeQrPicker(){document.getElementById('qrPickerOverlay')?.classList.add('hidden');unlockScroll();}
 
+// ─── CORKAGE FEE ─────────────────────────────────────
+let _corkageTable=null;
+export function openCorkagePicker(tNum){
+  _corkageTable=tNum;
+  const sub=document.getElementById('corkageSub');
+  if(sub)sub.textContent='Стол '+tNum;
+  document.getElementById('corkageOverlay').classList.remove('hidden');
+  lockScroll();
+}
+export function closeCorkageModal(){
+  document.getElementById('corkageOverlay').classList.add('hidden');
+  unlockScroll();_corkageTable=null;
+}
+export async function selectCorkage(label,price){
+  if(!_corkageTable)return;
+  const tNum=_corkageTable;closeCorkageModal();
+  const date=todayStr();const meta=getTMeta(date,tNum);
+  const sid=meta.sid||(meta.sid=Date.now().toString(36));
+  const num=(S.orders.length?Math.max(...S.orders.map(o=>o.num||0)):0)+1;
+  const newRef=push(ref(db,'orders'));
+  const itemId=Date.now().toString(36)+'_cork';
+  const newOrder={id:newRef.key,table:tNum,items:{[itemId]:{id:itemId,name:`Пробковый сбор — ${label}`,qty:1,status:'done',doneAt:Date.now()}},note:`${price}₽`,priority:'normal',status:'done',doneAt:Date.now(),createdAt:Date.now(),num,date,sid};
+  await update(ref(db,'orders/'+newRef.key),newOrder);
+  fl('fOk',`✅ Пробковый сбор ${price}₽ — Стол ${tNum}`);
+}
+
 // ─── RENDER TABLES ────────────────────────────────────
 export function shiftDate(n){S.viewDate=shiftDS(S.viewDate,n);renderTables();}
 export function jumpDate(d){S.viewDate=d;renderTables();}
@@ -218,8 +244,9 @@ export function renderTables(){
       :`<button class="btn-reopen" data-action="reopenTable" data-date="${S.viewDate}" data-tnum="${tNum}">↩ Переоткрыть</button>`;
     const mgmtBtns=`<button class="btn-sm bu" data-action="renameTable" data-date="${S.viewDate}" data-tnum="${tNum}" data-sid="${sid}">✏️ Переименовать</button><button class="btn-sm bx" data-action="deleteTable" data-date="${S.viewDate}" data-tnum="${tNum}" data-sid="${sid}">🗑 Удалить стол</button>`;
     const loggedBtn=(S.role==='admin'||S.role==='waiter')&&isOpen?loggedAt?`<div style="display:flex;gap:6px;flex-wrap:wrap;"><button class="btn-sm bu" data-action="logTable" data-date="${S.viewDate}" data-tnum="${tNum}">📋 Вбили дозаказ</button><button class="btn-sm" style="background:rgba(76,175,80,.1);color:var(--green);border:1px solid rgba(76,175,80,.3);" data-action="unlogTable" data-date="${S.viewDate}" data-tnum="${tNum}">✅ Вбито ${fmt2(loggedAt)} — отменить</button></div>`:`<button class="btn-sm bu" data-action="logTable" data-date="${S.viewDate}" data-tnum="${tNum}">📋 Вбили в систему</button>`:'';
+    const corkageBtn=(S.role==='admin'||S.role==='waiter')&&isOpen?`<button class="btn-sm" onclick="openCorkagePicker('${tNum}')" style="background:rgba(156,39,176,.1);color:var(--purple);border:1px solid rgba(156,39,176,.3);">🍾 Пробка</button>`:'';
     const cardId='tb-'+tNum+'_'+sid;
-    return`<div class="table-bill ${isOpen?'':'closed'}" id="${cardId}"><div class="tb-header" onclick="toggleBill('${cardId}')"><div class="tb-left"><div class="tb-num"><small>СТОЛ</small>${tNum}</div><div class="tb-meta"><b>${tOrders.length} ${pl(tOrders.length,'заказ','заказа','заказов')} · ${totalItems} позиц.</b> с ${fmt(tOrders[0]?.createdAt)}${closedLbl}</div></div><div style="display:flex;align-items:center;gap:8px;"><span class="tb-st ${isOpen?'tb-open':'tb-closed'}">${isOpen?'🟢 Открыт':'✅ Оплачен'}</span><span class="tb-chev" id="chev-${cardId}">▼</span></div></div><div class="tb-body" id="body-${cardId}">${ordersHtml}<div class="tb-summary"><h4>📋 ИТОГО</h4>${sumLines||'<div style="color:var(--muted);font-size:12px">Нет позиций</div>'}</div><div class="tb-actions">${actions}${loggedBtn}${mgmtBtns}</div></div></div>`;
+    return`<div class="table-bill ${isOpen?'':'closed'}" id="${cardId}"><div class="tb-header" onclick="toggleBill('${cardId}')"><div class="tb-left"><div class="tb-num"><small>СТОЛ</small>${tNum}</div><div class="tb-meta"><b>${tOrders.length} ${pl(tOrders.length,'заказ','заказа','заказов')} · ${totalItems} позиц.</b> с ${fmt(tOrders[0]?.createdAt)}${closedLbl}</div></div><div style="display:flex;align-items:center;gap:8px;"><span class="tb-st ${isOpen?'tb-open':'tb-closed'}">${isOpen?'🟢 Открыт':'✅ Оплачен'}</span><span class="tb-chev" id="chev-${cardId}">▼</span></div></div><div class="tb-body" id="body-${cardId}">${ordersHtml}<div class="tb-summary"><h4>📋 ИТОГО</h4>${sumLines||'<div style="color:var(--muted);font-size:12px">Нет позиций</div>'}</div><div class="tb-actions">${actions}${loggedBtn}${corkageBtn}${mgmtBtns}</div></div></div>`;
   }).join('');
 }
 
