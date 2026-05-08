@@ -5,6 +5,7 @@ import{renderTables,renderClosed,getTMeta,getItemPrice}from'./tables.js';
 
 // ─── INSTANT ITEMS (пиво/напитки/закуски) ────────────
 export function isInstantItem(name){
+  if(name.includes('добавка к чаю'))return true;
   const menu=S.BUILTIN_MENU_LIVE.length?S.BUILTIN_MENU_LIVE:BUILTIN_MENU;
   const key=name.trim().toLowerCase();
   for(const cat of menu){
