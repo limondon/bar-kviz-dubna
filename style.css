@@ -198,8 +198,8 @@ textarea{resize:vertical;min-height:clamp(70px,18vw,100px);}
 
 .oc-new    {border-left:3px solid var(--accent)!important;}
 .oc-partial{border-left:3px solid var(--blue)!important;}
-.oc-ready  {border-left:3px solid var(--green)!important;animation:slideIn .3s,glow 1.6s ease-in-out infinite;}
-@keyframes glow{0%,100%{box-shadow:0 0 10px rgba(76,175,80,.12)}50%{box-shadow:0 0 24px rgba(76,175,80,.42)}}
+.oc-ready  {border-left:5px solid var(--green)!important;background:rgba(76,175,80,.08)!important;animation:slideIn .3s,glow 1.6s ease-in-out infinite;}
+@keyframes glow{0%,100%{box-shadow:0 0 0 1px rgba(76,175,80,.25)}50%{box-shadow:0 0 0 3px rgba(76,175,80,.55),0 0 20px rgba(76,175,80,.3)}}
 .oc-done   {opacity:.46;border-left:3px solid #333!important;}
 .p-urgent.oc-new,.p-urgent.oc-partial{border-left-color:var(--red)!important;}
 

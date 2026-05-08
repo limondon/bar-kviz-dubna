@@ -183,12 +183,14 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
 .flash.err{background:var(--red);color:#fff;}
 
 .conn-dot{width:6px;height:6px;border-radius:50%;background:var(--green);position:fixed;top:14px;right:14px;z-index:100;}
+.offline-banner{display:none;position:fixed;top:0;left:0;right:0;z-index:999;background:#c62828;color:#fff;text-align:center;padding:10px 16px;font-size:13px;font-weight:600;font-family:'IBM Plex Mono',monospace;}
 </style>
 </head>
 <body>
 <div class="stripe-bg"></div>
 <div class="ambient"></div>
 <div class="conn-dot" id="connDot"></div>
+<div class="offline-banner" id="offlineBanner">⚠️ Нет соединения с интернетом — проверьте Wi-Fi или мобильный интернет и обновите страницу</div>
 
 <div id="screen-loading">
   <div class="load-spinner"></div>
@@ -680,7 +682,7 @@ function showApp(){
   if(sl)sl.textContent=tableNum;
   initStickyHeader();
 }
-function setConn(ok){document.getElementById('connDot').style.background=ok?'var(--green)':'var(--red)';}
+function setConn(ok){document.getElementById('connDot').style.background=ok?'var(--green)':'var(--red)';document.getElementById('offlineBanner').style.display=ok?'none':'block';}
 function flash(msg,isErr){
   const el=document.getElementById('flash');
   el.textContent=msg;el.classList.toggle('err',!!isErr);el.classList.add('show');

@@ -1,5 +1,5 @@
 import{S}from'./state.js';
-import{db,ref,update}from'./firebase.js';
+import{db,ref,update,remove}from'./firebase.js';
 import{fl,showConfirm,setBadge,fmt,esc}from'./utils.js';
 
 export function renderCalls(){
@@ -19,7 +19,7 @@ export function renderCalls(){
       <div style="background:var(--card);border:1px solid ${c.status==='pending'?'rgba(245,166,35,.4)':'var(--border)'};border-radius:var(--radius);padding:var(--sp-md);margin-bottom:var(--sp-sm);display:flex;align-items:center;justify-content:space-between;gap:var(--sp-sm);">
         <div>
           <div style="font-family:'Bebas Neue',sans-serif;font-size:22px;color:var(--accent);">СТОЛ ${c.table}</div>
-          <div style="font-size:11px;color:var(--muted);">${fmt(c.calledAt)}</div>
+          <div style="font-size:11px;color:var(--muted);">${new Date(c.calledAt).toLocaleDateString('ru',{day:'2-digit',month:'2-digit'})} ${fmt(c.calledAt)}</div>
         </div>
         <div style="display:flex;align-items:center;gap:8px;">
           ${c.status==='pending'
@@ -37,6 +37,6 @@ export async function checkInCall(callId){
 export async function clearCalls(){
   const ok=await showConfirm('Очистить историю вызовов?','Все вызовы будут удалены.');
   if(!ok)return;
-  await update(ref(db,'waiterCalls'),null);
+  await remove(ref(db,'waiterCalls'));
   S.waiterCallsData={};renderCalls();
 }

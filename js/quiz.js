@@ -39,7 +39,7 @@ function printQuizQR(win,tokens,base){
   </style>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"><\/script></head>
   <body><div class="grid">${tables.map(([t,tok])=>`<div class="card"><h2>Стол ${t}</h2><div id="qr_${t}"></div></div>`).join('')}</div>
-  <script>document.querySelectorAll('[id^="qr_"]').forEach(el=>{const t=el.id.replace('qr_','');const tok={"${tables.map(([t,tok])=>`${t}":"${tok}`).join('","')}"}[t];if(tok)new QRCode(el,{text:'${base}guest.html?table='+encodeURIComponent(t)+'&token='+tok,width:150,height:150});});<\/script></body></html>`;
+  <script>const _tok=${JSON.stringify(Object.fromEntries(tables))};document.querySelectorAll('[id^="qr_"]').forEach(el=>{const t=el.id.replace('qr_','');const tok=_tok[t];if(tok)new QRCode(el,{text:'${base}guest.html?table='+encodeURIComponent(t)+'&token='+tok,width:150,height:150});});<\/script></body></html>`;
   win.document.write(html);win.document.close();
   setTimeout(()=>win.print(),1000);
 }
