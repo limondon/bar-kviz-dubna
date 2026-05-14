@@ -169,6 +169,9 @@ Object.assign(window,{
   if(!checkAuth()){openPasswordModal();}
   else{const sr=localStorage.getItem('bar_role');if(sr){S.role=sr;applyRole();}else openRoleModal();}
 
+  const splash=document.getElementById('splashScreen');
+  if(splash){splash.style.transition='opacity .3s';splash.style.opacity='0';setTimeout(()=>splash.remove(),320);}
+
   await loadAll();
   startPoll();
 })();
