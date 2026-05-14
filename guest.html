@@ -295,9 +295,13 @@ const auth=getAuth(fbApp);
 
 let tableNum=null, token=null, sessionId=null;
 let menuData=[]; // [{cat, items:[{name,price,stock?,group?}]}]
-let cart={};     // {key: {name,price,qty}}
+let cart={};     // {key: {name,price,qty,addons:{},option:null}}
 let activeCat=0;
 let openGroups=new Set();
+let guestCups=0;
+const G_TEA_ADDONS=['Чабрец','Лимон','Мята'];
+function isLeafTeaCat(cat){return cat?.cat?.toLowerCase().includes('лист');}
+function isTeaCat(cat){return cat?.cat?.toLowerCase().includes('чай');}
 let flashTmr=null;
 
 // ─── BOOT ───────────────────────────────────────────
@@ -414,15 +418,26 @@ function renderMenu(){
       if(doneGroups.has(item.group))return;
       doneGroups.add(item.group);
       const groupItems=items.filter(i=>i.group===item.group);
-      html.push(renderGroup(item.group,groupItems));
+      html.push(renderGroup(item.group,groupItems,cat));
     } else {
-      html.push(renderItem(item));
+      html.push(renderItem(item,cat));
     }
   });
+  // Кружки для чайных категорий
+  const isTea=isTeaCat(cat);
+  const anyTeaSelected=isTea&&items.some(i=>(cart[iKey(i)]?.qty||0)>0);
+  if(anyTeaSelected){
+    html.push(`<div style="display:flex;align-items:center;gap:12px;padding:14px 16px;background:rgba(245,166,35,.1);border-top:2px solid rgba(245,166,35,.35);border-radius:0 0 12px 12px;margin-top:4px;">
+      <div style="flex:1;"><div style="font-family:'Bebas Neue',sans-serif;font-size:15px;letter-spacing:1px;color:#f5a623;">☕ КРУЖКИ НА СТОЛ</div><div style="font-size:11px;color:#888;margin-top:1px;">сколько кружек принести</div></div>
+      <div onclick="adjustCups(-1)" style="width:38px;height:38px;min-width:38px;border-radius:50%;border:1.5px solid #444;color:#ccc;font-size:20px;cursor:pointer;display:flex;align-items:center;justify-content:center;">−</div>
+      <span style="font-size:26px;font-weight:700;font-family:'Bebas Neue',sans-serif;min-width:28px;text-align:center;color:#f5a623;">${guestCups}</span>
+      <div onclick="adjustCups(1)" style="width:38px;height:38px;min-width:38px;border-radius:50%;border:1.5px solid #f5a623;color:#f5a623;font-size:20px;cursor:pointer;display:flex;align-items:center;justify-content:center;">+</div>
+    </div>`);
+  }
   el.innerHTML=html.join('');
 }
 
-function renderItem(item){
+function renderItem(item,cat){
   const key=iKey(item);
   const qty=cart[key]?.qty||0;
   const out=isOut(item);
@@ -438,6 +453,10 @@ function renderItem(item){
     <div class="qty-num">${qty}</div>
     <div class="qty-btn${more?'':' dis'}" onclick="addItem('${esc(key)}')">+</div>
   </div>`;
+  const addons=cart[key]?.addons||{};
+  const addonHtml=qty>0&&isLeafTeaCat(cat)?`<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;">${G_TEA_ADDONS.map(a=>{const sel=addons[a];return`<div onclick="toggleAddon('${esc(key)}','${a}')" style="padding:4px 10px;border-radius:16px;font-size:12px;cursor:pointer;background:${sel?'#f5a623':'rgba(255,255,255,.07)'};color:${sel?'#000':'#888'};border:1px solid ${sel?'#f5a623':'rgba(255,255,255,.15)'};">${a} <span style="font-size:11px;">+50₽</span></div>`;}).join('')}</div>`:'';
+  const selOpt=cart[key]?.option||null;
+  const optHtml=qty>0&&item.options?.length?`<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;">${item.options.map(opt=>{const sel=selOpt===opt;return`<div onclick="selectOption('${esc(key)}','${esc(opt)}')" style="padding:4px 10px;border-radius:16px;font-size:12px;cursor:pointer;background:${sel?'#4caf50':'rgba(255,255,255,.07)'};color:${sel?'#000':'#888'};border:1px solid ${sel?'#4caf50':'rgba(255,255,255,.15)'};">${esc(opt)}</div>`;}).join('')}</div>`:'';
   return`<div class="menu-item${out?' unavail':''}">
     <div class="item-info">
       <div class="item-name">${esc(item.name)}</div>
@@ -446,12 +465,13 @@ function renderItem(item){
         <span class="item-price">${fmt(item.price||0)}</span>
         ${stockHtml}
       </div>
+      ${addonHtml}${optHtml}
     </div>
     <div class="item-btn">${btn}</div>
   </div>`;
 }
 
-function renderGroup(groupName,groupItems){
+function renderGroup(groupName,groupItems,cat){
   const isOpen=openGroups.has(groupName);
   const cartTotal=groupItems.reduce((s,i)=>s+(cart[iKey(i)]?.qty||0),0);
   const allOut=groupItems.every(i=>isOut(i));
@@ -493,10 +513,12 @@ function renderGroup(groupName,groupItems){
 
 // ─── CART ACTIONS ────────────────────────────────────
 function addItem(key){
-  const item=findItem(key);
-  if(!item)return;
+  const item=findItem(key);if(!item)return;
   if(!canAdd(item,key)){flash('Больше нет в наличии',true);return;}
-  cart[key]={name:item.name,price:item.price||0,qty:(cart[key]?.qty||0)+1};
+  if(!cart[key])cart[key]={name:item.name,price:item.price||0,qty:0,addons:{},option:null};
+  cart[key].qty++;
+  const cat=menuData[activeCat];
+  if(isTeaCat(cat)&&guestCups===0)guestCups=1;
   updateCartBar();renderMenu();
 }
 function remItem(key){
@@ -504,6 +526,21 @@ function remItem(key){
   cart[key].qty--;
   if(cart[key].qty<=0)delete cart[key];
   updateCartBar();renderMenu();
+}
+function toggleAddon(key,addon){
+  if(!cart[key])return;
+  if(!cart[key].addons)cart[key].addons={};
+  cart[key].addons[addon]=!cart[key].addons[addon];
+  renderMenu();
+}
+function selectOption(key,val){
+  if(!cart[key])return;
+  cart[key].option=cart[key].option===val?null:val;
+  renderMenu();
+}
+function adjustCups(delta){
+  guestCups=Math.max(0,guestCups+delta);
+  renderMenu();
 }
 function cQty(key,delta){
   if(!cart[key])return;
@@ -613,8 +650,12 @@ async function placeOrder(){
     const items={};
     entries.forEach(([key,ci],i)=>{
       const id=Date.now().toString(36)+'_'+i+'_'+Math.random().toString(36).slice(2,5);
-      items[id]={id,name:ci.name,qty:ci.qty,status:'new'};
+      let name=ci.name;
+      if(ci.addons){const sel=G_TEA_ADDONS.filter(a=>ci.addons[a]);if(sel.length)name+=` + ${sel.map(a=>a.toLowerCase()).join(', ')}`;}
+      if(ci.option)name+=` — ${ci.option}`;
+      items[id]={id,name,qty:ci.qty,status:'new'};
     });
+    if(guestCups>0){const cid=Date.now().toString(36)+'_cups';const pl=guestCups===1?'кружка':guestCups<5?'кружки':'кружек';items[cid]={id:cid,name:`${guestCups} ${pl}`,qty:1,status:'new'};};
     const newRef=push(ref(db,'orders'));
     await update(ref(db,'orders/'+newRef.key),{
       id:newRef.key,table:parseInt(tableNum)||tableNum,

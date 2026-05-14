@@ -1,0 +1,33 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git -C \"c:\\\\Users\\\\Андрей\\\\Desktop\\\\bar-kviz-dubna-main\" status)",
+      "Bash(git -C \"c:\\\\Users\\\\Андрей\\\\Desktop\\\\bar-kviz-dubna-main\" diff --stat)",
+      "Bash(git -C \"c:\\\\Users\\\\Андрей\\\\Desktop\\\\bar-kviz-dubna-main\" log --oneline -5)",
+      "Bash(git -C \"c:\\\\Users\\\\Андрей\\\\Desktop\\\\bar-kviz-dubna-main\" add js/orders.js)",
+      "Bash(git -C 'c:\\\\Users\\\\Андрей\\\\Desktop\\\\bar-kviz-dubna-main' commit -m ' *)",
+      "Bash(git -C \"c:\\\\Users\\\\Андрей\\\\Desktop\\\\bar-kviz-dubna-main\" push origin main)",
+      "Bash(Get-ChildItem -Recurse -Path \"c:\\\\Users\\\\Андрей\\\\Desktop\\\\bar-kviz-dubna-main\" -File)",
+      "Bash(Select-Object -Property FullName)",
+      "Bash(git -C \"c:\\\\Users\\\\Андрей\\\\Desktop\\\\bar-kviz-dubna-main\" log --oneline)",
+      "Bash(git add *)",
+      "Bash(git commit *)",
+      "Bash(git push *)",
+      "Bash(git -C \"c:\\\\Users\\\\Андрей\\\\Desktop\\\\bar-kviz-dubna-main\" log --all --grep=\"Co-Authored-By\" --format=\"%H %s\")",
+      "Bash(git -C \"c:\\\\Users\\\\Андрей\\\\Desktop\\\\bar-kviz-dubna-main\" branch --all --contains 4656544)",
+      "Bash(git -C \"c:\\\\Users\\\\Андрей\\\\Desktop\\\\bar-kviz-dubna-main\" tag --contains 4656544)",
+      "Bash(git -C \"c:\\\\Users\\\\Андрей\\\\Desktop\\\\bar-kviz-dubna-main\" reflog expire --expire=now --all)",
+      "Bash(git -C \"c:\\\\Users\\\\Андрей\\\\Desktop\\\\bar-kviz-dubna-main\" gc --prune=now)",
+      "Bash(git -C \"c:\\\\Users\\\\Андрей\\\\Desktop\\\\bar-kviz-dubna-main\" fsck --unreachable)",
+      "Bash(git -C \"c:\\\\Users\\\\Андрей\\\\Desktop\\\\bar-kviz-dubna-main\" cat-file -t 465654472104440e5a4b0d69fefd869fe3df2cde)",
+      "Bash(git -C \"c:\\\\Users\\\\Андрей\\\\Desktop\\\\bar-kviz-dubna-main\" show-ref)",
+      "Bash(rm c:/Users/Андрей/Desktop/bar-kviz-dubna-main/.git/ORIG_HEAD)",
+      "Bash(git -C \"c:/Users/Андрей/Desktop/bar-kviz-dubna-main\" gc --prune=now)",
+      "Bash(git -C \"c:/Users/Андрей/Desktop/bar-kviz-dubna-main\" log --all --grep=\"Co-Authored-By\" --format=\"%H %s\")",
+      "Bash(xargs -I{} git show {} --format=\"%H%n%B\" -s)",
+      "Bash(node -c js/menu.js)",
+      "Bash(node -c js/tables.js)",
+      "Bash(node -c js/main.js)"
+    ]
+  }
+}

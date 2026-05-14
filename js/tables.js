@@ -230,7 +230,7 @@ export async function confirmCorkage(){
     const t=CORKAGE_TYPES[i];
     const newRef=push(ref(db,'orders'));
     const itemId=Date.now().toString(36)+'_cork'+i;
-    const newOrder={id:newRef.key,table:tNum,items:{[itemId]:{id:itemId,name:`Пробковый сбор — ${t.label}`,qty:q,status:'done',doneAt:Date.now()}},note:`${t.price*q}₽`,priority:'normal',status:'done',doneAt:Date.now(),createdAt:Date.now(),num,date,sid};
+    const newOrder={id:newRef.key,table:tNum,items:{[itemId]:{id:itemId,name:`Пробковый сбор — ${t.label}`,qty:q,price:t.price,status:'done',doneAt:Date.now()}},note:`${t.price*q}₽`,priority:'normal',status:'done',doneAt:Date.now(),createdAt:Date.now(),num,date,sid};
     await update(ref(db,'orders/'+newRef.key),newOrder);
     total+=t.price*q;num++;
   }
@@ -248,6 +248,16 @@ export function renderTables(){
   const allDates=[...new Set(S.orders.map(o=>o.date).filter(Boolean))].sort((a,b)=>b.localeCompare(a));
   const qnEl=document.getElementById('dateQuickNav');
   if(qnEl){const btnStyle=`padding:5px 12px;border-radius:18px;font-size:11px;font-family:IBM Plex Mono,monospace;cursor:pointer;white-space:nowrap;flex-shrink:0;`;qnEl.innerHTML=allDates.map(d=>`<button onclick="jumpDate('${d}')" style="${btnStyle}border:1px solid ${d===S.viewDate?'var(--accent)':'var(--border)'};background:${d===S.viewDate?'var(--accent)':'transparent'};color:${d===S.viewDate?'#000':'var(--muted)'};">${dateLbl(d)}</button>`).join('');}
+
+  const qcEl=document.getElementById('quickCorkageBar');
+  if(qcEl){
+    if(S.role==='admin'||S.role==='waiter'){
+      const tNums=['1','2','3','4','5','6','7','8','9','10','11','12','13','14','15','16','17','PS1','PS2'];
+      qcEl.innerHTML=`<div style="background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:10px 12px;margin-bottom:12px;"><div style="font-size:11px;color:var(--muted);margin-bottom:8px;letter-spacing:.5px;text-transform:uppercase;">🍾 Быстрая пробка</div><div style="display:flex;gap:6px;flex-wrap:wrap;">${tNums.map(t=>`<button onclick="openCorkagePicker('${t}')" style="padding:5px 10px;border-radius:8px;border:1px solid var(--border);background:transparent;color:var(--muted);font-family:'IBM Plex Mono',monospace;font-size:12px;cursor:pointer;">${t}</button>`).join('')}</div></div>`;
+    } else {
+      qcEl.innerHTML='';
+    }
+  }
 
   const dayOrders=S.orders.filter(o=>o.date===S.viewDate);
   const sessionMap={};
@@ -269,7 +279,7 @@ export function renderTables(){
     const isCurrentSession=meta.sid===sid||(!meta.sid&&sid==='default');
     const isOpen=isCurrentSession&&meta.status!=='closed';
     const sumMap={};
-    tOrders.forEach(o=>(o.items||[]).forEach(it=>{const k=it.name.trim().toLowerCase();if(!sumMap[k])sumMap[k]={name:it.name,qty:0,price:getItemPrice(it.name)};sumMap[k].qty+=it.qty;}));
+    tOrders.forEach(o=>(o.items||[]).forEach(it=>{const k=it.name.trim().toLowerCase();if(!sumMap[k])sumMap[k]={name:it.name,qty:0,price:it.price??getItemPrice(it.name)};sumMap[k].qty+=it.qty;}));
     const sumItems=Object.values(sumMap).sort((a,b)=>a.name.localeCompare(b.name));
     const totalSum=sumItems.reduce((s,x)=>s+(x.price*x.qty),0);
     const sumLines=sumItems.map(x=>`<div class="sum-line"><span class="sum-item">${esc(x.name)}</span><span class="sum-cnt">${x.qty} шт.${x.price?` · <b style="color:var(--text)">${x.price*x.qty}₽</b>`:''}</span></div>`).join('')+(totalSum?`<div class="sum-line" style="border-top:2px solid var(--border);margin-top:6px;padding-top:6px;"><span class="sum-item" style="font-family:'Bebas Neue',sans-serif;letter-spacing:1px;color:var(--accent);">ИТОГО</span><span class="sum-cnt" style="font-family:'Bebas Neue',sans-serif;font-size:20px;color:var(--accent);">${totalSum}₽</span></div>`:'');
@@ -329,7 +339,7 @@ export function renderClosed(){
     const closedSessionHist=(meta.closedSessions||[]).find(s=>s.sid===sid);
     const closedAt=isCurrent?meta.closedAt:closedSessionHist?.closedAt;
     const sumMap={},pendingMap={};
-    tOrders.forEach(o=>(o.items||[]).forEach(it=>{const k=it.name.trim().toLowerCase();if(it.status==='done'){if(!sumMap[k])sumMap[k]={name:it.name,qty:0,price:getItemPrice(it.name)};sumMap[k].qty+=it.qty;}else{if(!pendingMap[k])pendingMap[k]={name:it.name,qty:0};pendingMap[k].qty+=it.qty;}}));
+    tOrders.forEach(o=>(o.items||[]).forEach(it=>{const k=it.name.trim().toLowerCase();if(it.status==='done'){if(!sumMap[k])sumMap[k]={name:it.name,qty:0,price:it.price??getItemPrice(it.name)};sumMap[k].qty+=it.qty;}else{if(!pendingMap[k])pendingMap[k]={name:it.name,qty:0};pendingMap[k].qty+=it.qty;}}));
     const doneItems=Object.values(sumMap).sort((a,b)=>a.name.localeCompare(b.name));
     const totalSum=doneItems.reduce((s,x)=>s+(x.price*x.qty),0);
     const sumLines=[...doneItems.map(x=>`<div class="sum-line"><span class="sum-item">${esc(x.name)}</span><span class="sum-cnt">${x.qty} шт.${x.price?` · <b style="color:var(--text)">${x.price*x.qty}₽</b>`:''}</span></div>`),...Object.values(pendingMap).sort((a,b)=>a.name.localeCompare(b.name)).map(x=>`<div class="sum-line" style="opacity:.4;text-decoration:line-through;"><span class="sum-item">${esc(x.name)}</span><span class="sum-cnt">${x.qty} шт.</span></div>`),totalSum?`<div class="sum-line" style="border-top:2px solid var(--border);margin-top:6px;padding-top:6px;"><span class="sum-item" style="font-family:'Bebas Neue',sans-serif;letter-spacing:1px;color:var(--accent);">ИТОГО</span><span class="sum-cnt" style="font-family:'Bebas Neue',sans-serif;font-size:20px;color:var(--accent);">${totalSum}₽</span></div>`:'' ].join('');

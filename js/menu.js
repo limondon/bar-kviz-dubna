@@ -66,7 +66,7 @@ export function renderPickerList(){
     if(isSoldOut)btn=`<span style="font-size:10px;color:var(--red);background:rgba(229,57,53,.12);border:1px solid rgba(229,57,53,.25);border-radius:8px;padding:2px 7px;">Нет</span>`;
     else if(!hasQty)btn=`<div data-picker-action="plus" data-item="${esc(item.name)}" data-stock-limit="${stock===null?'':stock}" style="width:40px;height:40px;min-width:44px;min-height:44px;border-radius:50%;border:1.5px solid var(--accent);background:transparent;color:var(--accent);font-size:22px;cursor:pointer;display:flex;align-items:center;justify-content:center;">+</div>`;
     else btn=`<div style="display:flex;align-items:center;background:rgba(245,166,35,.12);border:1.5px solid var(--accent);border-radius:100px;overflow:hidden;"><div data-picker-action="minus" data-item="${esc(item.name)}" style="width:40px;height:40px;min-width:44px;min-height:44px;display:flex;align-items:center;justify-content:center;background:transparent;color:var(--accent);font-size:20px;cursor:pointer;">−</div><div style="font-size:14px;font-weight:600;color:var(--text);min-width:24px;text-align:center;font-family:'IBM Plex Mono',monospace;">${st.qty}</div><div data-picker-action="plus" data-item="${esc(item.name)}" data-stock-limit="${stock===null?'':stock}" style="width:40px;height:40px;min-width:44px;min-height:44px;display:flex;align-items:center;justify-content:center;background:transparent;color:${atLimit?'var(--muted)':'var(--accent)'};font-size:20px;cursor:${atLimit?'default':'pointer'};font-weight:700;opacity:${atLimit?'.3':'1'};">+</div></div>`;
-    const addonHtml=isLeafTea&&hasQty?`<div style="display:flex;gap:14px;flex-wrap:wrap;margin-top:8px;padding-top:8px;border-top:1px solid rgba(255,255,255,.06);">${TEA_ADDONS.map(a=>`<label style="display:flex;align-items:center;gap:5px;font-size:12px;color:var(--muted);cursor:pointer;"><input type="checkbox" ${st.addons?.[a]?'checked':''} data-picker-addon="${esc(item.name)}" data-addon-name="${a}" style="width:15px;height:15px;accent-color:var(--accent);"> ${a} <span style="color:var(--accent);">+50₽</span></label>`).join('')}</div>`:'';
+    const addonHtml=isLeafTea&&hasQty?`<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;padding-top:8px;border-top:1px solid rgba(255,255,255,.06);">${TEA_ADDONS.map(a=>{const sel=st.addons?.[a];return`<div data-picker-addon="${esc(item.name)}" data-addon-name="${esc(a)}" style="padding:5px 11px;border-radius:20px;font-size:12px;cursor:pointer;user-select:none;background:${sel?'var(--accent)':'rgba(255,255,255,.07)'};color:${sel?'#000':'var(--muted)'};border:1px solid ${sel?'var(--accent)':'rgba(255,255,255,.15)'};">${a} <span style="font-size:11px;opacity:.8;">+50₽</span></div>`;}).join('')}</div>`:'';
     const optionsHtml=hasQty&&item.options?.length?`<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;padding-top:8px;border-top:1px solid rgba(255,255,255,.06);">${item.options.map(opt=>{const sel=st.option===opt;return`<div data-picker-option="${esc(item.name)}" data-option-val="${esc(opt)}" style="padding:5px 13px;border-radius:20px;font-size:12px;cursor:pointer;user-select:none;background:${sel?'var(--green)':'rgba(255,255,255,.07)'};color:${sel?'#000':'var(--text)'};border:1px solid ${sel?'var(--green)':'rgba(255,255,255,.15)'};">${esc(opt)}</div>`;}).join('')}</div>`:'';
     return`<div style="display:flex;align-items:center;padding:${pad};gap:12px;border-bottom:1px solid rgba(255,255,255,.045);${isSoldOut?'opacity:.5;':''}"><div style="flex:1;min-width:0;"><div style="font-size:${compact?'13px':'15px'};color:var(--text);${hasQty?'font-weight:600;':''}margin-bottom:3px;">${esc(item.name)}</div><div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;"><span style="font-size:${compact?'12px':'13px'};color:var(--accent);font-family:'IBM Plex Mono',monospace;">${item.price} ₽</span>${stockLabel?`<span style="font-size:11px;color:${isSoldOut?'var(--red)':'var(--muted)'};">${stockLabel}</span>`:''}</div>${addonHtml}${optionsHtml}</div><div style="flex-shrink:0;">${btn}</div></div>`;
   };
@@ -113,6 +113,8 @@ export function confirmMenuPicker(){
 
 // Обработчик кнопок +/– в пикере
 document.addEventListener('click',e=>{
+  const addonPill=e.target.closest('[data-picker-addon]');
+  if(addonPill){const itemName=addonPill.dataset.pickerAddon,addon=addonPill.dataset.addonName;if(!pickerState[itemName])pickerState[itemName]={qty:0,note:'',addons:{},option:null};if(!pickerState[itemName].addons)pickerState[itemName].addons={};pickerState[itemName].addons[addon]=!pickerState[itemName].addons[addon];renderPickerList();return;}
   const optPill=e.target.closest('[data-picker-option]');
   if(optPill){const itemName=optPill.dataset.pickerOption,val=optPill.dataset.optionVal;if(!pickerState[itemName])pickerState[itemName]={qty:0,note:'',addons:{},option:null};pickerState[itemName].option=pickerState[itemName].option===val?null:val;renderPickerList();return;}
   const cupsTotal=e.target.closest('[data-cups-total-action]');
@@ -132,14 +134,8 @@ document.addEventListener('click',e=>{
   if(action==='minus'){pickerState[itemName].qty=Math.max(0,pickerState[itemName].qty-1);if(pickerState[itemName].qty===0){pickerState[itemName].addons={};pickerState[itemName].option=null;}}
   renderPickerList();updatePickerBtn();
 },true);
-// Обработчик чекбоксов добавок к чаю
-document.addEventListener('change',e=>{
-  const cb=e.target.closest('[data-picker-addon]');if(!cb)return;
-  const itemName=cb.dataset.pickerAddon;const addon=cb.dataset.addonName;
-  if(!pickerState[itemName])pickerState[itemName]={qty:0,note:'',addons:{},option:null};
-  if(!pickerState[itemName].addons)pickerState[itemName].addons={};
-  pickerState[itemName].addons[addon]=cb.checked;
-},true);
+// Обработчик пилюль добавок к чаю (заменили чекбоксы для совместимости с iOS)
+// обрабатывается в общем click-обработчике выше через data-picker-addon
 
 // ─── MENU EDITOR ──────────────────────────────────────
 export function buildMenuButtons(){const el=document.getElementById('menuBtns');if(el)el.innerHTML='';}

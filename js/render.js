@@ -111,9 +111,10 @@ export function renderAll(){
   let inProgress=0,readyCnt=0,newCnt=0;
   S.orders.forEach(o=>{if(o.status==='new')newCnt++;o.items&&o.items.forEach(it=>{if(it.status==='making')inProgress++;if(it.status==='ready')readyCnt++;});});
   const today=todayStr();
-  const openTablesSet=new Set(S.orders.filter(o=>o.date===today).filter(o=>{const meta=getTMeta(today,o.table);const sid=o.sid||'default';return(meta.sid===sid||(!meta.sid&&sid==='default'))&&meta.status!=='closed';}).map(o=>o.table));
+  const todayPrefix=today+'_';
+  const openTablesSet=new Set(Object.entries(S.tablesMeta).filter(([k,m])=>k.startsWith(todayPrefix)&&m.status!=='closed').map(([k])=>k.slice(todayPrefix.length)));
+  const closedTablesSet=new Set(Object.entries(S.tablesMeta).filter(([k,m])=>k.startsWith(todayPrefix)&&m.status==='closed').map(([k])=>k.slice(todayPrefix.length)));
   setBadge('bQ',active.length);setBadge('bR',hasReady.length);setBadge('bT',openTablesSet.size);
-  const closedTablesSet=new Set(S.orders.filter(o=>o.date===today).filter(o=>{const meta=getTMeta(today,o.table);const sid=o.sid||'default';return(meta.sid===sid||(!meta.sid&&sid==='default'))&&meta.status==='closed';}).map(o=>o.table));
   setBadge('bD',closedTablesSet.size);
   setEl('sN',active.length);setEl('sNew',newCnt);setEl('sP',inProgress);setEl('sR',readyCnt);
   const tables=[...new Set(active.filter(o=>o.table!=null&&o.table!==''&&o.table!=='undefined').map(o=>String(o.table)))].sort((a,b)=>{const an=parseInt(a),bn=parseInt(b);if(!isNaN(an)&&!isNaN(bn))return an-bn;if(!isNaN(an))return-1;if(!isNaN(bn))return 1;return a.localeCompare(b);});
