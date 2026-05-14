@@ -141,8 +141,8 @@ export function applyRole(){
 // ─── PASSWORD ─────────────────────────────────────────
 export function checkPassword(){
   const val=document.getElementById('passwordInput')?.value||'';
-  if(!S.appPassword){localStorage.setItem('bar_auth',Date.now().toString());document.getElementById('passwordOverlay').classList.add('hidden');const sr=localStorage.getItem('bar_role');if(!sr)openRoleModal();return;}
-  if(val===S.appPassword){localStorage.setItem('bar_auth',Date.now().toString());document.getElementById('passwordOverlay').classList.add('hidden');const sr=localStorage.getItem('bar_role');if(!sr)openRoleModal();}
+  if(!S.appPassword){localStorage.setItem('bar_auth',Date.now().toString());localStorage.setItem('bar_auth_ok','1');document.getElementById('passwordOverlay').classList.add('hidden');const sr=localStorage.getItem('bar_role');if(!sr)openRoleModal();return;}
+  if(val===S.appPassword){localStorage.setItem('bar_auth',Date.now().toString());localStorage.setItem('bar_auth_ok','1');document.getElementById('passwordOverlay').classList.add('hidden');const sr=localStorage.getItem('bar_role');if(!sr)openRoleModal();}
   else{const err=document.getElementById('passwordError');if(err){err.textContent='❌ Неверный пароль';setTimeout(()=>err.textContent='',2000);}const inp=document.getElementById('passwordInput');if(inp){inp.value='';inp.focus();}}
 }
 export function openPasswordModal(){document.getElementById('passwordOverlay').classList.remove('hidden');setTimeout(()=>document.getElementById('passwordInput')?.focus(),100);}

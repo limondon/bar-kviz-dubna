@@ -157,29 +157,36 @@ Object.assign(window,{
 });
 
 // ─── BOOT ─────────────────────────────────────────────
-function hideSplash(){const el=document.getElementById('splashScreen');if(!el)return;el.style.transition='opacity .3s';el.style.opacity='0';setTimeout(()=>el?.remove(),320);}
+function hideSplash(){const el=document.getElementById('splashScreen');if(!el)return;el.style.transition='opacity .2s';el.style.opacity='0';setTimeout(()=>el?.remove(),220);}
 
 (async()=>{
   registerSW();
-  // Максимум 6 секунд до скрытия заставки
-  const splashTimer=setTimeout(hideSplash,6000);
 
-  try{await Promise.race([signInAnonymously(auth),new Promise(r=>setTimeout(r,4000))]);}catch(e){console.error('Auth error:',e);}
+  // Если роль и пароль уже известны — показываем UI сразу, без ожидания сети
+  const cachedRole=localStorage.getItem('bar_role');
+  const cachedPassOk=localStorage.getItem('bar_auth_ok')==='1';
+  if(cachedRole&&cachedPassOk){
+    S.role=cachedRole;applyRole();
+    requestAnimationFrame(hideSplash);
+  }
+
+  // Firebase auth и пароль грузим в фоне
+  try{await Promise.race([signInAnonymously(auth),new Promise(r=>setTimeout(r,5000))]);}catch(e){console.error('Auth error:',e);}
 
   try{
     const passSnap=await Promise.race([
-      new Promise(resolve=>{const unsub=onValue(ref(db,'config/password'),snap=>{unsub();resolve(snap);});},),
-      new Promise(r=>setTimeout(()=>r({val:()=>null}),3000))
+      new Promise(resolve=>{const unsub=onValue(ref(db,'config/password'),snap=>{unsub();resolve(snap);});}),
+      new Promise(r=>setTimeout(()=>r({val:()=>null}),4000))
     ]);
     S.appPassword=passSnap.val?.()??null;
   }catch(e){console.error('Password load error:',e);}
 
-  if(!checkAuth()){openPasswordModal();}
-  else{const sr=localStorage.getItem('bar_role');if(sr){S.role=sr;applyRole();}else openRoleModal();}
-
-  // Скрываем заставку сразу как UI готов
-  clearTimeout(splashTimer);
-  requestAnimationFrame(()=>requestAnimationFrame(hideSplash));
+  // Если не было кэша — проверяем авторизацию как обычно
+  if(!cachedRole||!cachedPassOk){
+    if(!checkAuth()){openPasswordModal();}
+    else{const sr=localStorage.getItem('bar_role');if(sr){S.role=sr;applyRole();}else openRoleModal();}
+    requestAnimationFrame(hideSplash);
+  }
 
   await loadAll();
   startPoll();
