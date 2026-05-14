@@ -78,12 +78,12 @@ export function setEl(id,val){const el=document.getElementById(id);if(el)el.text
 let _scrollY=0;
 export function lockScroll(){
   _scrollY=window.scrollY;
-  document.body.classList.add('modal-open');
-  document.body.style.top=`-${_scrollY}px`;
+  document.documentElement.style.overflow='hidden';
+  document.body.style.overflow='hidden';
 }
 export function unlockScroll(){
-  document.body.classList.remove('modal-open');
-  document.body.style.top='';
+  document.documentElement.style.overflow='';
+  document.body.style.overflow='';
   window.scrollTo(0,_scrollY);
 }
 
