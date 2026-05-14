@@ -157,20 +157,27 @@ Object.assign(window,{
 });
 
 // ─── BOOT ─────────────────────────────────────────────
+function hideSplash(){const el=document.getElementById('splashScreen');if(!el)return;el.style.transition='opacity .3s';el.style.opacity='0';setTimeout(()=>el?.remove(),320);}
+
 (async()=>{
   registerSW();
-  try{await signInAnonymously(auth);}catch(e){console.error('Auth error:',e);}
+  // Максимум 6 секунд до скрытия заставки
+  const splashTimer=setTimeout(hideSplash,6000);
+
+  try{await Promise.race([signInAnonymously(auth),new Promise(r=>setTimeout(r,4000))]);}catch(e){console.error('Auth error:',e);}
 
   try{
-    const passSnap=await new Promise(resolve=>{const unsub=onValue(ref(db,'config/password'),snap=>{unsub();resolve(snap);});});
-    S.appPassword=passSnap.val()||null;
+    const passSnap=await Promise.race([
+      new Promise(resolve=>{const unsub=onValue(ref(db,'config/password'),snap=>{unsub();resolve(snap);});},),
+      new Promise(r=>setTimeout(()=>r({val:()=>null}),3000))
+    ]);
+    S.appPassword=passSnap.val?.()??null;
   }catch(e){console.error('Password load error:',e);}
 
   if(!checkAuth()){openPasswordModal();}
   else{const sr=localStorage.getItem('bar_role');if(sr){S.role=sr;applyRole();}else openRoleModal();}
 
-  const splash=document.getElementById('splashScreen');
-  if(splash){splash.style.transition='opacity .3s';splash.style.opacity='0';setTimeout(()=>splash.remove(),320);}
+  clearTimeout(splashTimer);hideSplash();
 
   await loadAll();
   startPoll();
