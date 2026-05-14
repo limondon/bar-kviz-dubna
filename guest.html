@@ -293,6 +293,7 @@ const fbApp=initializeApp({
 const db=getDatabase(fbApp);
 const auth=getAuth(fbApp);
 
+;(()=>{let _lt=0;document.addEventListener('touchend',e=>{const t=Date.now();if(t-_lt<300)e.preventDefault();_lt=t;},{passive:false});})();
 let tableNum=null, token=null, sessionId=null;
 let menuData=[]; // [{cat, items:[{name,price,stock?,group?}]}]
 let cart={};     // {key: {name,price,qty,addons:{},option:null}}

@@ -1,3 +1,6 @@
+// ─── DISABLE DOUBLE-TAP ZOOM (iOS Safari) ────────────
+;(()=>{let _lt=0;document.addEventListener('touchend',e=>{const t=Date.now();if(t-_lt<300)e.preventDefault();_lt=t;},{passive:false});})();
+
 // ─── DATE ────────────────────────────────────────────
 export function todayStr(){const d=new Date();return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate());}
 export function pad(n){return String(n).padStart(2,'0');}
