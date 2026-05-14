@@ -90,6 +90,10 @@ export function fl(id,msg){
   el.textContent=msg;el.classList.add('show');
   clearTimeout(ft[id]);ft[id]=setTimeout(()=>el.classList.remove('show'),2800);
 }
+export async function safeDb(promise,errMsg='❌ Ошибка сохранения — проверь интернет'){
+  try{await promise;return true;}
+  catch(e){console.error('Firebase write error:',e);fl('fErr',errMsg);return false;}
+}
 
 // ─── CONFIRM MODAL ───────────────────────────────────
 let _confirmResolve=null;

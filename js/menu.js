@@ -14,7 +14,7 @@ export function openMenuPicker(){
   const menu=S.BUILTIN_MENU_LIVE.length?S.BUILTIN_MENU_LIVE:BUILTIN_MENU;
   const ta=document.getElementById('inpItems');
   if(ta&&ta.value.trim()){
-    parseItems(ta.value).forEach(it=>{pickerState[it.name]={qty:it.qty,note:''};});
+    parseItems(ta.value).forEach(it=>{pickerState[it.name]={qty:it.qty,note:'',addons:{},option:null};});
   }
   renderPickerTabs();renderPickerList();updatePickerBtn();
   document.getElementById('menuPickerOverlay').classList.remove('hidden');
@@ -62,11 +62,13 @@ export function renderPickerList(){
     const stockLabel=stock===null?'':(isSoldOut?'Нет в наличии':`Осталось: ${stock}`);
     const pad=compact?'10px 20px 10px 32px':'13px 20px';
     let btn;
+    const atLimit=stock!==null&&st.qty>=stock;
     if(isSoldOut)btn=`<span style="font-size:10px;color:var(--red);background:rgba(229,57,53,.12);border:1px solid rgba(229,57,53,.25);border-radius:8px;padding:2px 7px;">Нет</span>`;
-    else if(!hasQty)btn=`<div data-picker-action="plus" data-item="${esc(item.name)}" data-stock="1" style="width:40px;height:40px;min-width:44px;min-height:44px;border-radius:50%;border:1.5px solid var(--accent);background:transparent;color:var(--accent);font-size:22px;cursor:pointer;display:flex;align-items:center;justify-content:center;">+</div>`;
-    else btn=`<div style="display:flex;align-items:center;background:rgba(245,166,35,.12);border:1.5px solid var(--accent);border-radius:100px;overflow:hidden;"><div data-picker-action="minus" data-item="${esc(item.name)}" style="width:40px;height:40px;min-width:44px;min-height:44px;display:flex;align-items:center;justify-content:center;background:transparent;color:var(--accent);font-size:20px;cursor:pointer;">−</div><div style="font-size:14px;font-weight:600;color:var(--text);min-width:24px;text-align:center;font-family:'IBM Plex Mono',monospace;">${st.qty}</div><div data-picker-action="plus" data-item="${esc(item.name)}" data-stock="1" style="width:40px;height:40px;min-width:44px;min-height:44px;display:flex;align-items:center;justify-content:center;background:transparent;color:var(--accent);font-size:20px;cursor:pointer;font-weight:700;">+</div></div>`;
+    else if(!hasQty)btn=`<div data-picker-action="plus" data-item="${esc(item.name)}" data-stock-limit="${stock===null?'':stock}" style="width:40px;height:40px;min-width:44px;min-height:44px;border-radius:50%;border:1.5px solid var(--accent);background:transparent;color:var(--accent);font-size:22px;cursor:pointer;display:flex;align-items:center;justify-content:center;">+</div>`;
+    else btn=`<div style="display:flex;align-items:center;background:rgba(245,166,35,.12);border:1.5px solid var(--accent);border-radius:100px;overflow:hidden;"><div data-picker-action="minus" data-item="${esc(item.name)}" style="width:40px;height:40px;min-width:44px;min-height:44px;display:flex;align-items:center;justify-content:center;background:transparent;color:var(--accent);font-size:20px;cursor:pointer;">−</div><div style="font-size:14px;font-weight:600;color:var(--text);min-width:24px;text-align:center;font-family:'IBM Plex Mono',monospace;">${st.qty}</div><div data-picker-action="plus" data-item="${esc(item.name)}" data-stock-limit="${stock===null?'':stock}" style="width:40px;height:40px;min-width:44px;min-height:44px;display:flex;align-items:center;justify-content:center;background:transparent;color:${atLimit?'var(--muted)':'var(--accent)'};font-size:20px;cursor:${atLimit?'default':'pointer'};font-weight:700;opacity:${atLimit?'.3':'1'};">+</div></div>`;
     const addonHtml=isLeafTea&&hasQty?`<div style="display:flex;gap:14px;flex-wrap:wrap;margin-top:8px;padding-top:8px;border-top:1px solid rgba(255,255,255,.06);">${TEA_ADDONS.map(a=>`<label style="display:flex;align-items:center;gap:5px;font-size:12px;color:var(--muted);cursor:pointer;"><input type="checkbox" ${st.addons?.[a]?'checked':''} data-picker-addon="${esc(item.name)}" data-addon-name="${a}" style="width:15px;height:15px;accent-color:var(--accent);"> ${a} <span style="color:var(--accent);">+50₽</span></label>`).join('')}</div>`:'';
-    return`<div style="display:flex;align-items:center;padding:${pad};gap:12px;border-bottom:1px solid rgba(255,255,255,.045);${isSoldOut?'opacity:.5;':''}"><div style="flex:1;min-width:0;"><div style="font-size:${compact?'13px':'15px'};color:var(--text);${hasQty?'font-weight:600;':''}margin-bottom:3px;">${esc(item.name)}</div><div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;"><span style="font-size:${compact?'12px':'13px'};color:var(--accent);font-family:'IBM Plex Mono',monospace;">${item.price} ₽</span>${stockLabel?`<span style="font-size:11px;color:${isSoldOut?'var(--red)':'var(--muted)'};">${stockLabel}</span>`:''}</div>${addonHtml}</div><div style="flex-shrink:0;">${btn}</div></div>`;
+    const optionsHtml=hasQty&&item.options?.length?`<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;padding-top:8px;border-top:1px solid rgba(255,255,255,.06);">${item.options.map(opt=>{const sel=st.option===opt;return`<div data-picker-option="${esc(item.name)}" data-option-val="${esc(opt)}" style="padding:5px 13px;border-radius:20px;font-size:12px;cursor:pointer;user-select:none;background:${sel?'var(--green)':'rgba(255,255,255,.07)'};color:${sel?'#000':'var(--text)'};border:1px solid ${sel?'var(--green)':'rgba(255,255,255,.15)'};">${esc(opt)}</div>`;}).join('')}</div>`:'';
+    return`<div style="display:flex;align-items:center;padding:${pad};gap:12px;border-bottom:1px solid rgba(255,255,255,.045);${isSoldOut?'opacity:.5;':''}"><div style="flex:1;min-width:0;"><div style="font-size:${compact?'13px':'15px'};color:var(--text);${hasQty?'font-weight:600;':''}margin-bottom:3px;">${esc(item.name)}</div><div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;"><span style="font-size:${compact?'12px':'13px'};color:var(--accent);font-family:'IBM Plex Mono',monospace;">${item.price} ₽</span>${stockLabel?`<span style="font-size:11px;color:${isSoldOut?'var(--red)':'var(--muted)'};">${stockLabel}</span>`:''}</div>${addonHtml}${optionsHtml}</div><div style="flex-shrink:0;">${btn}</div></div>`;
   };
 
   const anyTeaSelected=isTea&&items.some(i=>(pickerState[i.name]?.qty||0)>0);
@@ -98,7 +100,8 @@ export function confirmMenuPicker(){
       const st=pickerState[item.name];
       if(st&&st.qty>0){
         let name=item.name;
-        if(isLeafTea&&st.addons){const selected=TEA_ADDONS.filter(a=>st.addons[a]);if(selected.length)name+=` + ${selected.map(a=>a.toLowerCase()).join(', ')}`;};
+        if(isLeafTea&&st.addons){const selected=TEA_ADDONS.filter(a=>st.addons[a]);if(selected.length)name+=` + ${selected.map(a=>a.toLowerCase()).join(', ')}`;}
+        if(st.option)name+=` — ${st.option}`;
         lines.push(`${st.qty} ${name}`);
       }
     });
@@ -110,6 +113,8 @@ export function confirmMenuPicker(){
 
 // Обработчик кнопок +/– в пикере
 document.addEventListener('click',e=>{
+  const optPill=e.target.closest('[data-picker-option]');
+  if(optPill){const itemName=optPill.dataset.pickerOption,val=optPill.dataset.optionVal;if(!pickerState[itemName])pickerState[itemName]={qty:0,note:'',addons:{},option:null};pickerState[itemName].option=pickerState[itemName].option===val?null:val;renderPickerList();return;}
   const cupsTotal=e.target.closest('[data-cups-total-action]');
   if(cupsTotal){
     if(cupsTotal.dataset.cupsTotalAction==='plus')pickerCups++;
@@ -118,17 +123,20 @@ document.addEventListener('click',e=>{
   }
   const btn=e.target.closest('[data-picker-action]');if(!btn)return;
   const action=btn.dataset.pickerAction;const itemName=btn.dataset.item;
-  if(!pickerState[itemName])pickerState[itemName]={qty:0,note:'',addons:{}};
-  if(action==='plus'&&btn.dataset.stock==='0')return;
-  if(action==='plus'){pickerState[itemName].qty++;if(pickerCups===0)pickerCups++;}
-  if(action==='minus'){pickerState[itemName].qty=Math.max(0,pickerState[itemName].qty-1);if(pickerState[itemName].qty===0)pickerState[itemName].addons={};}
+  if(!pickerState[itemName])pickerState[itemName]={qty:0,note:'',addons:{},option:null};
+  if(action==='plus'){
+    const limitStr=btn.dataset.stockLimit;const limit=limitStr!==undefined&&limitStr!==''?parseInt(limitStr):null;
+    if(limit!==null&&pickerState[itemName].qty>=limit)return;
+    pickerState[itemName].qty++;const _menu=S.BUILTIN_MENU_LIVE.length?S.BUILTIN_MENU_LIVE:BUILTIN_MENU;const _isTea=_menu[pickerCat]?.cat?.toLowerCase().includes('чай');if(pickerCups===0&&_isTea)pickerCups++;
+  }
+  if(action==='minus'){pickerState[itemName].qty=Math.max(0,pickerState[itemName].qty-1);if(pickerState[itemName].qty===0){pickerState[itemName].addons={};pickerState[itemName].option=null;}}
   renderPickerList();updatePickerBtn();
 },true);
 // Обработчик чекбоксов добавок к чаю
 document.addEventListener('change',e=>{
   const cb=e.target.closest('[data-picker-addon]');if(!cb)return;
   const itemName=cb.dataset.pickerAddon;const addon=cb.dataset.addonName;
-  if(!pickerState[itemName])pickerState[itemName]={qty:0,note:'',addons:{}};
+  if(!pickerState[itemName])pickerState[itemName]={qty:0,note:'',addons:{},option:null};
   if(!pickerState[itemName].addons)pickerState[itemName].addons={};
   pickerState[itemName].addons[addon]=cb.checked;
 },true);
@@ -209,6 +217,42 @@ export async function removeMenuCategory(ci){
   if(!ok)return;menu.splice(ci,1);await saveMenuToFirebase();renderMenuPage();fl('fOk','Категория удалена');
 }
 
+// ─── ITEM EDITOR SHEET ───────────────────────────────
+let _ieCi=null,_ieIi=null;
+export function openItemEditor(ci,ii){
+  _ieCi=ci;_ieIi=ii;
+  const menu=S.BUILTIN_MENU_LIVE.length?S.BUILTIN_MENU_LIVE:BUILTIN_MENU;
+  const item=menu[ci].items[ii];
+  document.getElementById('ieNameInp').value=item.name||'';
+  document.getElementById('iePriceInp').value=item.price||0;
+  const sv=item.stock;
+  document.getElementById('ieStockInp').value=(sv!==null&&sv!==undefined&&sv!=='')?sv:'';
+  document.getElementById('ieGroupInp').value=item.group||'';
+  document.getElementById('ieOptionsInp').value=(item.options||[]).join(', ');
+  document.getElementById('itemEditorOverlay').classList.remove('hidden');
+  lockScroll();
+}
+export function closeItemEditor(){
+  document.getElementById('itemEditorOverlay').classList.add('hidden');
+  unlockScroll();_ieCi=null;_ieIi=null;
+}
+export async function saveItemEditor(){
+  if(_ieCi===null||_ieIi===null)return;
+  const name=document.getElementById('ieNameInp').value.trim();
+  if(!name){fl('fInfo','Введите название');return;}
+  const price=+document.getElementById('iePriceInp').value||0;
+  const sv=document.getElementById('ieStockInp').value;
+  const stock=sv===''?null:+sv;
+  const group=document.getElementById('ieGroupInp').value.trim()||null;
+  const optRaw=document.getElementById('ieOptionsInp').value.trim();
+  const options=optRaw?optRaw.split(',').map(s=>s.trim()).filter(Boolean):null;
+  const menu=S.BUILTIN_MENU_LIVE.length?S.BUILTIN_MENU_LIVE:BUILTIN_MENU;
+  const item=menu[_ieCi].items[_ieIi];
+  item.name=name;item.price=price;item.stock=stock;item.group=group;item.options=options||undefined;
+  await saveMenuToFirebase();renderMenuEditor();closeItemEditor();
+  fl('fOk','✅ Сохранено');
+}
+
 export function renderMenuEditor(){
   const el=document.getElementById('menuEditorList');if(!el)return;
   const menu=S.BUILTIN_MENU_LIVE.length?S.BUILTIN_MENU_LIVE:BUILTIN_MENU;
@@ -220,7 +264,7 @@ export function renderMenuEditor(){
     const isHidden=cat.hidden||false;
     return`
     <div class="menu-editor-category" draggable="true" data-menu-cat="${ci}" style="margin-bottom:16px;${isHidden?'opacity:.5;':''}">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;padding-bottom:4px;border-bottom:1px solid var(--border);">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;padding-bottom:6px;border-bottom:1px solid var(--border);">
         <div style="display:flex;align-items:center;gap:6px;flex:1;min-width:0;">
           <div class="drag-handle" style="width:24px;height:24px;display:flex;align-items:center;justify-content:center;cursor:grab;color:var(--muted);font-size:14px;user-select:none;flex-shrink:0;">≡</div>
           <input type="text" value="${esc(catEmoji)}" placeholder="🍺" onchange="updateMenuCat(${ci},'emoji',this.value)" style="width:36px;text-align:center;font-size:18px;padding:3px;background:var(--bg);border:1px solid var(--border);border-radius:5px;color:var(--text);">
@@ -233,20 +277,36 @@ export function renderMenuEditor(){
           <button onclick="removeMenuCategory(${ci})" style="background:transparent;border:none;color:var(--muted);cursor:pointer;font-size:12px;padding:2px 6px;">🗑</button>
         </div>
       </div>
-      <div style="display:flex;gap:8px;padding:2px 0 4px;font-size:9px;color:var(--muted);letter-spacing:.5px;text-transform:uppercase;"><span style="flex:1;">Название</span><span style="width:65px;text-align:center;">Цена</span><span style="width:52px;text-align:center;color:var(--accent);">Остаток</span><span style="width:80px;text-align:center;color:var(--purple);">Группа</span><span style="width:30px;"></span></div>
-      ${cat.items.map((item,ii)=>`
-        <div class="menu-editor-item" draggable="true" data-menu-cat="${ci}" data-menu-item="${ii}" style="display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid rgba(255,255,255,.04);">
+      ${window.innerWidth<768?'':`<div style="display:flex;gap:8px;padding:2px 0 4px;font-size:9px;color:var(--muted);letter-spacing:.5px;text-transform:uppercase;"><span style="width:24px;"></span><span style="flex:1;">Название</span><span style="width:65px;text-align:center;">Цена</span><span style="width:52px;text-align:center;color:var(--accent);">Остаток</span><span style="width:80px;text-align:center;color:var(--purple);">Группа</span><span style="width:30px;"></span></div>`}
+      ${cat.items.map((item,ii)=>{
+        const sv=item.stock;const hasStock=sv!==null&&sv!==undefined&&sv!=='';
+        if(window.innerWidth<768){
+          return`<div class="menu-editor-item" draggable="true" data-menu-cat="${ci}" data-menu-item="${ii}" onclick="openItemEditor(${ci},${ii})" style="display:flex;align-items:center;gap:10px;padding:11px 0;border-bottom:1px solid rgba(255,255,255,.05);cursor:pointer;">
+            <div class="drag-handle" onclick="event.stopPropagation()" style="color:var(--muted);font-size:15px;user-select:none;flex-shrink:0;padding:0 4px;cursor:grab;">⋮⋮</div>
+            <div style="flex:1;min-width:0;">
+              <div style="font-size:14px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(item.name)}</div>
+              <div style="display:flex;align-items:center;gap:6px;margin-top:3px;flex-wrap:wrap;">
+                <span style="font-size:12px;color:var(--accent);font-family:'IBM Plex Mono',monospace;">${item.price||0} ₽</span>
+                ${item.group?`<span style="font-size:10px;color:var(--purple);background:rgba(156,39,176,.15);border-radius:4px;padding:1px 6px;">${esc(item.group)}</span>`:''}
+                ${hasStock?`<span style="font-size:10px;color:var(--accent);background:rgba(245,166,35,.12);border-radius:4px;padding:1px 6px;">ост: ${sv}</span>`:''}
+              </div>
+            </div>
+            <button onclick="event.stopPropagation();removeMenuCatItem(${ci},${ii})" style="background:rgba(229,57,53,.15);color:var(--red);border:1px solid rgba(229,57,53,.3);border-radius:6px;padding:7px 10px;cursor:pointer;font-size:12px;flex-shrink:0;">✕</button>
+          </div>`;
+        }
+        return`<div class="menu-editor-item" draggable="true" data-menu-cat="${ci}" data-menu-item="${ii}" style="display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid rgba(255,255,255,.04);">
           <div class="drag-handle" style="width:24px;height:24px;display:flex;align-items:center;justify-content:center;cursor:grab;color:var(--muted);font-size:14px;user-select:none;flex-shrink:0;">⋮⋮</div>
           <input type="text" value="${esc(item.name)}" onchange="updateMenuCatItem(${ci},${ii},'name',this.value)" style="flex:1;font-family:'IBM Plex Mono',monospace;font-size:12px;padding:5px 8px;background:var(--bg);border:1px solid var(--border);border-radius:5px;color:var(--text);">
           <input type="number" value="${item.price||0}" min="0" onchange="updateMenuCatItem(${ci},${ii},'price',+this.value)" style="width:65px;text-align:center;font-family:'IBM Plex Mono',monospace;font-size:12px;padding:5px;background:var(--bg);border:1px solid var(--border);border-radius:5px;color:var(--muted);">
           <span style="font-size:11px;color:var(--muted);">₽</span>
-          <input type="number" value="${item.stock!==undefined&&item.stock!==null&&item.stock!==''?item.stock:''}" min="0" placeholder="∞" onchange="updateMenuCatItem(${ci},${ii},'stock',this.value===''?null:+this.value)" style="width:52px;text-align:center;font-family:'IBM Plex Mono',monospace;font-size:12px;padding:5px;background:var(--bg);border:1px solid rgba(245,166,35,.3);border-radius:5px;color:var(--accent);">
+          <input type="number" value="${hasStock?sv:''}" min="0" placeholder="∞" onchange="updateMenuCatItem(${ci},${ii},'stock',this.value===''?null:+this.value)" style="width:52px;text-align:center;font-family:'IBM Plex Mono',monospace;font-size:12px;padding:5px;background:var(--bg);border:1px solid rgba(245,166,35,.3);border-radius:5px;color:var(--accent);">
           <input type="text" value="${esc(item.group||'')}" placeholder="группа" onchange="updateMenuCatItem(${ci},${ii},'group',this.value.trim()||null)" style="width:80px;font-family:'IBM Plex Mono',monospace;font-size:11px;padding:5px;background:var(--bg);border:1px solid rgba(156,39,176,.3);border-radius:5px;color:var(--purple);">
+          <button onclick="openItemEditor(${ci},${ii})" title="Опции позиции" style="background:transparent;border:1px solid var(--border);color:var(--muted);border-radius:6px;padding:4px 7px;cursor:pointer;font-size:12px;flex-shrink:0;">✏️</button>
           <button onclick="removeMenuCatItem(${ci},${ii})" style="background:rgba(229,57,53,.15);color:var(--red);border:1px solid rgba(229,57,53,.3);border-radius:6px;padding:4px 8px;cursor:pointer;font-size:12px;flex-shrink:0;">✕</button>
-        </div>`).join('')}
-      <div style="display:flex;gap:6px;margin-top:6px;">
-        <input type="text" id="newItem_${ci}" placeholder="Новая позиция" style="flex:1;font-family:'IBM Plex Mono',monospace;font-size:12px;padding:5px 8px;background:var(--bg);border:1px dashed var(--border);border-radius:5px;color:var(--text);" onkeydown="if(event.key==='Enter')addMenuCatItem(${ci})">
-        <button onclick="addMenuCatItem(${ci})" style="background:rgba(76,175,80,.15);color:var(--green);border:1px solid rgba(76,175,80,.3);border-radius:6px;padding:4px 10px;cursor:pointer;font-size:12px;">+ Добавить</button>
+        </div>`;}).join('')}
+      <div style="display:flex;gap:6px;margin-top:8px;">
+        <input type="text" id="newItem_${ci}" placeholder="Новая позиция" style="flex:1;font-family:'IBM Plex Mono',monospace;font-size:13px;padding:9px 10px;background:var(--bg);border:1px dashed var(--border);border-radius:8px;color:var(--text);" onkeydown="if(event.key==='Enter')addMenuCatItem(${ci})">
+        <button onclick="addMenuCatItem(${ci})" style="background:rgba(76,175,80,.15);color:var(--green);border:1px solid rgba(76,175,80,.3);border-radius:8px;padding:9px 14px;cursor:pointer;font-size:13px;white-space:nowrap;">+ Добавить</button>
       </div>
     </div>`;}).join('');
 }

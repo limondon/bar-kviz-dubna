@@ -46,15 +46,30 @@ function buildBottomNav(tabs){
   nav.innerHTML=tabs.map(t=>`<div class="bnav-item" id="bn-${t.id}" onclick="sw('${t.id}')"><span class="bnav-ico">${t.ico}</span><span class="bnav-lbl">${t.label.replace('+ ','')}</span>${t.badge?`<span class="bnav-badge${t.badgeCls==='.bg'?' green':t.badgeCls==='.bp'?' purple':''}" id="bnb-${t.badge}"></span>`:''}</div>`).join('')+`<div class="bnav-item" id="bn-settings" onclick="toggleSettingsMenu()"><span class="bnav-ico">⚙️</span><span class="bnav-lbl">Ещё</span></div>`;
 }
 
+// ─── ЕДИНЫЙ СПИСОК ДОП. ПУНКТОВ ──────────────────────
+function getExtraTabItems(){
+  if(S.role!=='admin')return[];
+  return[{ico:'📊',label:'Статистика',id:'stats'},{ico:'📋',label:'Меню',id:'menu'}];
+}
+function getActionItems(){
+  const a=[{ico:'⚙️',label:'Сменить роль',fn:'openRoleModal'}];
+  if(S.role==='admin'){
+    a.push({ico:'🔐',label:'Сменить пароль',fn:'changePassword'});
+    a.push({ico:'🔢',label:'Сбросить счётчик заказов',fn:'resetOrderCounter'});
+  }
+  return a;
+}
+
 function buildSidebar(tabs){
   const sb=document.getElementById('sidebar');
   const roleNames={waiter:'🛎️ Официант',barman:'🍹 Бармен',admin:'👑 Менеджер'};
+  const extraTabs=getExtraTabItems();
+  const actions=getActionItems();
   sb.innerHTML=`<div style="padding:0 20px 16px;border-bottom:1px solid var(--border);margin-bottom:8px;"><div style="display:flex;align-items:center;gap:8px;"><span style="font-family:'Bebas Neue',sans-serif;font-size:22px;color:var(--accent);letter-spacing:2px;">1708</span></div><div style="font-size:11px;color:var(--muted);margin-top:2px;">${roleNames[S.role]||''}</div></div>
     ${tabs.map(t=>`<div class="sidebar-item" id="sb-${t.id}" onclick="sw('${t.id}')"><span class="sidebar-ico">${t.ico}</span><span>${t.label}</span>${t.badge?`<span class="sidebar-badge${t.badgeCls==='.bg'?' green':t.badgeCls==='.bp'?' purple':''}" id="sbb-${t.badge}"></span>`:''}</div>`).join('')}
-    ${S.role==='admin'?`<div class="sidebar-item" id="sb-stats" onclick="sw('stats')"><span class="sidebar-ico">📊</span><span>Статистика</span></div><div class="sidebar-item" id="sb-menu" onclick="sw('menu')"><span class="sidebar-ico">📋</span><span>Меню</span></div>`:''}
+    ${extraTabs.map(t=>`<div class="sidebar-item" id="sb-${t.id}" onclick="sw('${t.id}')"><span class="sidebar-ico">${t.ico}</span><span>${t.label}</span></div>`).join('')}
     <div style="margin-top:auto;padding:16px 20px 0;border-top:1px solid var(--border);margin-top:16px;">
-      <div onclick="openRoleModal()" style="font-size:11px;color:var(--muted);cursor:pointer;padding:8px 0;">⚙️ Сменить роль</div>
-      ${S.role==='admin'?`<div onclick="changePassword()" style="font-size:11px;color:var(--muted);cursor:pointer;padding:8px 0;">🔐 Сменить пароль</div>`:''}
+      ${actions.map(a=>`<div onclick="${a.fn}()" style="font-size:11px;color:var(--muted);cursor:pointer;padding:8px 0;">${a.ico} ${a.label}</div>`).join('')}
       <div class="notif-btn" onclick="enableNotifications()" style="font-size:11px;cursor:pointer;padding:8px 0;"></div>
     </div>`;
   updateNotifBtn();
@@ -75,7 +90,12 @@ export function toggleSettingsMenu(){
   let popup=document.getElementById('settingsPopup');if(popup){popup.remove();return;}
   popup=document.createElement('div');popup.id='settingsPopup';
   popup.style.cssText=`position:fixed;bottom:70px;right:8px;z-index:300;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:8px;min-width:180px;box-shadow:0 -4px 24px rgba(0,0,0,.4);animation:slideUp .2s ease;`;
-  const items=[...(S.role==='admin'?[{ico:'📊',label:'Статистика',action:()=>{sw('stats');popup.remove();}},{ico:'📋',label:'Меню',action:()=>{sw('menu');popup.remove();}}]:[]),{ico:'🛎️',label:'Сменить роль',action:()=>{openRoleModal();popup.remove();},...(S.role==='admin'?[{ico:'🔐',label:'Сменить пароль',action:()=>{changePassword();popup.remove();}}]:[])}];
+  const extraTabs=getExtraTabItems();
+  const actions=getActionItems();
+  const items=[
+    ...extraTabs.map(t=>({ico:t.ico,label:t.label,action:()=>{sw(t.id);popup.remove();}})),
+    ...actions.map(a=>({ico:a.ico,label:a.label,action:()=>{popup.remove();window[a.fn]();}})),
+  ];
   popup.innerHTML=items.map((it,i)=>`<div id="spItem${i}" style="display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:8px;cursor:pointer;font-size:13px;color:var(--text);font-family:'IBM Plex Mono',monospace;">${it.ico} ${it.label}</div>`).join('');
   document.body.appendChild(popup);
   items.forEach((it,i)=>{const el=document.getElementById('spItem'+i);if(el)el.addEventListener('click',it.action);});

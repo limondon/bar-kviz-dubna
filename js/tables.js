@@ -3,6 +3,12 @@ import{db,ref,update,fbUpdate,push}from'./firebase.js';
 import{todayStr,dateLbl,shiftDS,fmt,fmt2,esc,pl,fl,showConfirm,lockScroll,unlockScroll}from'./utils.js';
 import{BUILTIN_MENU}from'./menu-data.js';
 
+// ─── DATE NAV STATE ──────────────────────────────────
+let _datesExpanded=false;
+let _closedDatesExpanded=false;
+export function toggleDatesExpanded(){_datesExpanded=!_datesExpanded;renderTables();}
+export function toggleClosedDatesExpanded(){_closedDatesExpanded=!_closedDatesExpanded;renderClosed();}
+
 // ─── TABLE META ───────────────────────────────────────
 export function tKey(date,tNum){return date+'_'+tNum;}
 export function genToken(){return Math.random().toString(36).slice(2,10)+Math.random().toString(36).slice(2,6);}
@@ -161,11 +167,49 @@ export function openQrPicker(){
 export function closeQrPicker(){document.getElementById('qrPickerOverlay')?.classList.add('hidden');unlockScroll();}
 
 // ─── CORKAGE FEE ─────────────────────────────────────
+const CORKAGE_TYPES=[
+  {emoji:'🍺',label:'Пиво / Лимонады / Напитки',price:100},
+  {emoji:'🍷',label:'Вино / Шампанское',price:700},
+  {emoji:'🥃',label:'Крепкий алкоголь',price:1000},
+];
 let _corkageTable=null;
+let _corkageQtys=[0,0,0];
+
+function _renderCorkage(){
+  const itemsEl=document.getElementById('corkageItems');
+  if(itemsEl)itemsEl.innerHTML=CORKAGE_TYPES.map((t,i)=>{
+    const q=_corkageQtys[i];
+    const colors=[['rgba(245,166,35,.15)','var(--accent)','rgba(245,166,35,.4)'],['rgba(156,39,176,.15)','var(--purple)','rgba(156,39,176,.4)'],['rgba(229,57,53,.15)','var(--red)','rgba(229,57,53,.4)']];
+    const[bg,clr,brd]=colors[i];
+    return`<div style="display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid rgba(255,255,255,.06);">
+      <div style="flex:1;">
+        <div style="font-size:13px;font-weight:600;color:var(--text);">${t.emoji} ${t.label}</div>
+        <div style="font-size:16px;font-family:'Bebas Neue',sans-serif;letter-spacing:1px;color:${clr};">${t.price} ₽</div>
+      </div>
+      <div style="display:flex;align-items:center;gap:0;background:${q?bg:'transparent'};border:1.5px solid ${q?brd:'var(--border)'};border-radius:100px;overflow:hidden;transition:all .15s;">
+        <div onclick="corkageAdj(${i},-1)" style="width:38px;height:38px;display:flex;align-items:center;justify-content:center;font-size:20px;color:${clr};cursor:pointer;">−</div>
+        <div style="min-width:24px;text-align:center;font-size:14px;font-weight:700;font-family:'IBM Plex Mono',monospace;color:var(--text);">${q||'·'}</div>
+        <div onclick="corkageAdj(${i},1)" style="width:38px;height:38px;display:flex;align-items:center;justify-content:center;font-size:20px;color:${clr};cursor:pointer;">+</div>
+      </div>
+    </div>`;
+  }).join('');
+  const total=CORKAGE_TYPES.reduce((s,t,i)=>s+t.price*_corkageQtys[i],0);
+  const totalEl=document.getElementById('corkageTotal');
+  if(totalEl)totalEl.textContent=total>0?`ИТОГО: ${total} ₽`:'';
+  const btn=document.getElementById('corkageConfirmBtn');
+  if(btn){btn.disabled=total===0;btn.style.opacity=total>0?'1':'.4';}
+}
+
+export function corkageAdj(i,delta){
+  _corkageQtys[i]=Math.max(0,_corkageQtys[i]+delta);
+  _renderCorkage();
+}
+
 export function openCorkagePicker(tNum){
-  _corkageTable=tNum;
+  _corkageTable=tNum;_corkageQtys=[0,0,0];
   const sub=document.getElementById('corkageSub');
   if(sub)sub.textContent='Стол '+tNum;
+  _renderCorkage();
   document.getElementById('corkageOverlay').classList.remove('hidden');
   lockScroll();
 }
@@ -173,17 +217,24 @@ export function closeCorkageModal(){
   document.getElementById('corkageOverlay').classList.add('hidden');
   unlockScroll();_corkageTable=null;
 }
-export async function selectCorkage(label,price){
+export async function confirmCorkage(){
   if(!_corkageTable)return;
   const tNum=_corkageTable;closeCorkageModal();
   const date=todayStr();const meta=getTMeta(date,tNum);
   const sid=meta.sid||(meta.sid=Date.now().toString(36));
-  const num=(S.orders.length?Math.max(...S.orders.map(o=>o.num||0)):0)+1;
-  const newRef=push(ref(db,'orders'));
-  const itemId=Date.now().toString(36)+'_cork';
-  const newOrder={id:newRef.key,table:tNum,items:{[itemId]:{id:itemId,name:`Пробковый сбор — ${label}`,qty:1,status:'done',doneAt:Date.now()}},note:`${price}₽`,priority:'normal',status:'done',doneAt:Date.now(),createdAt:Date.now(),num,date,sid};
-  await update(ref(db,'orders/'+newRef.key),newOrder);
-  fl('fOk',`✅ Пробковый сбор ${price}₽ — Стол ${tNum}`);
+  const _ro=S.orderNumResetAt?S.orders.filter(o=>(o.createdAt||0)>=S.orderNumResetAt):S.orders;
+  let num=(_ro.length?Math.max(..._ro.map(o=>o.num||0)):0)+1;
+  let total=0;
+  for(let i=0;i<CORKAGE_TYPES.length;i++){
+    const q=_corkageQtys[i];if(!q)continue;
+    const t=CORKAGE_TYPES[i];
+    const newRef=push(ref(db,'orders'));
+    const itemId=Date.now().toString(36)+'_cork'+i;
+    const newOrder={id:newRef.key,table:tNum,items:{[itemId]:{id:itemId,name:`Пробковый сбор — ${t.label}`,qty:q,status:'done',doneAt:Date.now()}},note:`${t.price*q}₽`,priority:'normal',status:'done',doneAt:Date.now(),createdAt:Date.now(),num,date,sid};
+    await update(ref(db,'orders/'+newRef.key),newOrder);
+    total+=t.price*q;num++;
+  }
+  fl('fOk',`✅ Пробковый сбор ${total}₽ — Стол ${tNum}`);
 }
 
 // ─── RENDER TABLES ────────────────────────────────────
@@ -196,7 +247,7 @@ export function renderTables(){
   document.getElementById('dateLabel').textContent=dateLbl(S.viewDate);
   const allDates=[...new Set(S.orders.map(o=>o.date).filter(Boolean))].sort((a,b)=>b.localeCompare(a));
   const qnEl=document.getElementById('dateQuickNav');
-  if(qnEl)qnEl.innerHTML=allDates.map(d=>`<button onclick="jumpDate('${d}')" style="padding:5px 12px;border-radius:18px;border:1px solid ${d===S.viewDate?'var(--accent)':'var(--border)'};background:${d===S.viewDate?'var(--accent)':'transparent'};color:${d===S.viewDate?'#000':'var(--muted)'};font-size:11px;font-family:IBM Plex Mono,monospace;cursor:pointer;white-space:nowrap;">${dateLbl(d)}</button>`).join('');
+  if(qnEl){const btnStyle=`padding:5px 12px;border-radius:18px;font-size:11px;font-family:IBM Plex Mono,monospace;cursor:pointer;white-space:nowrap;flex-shrink:0;`;qnEl.innerHTML=allDates.map(d=>`<button onclick="jumpDate('${d}')" style="${btnStyle}border:1px solid ${d===S.viewDate?'var(--accent)':'var(--border)'};background:${d===S.viewDate?'var(--accent)':'transparent'};color:${d===S.viewDate?'#000':'var(--muted)'};">${dateLbl(d)}</button>`).join('');}
 
   const dayOrders=S.orders.filter(o=>o.date===S.viewDate);
   const sessionMap={};
@@ -255,7 +306,7 @@ export function renderClosed(){
   if(lbl)lbl.textContent=dateLbl(S.closedViewDate);
   const allDates=[...new Set(S.orders.map(o=>o.date).filter(Boolean))].sort((a,b)=>b.localeCompare(a));
   const qnEl=document.getElementById('closedDateQuickNav');
-  if(qnEl)qnEl.innerHTML=allDates.map(d=>`<button onclick="jumpClosedDate('${d}')" style="padding:5px 12px;border-radius:18px;border:1px solid ${d===S.closedViewDate?'var(--accent)':'var(--border)'};background:${d===S.closedViewDate?'var(--accent)':'transparent'};color:${d===S.closedViewDate?'#000':'var(--muted)'};font-size:11px;font-family:IBM Plex Mono,monospace;cursor:pointer;white-space:nowrap;">${dateLbl(d)}</button>`).join('');
+  if(qnEl){const btnStyle=`padding:5px 12px;border-radius:18px;font-size:11px;font-family:IBM Plex Mono,monospace;cursor:pointer;white-space:nowrap;flex-shrink:0;`;qnEl.innerHTML=allDates.map(d=>`<button onclick="jumpClosedDate('${d}')" style="${btnStyle}border:1px solid ${d===S.closedViewDate?'var(--accent)':'var(--border)'};background:${d===S.closedViewDate?'var(--accent)':'transparent'};color:${d===S.closedViewDate?'#000':'var(--muted)'};">${dateLbl(d)}</button>`).join('');}
   const listEl=document.getElementById('closedTablesList');if(!listEl)return;
   const dayOrders=S.orders.filter(o=>o.date===S.closedViewDate);
   const sessionMap={};

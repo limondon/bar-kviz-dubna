@@ -77,6 +77,8 @@ body.modal-open{position:fixed;overflow:hidden;touch-action:none;width:100%;}
 }
 .modal-btn:active{opacity:.82;}
 .modal-close{display:block;text-align:center;margin-top:var(--sp-sm);font-size:var(--fs-sm);color:var(--muted);cursor:pointer;padding:var(--sp-sm);}
+.sheet-overlay{align-items:flex-end;padding:0;}
+.bottom-sheet{width:100%;background:var(--surface);border:1px solid var(--border);border-bottom:none;border-radius:16px 16px 0 0;padding:20px 20px 40px;max-height:80vh;overflow-y:auto;-webkit-overflow-scrolling:touch;}
 
 /* ═══════════════════════════════
    HEADER
@@ -486,8 +488,9 @@ textarea{resize:vertical;min-height:clamp(70px,18vw,100px);}
   box-shadow:0 4px 20px rgba(0,0,0,.5);
 }
 .flash.show{opacity:1;transform:translateX(-50%) translateY(0);}
-.f-ok  {background:var(--green);color:#000;bottom:clamp(90px,18vw,110px);}
-.f-info{background:var(--blue); color:#fff;bottom:clamp(50px,10vw,65px);}
+.f-ok  {background:var(--green);color:#000;bottom:clamp(130px,26vw,150px);}
+.f-info{background:var(--blue); color:#fff;bottom:clamp(90px,18vw,110px);}
+.f-err {background:var(--red);  color:#fff;bottom:clamp(50px,10vw,65px);}
 
 /* ═══════════════════════════════
    RESPONSIVE BREAKPOINTS
@@ -530,8 +533,9 @@ textarea{resize:vertical;min-height:clamp(70px,18vw,100px);}
   main{padding:10px;}
   .add-form{padding:14px 12px;}
   .row{flex-direction:row;}
-  .f-ok {bottom:calc(70px + env(safe-area-inset-bottom));}
-  .f-info{bottom:calc(110px + env(safe-area-inset-bottom));}
+  .f-ok {bottom:calc(110px + env(safe-area-inset-bottom));}
+  .f-info{bottom:calc(70px + env(safe-area-inset-bottom));}
+  .f-err {bottom:calc(30px + env(safe-area-inset-bottom));}
   .item-btns{flex-wrap:wrap;gap:6px;}
 }
 

@@ -1,6 +1,6 @@
 import{S}from'./state.js';
 import{db,ref,push,update,set,remove}from'./firebase.js';
-import{parseItems,aggStatus,esc,fl,showConfirm,todayStr,lockScroll,unlockScroll}from'./utils.js';
+import{parseItems,aggStatus,esc,fl,safeDb,showConfirm,todayStr,lockScroll,unlockScroll}from'./utils.js';
 import{applyStockDeltas,deductMenuStock}from'./stock.js';
 import{getTMeta}from'./tables.js';
 import{buildQuickTableBtns,isInstantItem}from'./render.js';
@@ -21,7 +21,8 @@ export async function addOrder(){
       const tNum=tableRaw;const items=parseItems(rawItems);
       if(!items.length){fl('fInfo','Не удалось распознать позиции!');}
       else{
-        const num=(S.orders.length?Math.max(...S.orders.map(o=>o.num||0)):0)+1;
+        const _ro=S.orderNumResetAt?S.orders.filter(o=>(o.createdAt||0)>=S.orderNumResetAt):S.orders;
+        const num=(_ro.length?Math.max(..._ro.map(o=>o.num||0)):0)+1;
         const date=todayStr();
         const existingMeta=getTMeta(date,tNum);
         if(existingMeta.status==='closed'){
@@ -35,8 +36,9 @@ export async function addOrder(){
         const newRef=push(ref(db,'orders'));
         const itemsObj={};items.forEach(it=>itemsObj[it.id]=it);
         const newOrder={id:newRef.key,table:tNum,items:itemsObj,note,priority:prio,status:'new',createdAt:Date.now(),num,date,sid};
-        await update(ref(db,'orders/'+newRef.key),newOrder);
-        await update(ref(db,'tables/'+date+'_'+tNum),existingMeta);
+        const ok=await safeDb(update(ref(db,'orders/'+newRef.key),newOrder),'❌ Не удалось создать заказ — проверь интернет');
+        if(!ok)return;
+        await safeDb(update(ref(db,'tables/'+date+'_'+tNum),existingMeta));
         await deductMenuStock(items);
         fl('fOk','✅ Заказ #'+num+' — Стол '+tNum+' ('+items.length+' поз.)');
         ['inpTable','inpItems','inpNote'].forEach(id=>document.getElementById(id).value='');
@@ -63,7 +65,7 @@ export async function barItemAction(orderId,itemFbKey,newStatus){
   if(newStatus==='making')upd[`orders/${orderId}/items/${fbKey}/makingAt`]=it.makingAt;
   if(newStatus==='ready')upd[`orders/${orderId}/items/${fbKey}/readyAt`]=it.readyAt;
   if(newStatus==='new'){upd[`orders/${orderId}/items/${fbKey}/makingAt`]=null;upd[`orders/${orderId}/items/${fbKey}/readyAt`]=null;}
-  await update(ref(db),upd);
+  await safeDb(update(ref(db),upd),'❌ Не удалось обновить статус');
 }
 
 export async function waiterDeliverItem(orderId,itemFbKey){
@@ -76,7 +78,7 @@ export async function waiterDeliverItem(orderId,itemFbKey){
   const fbKey=it._fbKey||it.id;
   const upd={[`orders/${orderId}/items/${fbKey}/status`]:'done',[`orders/${orderId}/items/${fbKey}/doneAt`]:it.doneAt};
   if(o.status==='done'){o.doneAt=Date.now();upd[`orders/${orderId}/doneAt`]=o.doneAt;}
-  await update(ref(db),upd);
+  await safeDb(update(ref(db),upd),'❌ Не удалось отметить доставку');
   fl('fOk','✅ '+it.qty+'× '+it.name+' → Стол '+o.table);
 }
 
@@ -94,7 +96,7 @@ export async function waiterDeliverAll(orderId){
   });
   o.status=aggStatus(o.items);
   if(o.status==='done'){o.doneAt=Date.now();upd[`orders/${orderId}/doneAt`]=o.doneAt;}
-  await update(ref(db),upd);
+  await safeDb(update(ref(db),upd),'❌ Не удалось отметить доставку');
   fl('fOk','✅ '+count+' позиц. доставлены — Стол '+o.table);
 }
 

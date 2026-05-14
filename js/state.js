@@ -15,4 +15,5 @@ export const S = {
   editOrderId: null,
   editBillMode: false,
   appPassword: null,
+  orderNumResetAt: 0,
 };

@@ -9,9 +9,9 @@ import{renderMenuPage}from'./menu.js';
 import{renderStats}from'./render.js';
 import{renderCalls}from'./calls.js';
 import{barItemAction,waiterDeliverItem,waiterDeliverAll,reopenOrder,delOrder,openEditModal,closeEditModal,saveEditOrder,addOrder,updateEditRow,removeEditRow,addEditItem}from'./orders.js';
-import{closeTable,reopenTable,renameTable,doRenameTable,deleteTable,logTable,unlogTable,showQR,closeQrModal,openQrPicker,closeQrPicker,closeRenameModal,confirmRename,shiftDate,jumpDate,shiftClosedDate,jumpClosedDate,toggleBill as _toggleBill,openCorkagePicker,closeCorkageModal,selectCorkage}from'./tables.js';
+import{closeTable,reopenTable,renameTable,doRenameTable,deleteTable,logTable,unlogTable,showQR,closeQrModal,openQrPicker,closeQrPicker,closeRenameModal,confirmRename,shiftDate,jumpDate,shiftClosedDate,jumpClosedDate,toggleBill as _toggleBill,openCorkagePicker,closeCorkageModal,confirmCorkage,corkageAdj,toggleDatesExpanded,toggleClosedDatesExpanded}from'./tables.js';
 import{sw,setQF,pickTable,openRoleModal,closeRoleModal,pickRole,confirmRole,applyRole,checkPassword,openPasswordModal,checkAuth,changePassword,buildTabs,toggleSettingsMenu,toggleBill}from'./ui.js';
-import{openMenuPicker,closeMenuPicker,confirmMenuPicker,switchPickerCat,pickerToggleGroup,openMenuEditor,closeMenuEditor,updateMenuCatItem,removeMenuCatItem,addMenuCatItem,addMenuCategory,removeMenuCategory,moveMenuCat,renderMenuEditor,updateMenuItem,removeMenuItem,addNewMenuItem,buildMenuButtons,updateMenuCat,toggleMenuCatHidden,restructureLemonades}from'./menu.js';
+import{openMenuPicker,closeMenuPicker,confirmMenuPicker,switchPickerCat,pickerToggleGroup,openMenuEditor,closeMenuEditor,updateMenuCatItem,removeMenuCatItem,addMenuCatItem,addMenuCategory,removeMenuCategory,moveMenuCat,renderMenuEditor,updateMenuItem,removeMenuItem,addNewMenuItem,buildMenuButtons,updateMenuCat,toggleMenuCatHidden,restructureLemonades,openItemEditor,closeItemEditor,saveItemEditor}from'./menu.js';
 import{prepareQuiz,finishQuiz}from'./quiz.js';
 import{checkInCall,clearCalls}from'./calls.js';
 import{applyStockDeltas,deductMenuStock}from'./stock.js';
@@ -50,6 +50,8 @@ async function loadAll(){
     S.tablesMeta=snap.val()||{};
     if(S.activeTab==='tables')renderTables();
   });
+
+  onValue(ref(db,'config/orderNumResetAt'),(snap)=>{S.orderNumResetAt=snap.val()||0;});
 
   onValue(ref(db,'menu2'),(snap)=>{
     const raw=snap.val();
@@ -109,6 +111,28 @@ document.addEventListener('click',async e=>{
   if(action==='checkInCall'){const callId=btn.dataset.callid;if(callId)await checkInCall(callId);return;}
 });
 
+// ─── RESET ORDER COUNTER ─────────────────────────────
+async function resetOrderCounter(){
+  const ok=await new Promise(resolve=>{
+    const d=document.createElement('div');
+    d.style.cssText='position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.85);display:flex;align-items:center;justify-content:center;';
+    d.innerHTML=`<div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:24px;max-width:320px;text-align:center;">
+      <div style="font-family:\'Bebas Neue\',sans-serif;font-size:20px;color:var(--accent);margin-bottom:8px;">СБРОСИТЬ СЧЁТЧИК?</div>
+      <div style="font-size:13px;color:var(--muted);margin-bottom:20px;">Следующий заказ получит номер #1. Старые заказы не удалятся.</div>
+      <div style="display:flex;gap:10px;justify-content:center;">
+        <button id="_rcOk" style="padding:10px 24px;background:var(--accent);color:#000;border:none;border-radius:8px;font-family:\'Bebas Neue\',sans-serif;font-size:16px;cursor:pointer;">СБРОСИТЬ</button>
+        <button id="_rcNo" style="padding:10px 24px;background:transparent;color:var(--muted);border:1px solid var(--border);border-radius:8px;font-size:14px;cursor:pointer;">Отмена</button>
+      </div></div>`;
+    document.body.appendChild(d);
+    d.querySelector('#_rcOk').onclick=()=>{document.body.removeChild(d);resolve(true);};
+    d.querySelector('#_rcNo').onclick=()=>{document.body.removeChild(d);resolve(false);};
+  });
+  if(!ok)return;
+  await set(ref(db,'config/orderNumResetAt'),Date.now());
+  fl('fOk','✅ Счётчик сброшен — следующий заказ будет #1');
+}
+window.resetOrderCounter=resetOrderCounter;
+
 // ─── EXPOSE TO HTML ───────────────────────────────────
 Object.assign(window,{
   pickRole,confirmRole,openRoleModal,closeRoleModal,checkPassword,changePassword,
@@ -121,8 +145,9 @@ Object.assign(window,{
   closeConfirmModal,confirmOk,
   openMenuEditor,closeMenuEditor,addNewMenuItem,removeMenuItem,updateMenuItem,renderStats,renderMenuPage,
   updateMenuCatItem,removeMenuCatItem,addMenuCatItem,addMenuCategory,removeMenuCategory,moveMenuCat,updateMenuCat,toggleMenuCatHidden,
+  openItemEditor,closeItemEditor,saveItemEditor,
   openMenuPicker,closeMenuPicker,confirmMenuPicker,switchPickerCat,pickerToggleGroup,
-  showQR,closeQrModal,openQrPicker,closeQrPicker,openCorkagePicker,closeCorkageModal,selectCorkage,
+  showQR,closeQrModal,openQrPicker,closeQrPicker,openCorkagePicker,closeCorkageModal,confirmCorkage,corkageAdj,toggleDatesExpanded,toggleClosedDatesExpanded,
   logTable,unlogTable,
   prepareQuiz,finishQuiz,
   renderCalls,clearCalls,checkInCall,
