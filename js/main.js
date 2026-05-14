@@ -177,7 +177,9 @@ function hideSplash(){const el=document.getElementById('splashScreen');if(!el)re
   if(!checkAuth()){openPasswordModal();}
   else{const sr=localStorage.getItem('bar_role');if(sr){S.role=sr;applyRole();}else openRoleModal();}
 
-  clearTimeout(splashTimer);hideSplash();
+  // Скрываем заставку сразу как UI готов
+  clearTimeout(splashTimer);
+  requestAnimationFrame(()=>requestAnimationFrame(hideSplash));
 
   await loadAll();
   startPoll();
