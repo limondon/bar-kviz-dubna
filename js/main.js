@@ -9,7 +9,7 @@ import{renderMenuPage}from'./menu.js';
 import{renderStats}from'./render.js';
 import{renderCalls}from'./calls.js';
 import{barItemAction,waiterDeliverItem,waiterDeliverAll,reopenOrder,delOrder,openEditModal,closeEditModal,saveEditOrder,addOrder,updateEditRow,removeEditRow,addEditItem}from'./orders.js';
-import{closeTable,reopenTable,renameTable,doRenameTable,deleteTable,logTable,unlogTable,showQR,closeQrModal,openQrPicker,closeQrPicker,closeRenameModal,confirmRename,shiftDate,jumpDate,shiftClosedDate,jumpClosedDate,toggleBill as _toggleBill,openCorkagePicker,closeCorkageModal,confirmCorkage,corkageAdj,toggleDatesExpanded,toggleClosedDatesExpanded}from'./tables.js';
+import{closeTable,reopenTable,renameTable,doRenameTable,deleteTable,logTable,unlogTable,showQR,closeQrModal,openQrPicker,closeQrPicker,closeRenameModal,confirmRename,shiftDate,jumpDate,shiftClosedDate,jumpClosedDate,toggleBill as _toggleBill,openCorkagePicker,closeCorkageModal,confirmCorkage,corkageAdj,toggleDatesExpanded,toggleClosedDatesExpanded,toggleQuickCorkage,_quickCorkagePick}from'./tables.js';
 import{sw,setQF,pickTable,openRoleModal,closeRoleModal,pickRole,confirmRole,applyRole,checkPassword,openPasswordModal,checkAuth,changePassword,buildTabs,toggleSettingsMenu,toggleBill}from'./ui.js';
 import{openMenuPicker,closeMenuPicker,confirmMenuPicker,switchPickerCat,pickerToggleGroup,openMenuEditor,closeMenuEditor,updateMenuCatItem,removeMenuCatItem,addMenuCatItem,addMenuCategory,removeMenuCategory,moveMenuCat,renderMenuEditor,updateMenuItem,removeMenuItem,addNewMenuItem,buildMenuButtons,updateMenuCat,toggleMenuCatHidden,restructureLemonades,openItemEditor,closeItemEditor,saveItemEditor}from'./menu.js';
 import{prepareQuiz,finishQuiz}from'./quiz.js';
@@ -147,7 +147,7 @@ Object.assign(window,{
   updateMenuCatItem,removeMenuCatItem,addMenuCatItem,addMenuCategory,removeMenuCategory,moveMenuCat,updateMenuCat,toggleMenuCatHidden,
   openItemEditor,closeItemEditor,saveItemEditor,
   openMenuPicker,closeMenuPicker,confirmMenuPicker,switchPickerCat,pickerToggleGroup,
-  showQR,closeQrModal,openQrPicker,closeQrPicker,openCorkagePicker,closeCorkageModal,confirmCorkage,corkageAdj,toggleDatesExpanded,toggleClosedDatesExpanded,
+  showQR,closeQrModal,openQrPicker,closeQrPicker,openCorkagePicker,closeCorkageModal,confirmCorkage,corkageAdj,toggleDatesExpanded,toggleClosedDatesExpanded,toggleQuickCorkage,_quickCorkagePick,
   logTable,unlogTable,
   prepareQuiz,finishQuiz,
   renderCalls,clearCalls,checkInCall,

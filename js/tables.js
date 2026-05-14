@@ -6,8 +6,10 @@ import{BUILTIN_MENU}from'./menu-data.js';
 // ─── DATE NAV STATE ──────────────────────────────────
 let _datesExpanded=false;
 let _closedDatesExpanded=false;
+let _quickCorkageOpen=false;
 export function toggleDatesExpanded(){_datesExpanded=!_datesExpanded;renderTables();}
 export function toggleClosedDatesExpanded(){_closedDatesExpanded=!_closedDatesExpanded;renderClosed();}
+export function toggleQuickCorkage(){_quickCorkageOpen=!_quickCorkageOpen;renderTables();}
 
 // ─── TABLE META ───────────────────────────────────────
 export function tKey(date,tNum){return date+'_'+tNum;}
@@ -205,6 +207,7 @@ export function corkageAdj(i,delta){
   _renderCorkage();
 }
 
+export function _quickCorkagePick(tNum){_quickCorkageOpen=false;openCorkagePicker(tNum);}
 export function openCorkagePicker(tNum){
   _corkageTable=tNum;_corkageQtys=[0,0,0];
   const sub=document.getElementById('corkageSub');
@@ -253,7 +256,8 @@ export function renderTables(){
   if(qcEl){
     if(S.role==='admin'||S.role==='waiter'){
       const tNums=['1','2','3','4','5','6','7','8','9','10','11','12','13','14','15','16','17','PS1','PS2'];
-      qcEl.innerHTML=`<div style="background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:10px 12px;margin-bottom:12px;"><div style="font-size:11px;color:var(--muted);margin-bottom:8px;letter-spacing:.5px;text-transform:uppercase;">🍾 Быстрая пробка</div><div style="display:flex;gap:6px;flex-wrap:wrap;">${tNums.map(t=>`<button onclick="openCorkagePicker('${t}')" style="padding:5px 10px;border-radius:8px;border:1px solid var(--border);background:transparent;color:var(--muted);font-family:'IBM Plex Mono',monospace;font-size:12px;cursor:pointer;">${t}</button>`).join('')}</div></div>`;
+      const tableGrid=_quickCorkageOpen?`<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px;">${tNums.map(t=>`<button onclick="_quickCorkagePick('${t}')" style="padding:8px 12px;border-radius:8px;border:1px solid var(--border);background:transparent;color:var(--text);font-family:'IBM Plex Mono',monospace;font-size:13px;cursor:pointer;">${t}</button>`).join('')}</div>`:'';
+      qcEl.innerHTML=`<div style="margin-bottom:12px;"><button onclick="toggleQuickCorkage()" style="display:flex;align-items:center;gap:8px;padding:10px 16px;background:${_quickCorkageOpen?'rgba(156,39,176,.15)':'var(--card)'};border:1px solid ${_quickCorkageOpen?'rgba(156,39,176,.5)':'var(--border)'};border-radius:var(--radius);color:${_quickCorkageOpen?'var(--purple)':'var(--muted)'};font-family:'IBM Plex Mono',monospace;font-size:13px;cursor:pointer;width:100%;">🍾 Быстрая пробка <span style="margin-left:auto;font-size:11px;">${_quickCorkageOpen?'▲':'▼'}</span></button>${tableGrid}</div>`;
     } else {
       qcEl.innerHTML='';
     }
