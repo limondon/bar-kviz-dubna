@@ -252,6 +252,7 @@ export async function confirmCorkage(){
   closeCorkageModal();
   const date=todayStr();const meta=getTMeta(date,tNum);
   const sid=meta.sid||(meta.sid=Date.now().toString(36));
+  await fbUpdate('tables/'+date+'_'+tNum,meta);
   const upd={};
   let totalChange=0;
 
