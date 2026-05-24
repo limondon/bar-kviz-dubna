@@ -176,42 +176,59 @@ const CORKAGE_TYPES=[
 ];
 let _corkageTable=null;
 let _corkageQtys=[0,0,0];
+let _corkageInitial=[0,0,0];
 
 function _renderCorkage(){
   const itemsEl=document.getElementById('corkageItems');
   if(itemsEl)itemsEl.innerHTML=CORKAGE_TYPES.map((t,i)=>{
     const q=_corkageQtys[i];
+    const init=_corkageInitial[i];
+    const canDec=q>init;
     const colors=[['rgba(245,166,35,.15)','var(--accent)','rgba(245,166,35,.4)'],['rgba(156,39,176,.15)','var(--purple)','rgba(156,39,176,.4)'],['rgba(229,57,53,.15)','var(--red)','rgba(229,57,53,.4)']];
     const[bg,clr,brd]=colors[i];
+    const existingHint=init>0?`<span style="font-size:10px;color:var(--muted);margin-left:6px;">(уже ${init})</span>`:'';
     return`<div style="display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid rgba(255,255,255,.06);">
       <div style="flex:1;">
-        <div style="font-size:13px;font-weight:600;color:var(--text);">${t.emoji} ${t.label}</div>
+        <div style="font-size:13px;font-weight:600;color:var(--text);">${t.emoji} ${t.label}${existingHint}</div>
         <div style="font-size:16px;font-family:'Bebas Neue',sans-serif;letter-spacing:1px;color:${clr};">${t.price} ₽</div>
       </div>
       <div style="display:flex;align-items:center;gap:0;background:${q?bg:'transparent'};border:1.5px solid ${q?brd:'var(--border)'};border-radius:100px;overflow:hidden;transition:all .15s;">
-        <div onclick="corkageAdj(${i},-1)" style="width:38px;height:38px;display:flex;align-items:center;justify-content:center;font-size:20px;color:${clr};cursor:pointer;">−</div>
+        <div onclick="corkageAdj(${i},-1)" style="width:38px;height:38px;display:flex;align-items:center;justify-content:center;font-size:20px;color:${clr};cursor:${canDec?'pointer':'not-allowed'};opacity:${canDec?1:.3};">−</div>
         <div style="min-width:24px;text-align:center;font-size:14px;font-weight:700;font-family:'IBM Plex Mono',monospace;color:var(--text);">${q||'·'}</div>
         <div onclick="corkageAdj(${i},1)" style="width:38px;height:38px;display:flex;align-items:center;justify-content:center;font-size:20px;color:${clr};cursor:pointer;">+</div>
       </div>
     </div>`;
   }).join('');
-  const total=CORKAGE_TYPES.reduce((s,t,i)=>s+t.price*_corkageQtys[i],0);
+  const totalNew=CORKAGE_TYPES.reduce((s,t,i)=>s+t.price*(_corkageQtys[i]-_corkageInitial[i]),0);
   const totalEl=document.getElementById('corkageTotal');
-  if(totalEl)totalEl.textContent=total>0?`ИТОГО: ${total} ₽`:'';
+  if(totalEl)totalEl.textContent=totalNew>0?`ДОБАВИТЬ: ${totalNew} ₽`:'';
   const btn=document.getElementById('corkageConfirmBtn');
-  if(btn){btn.disabled=total===0;btn.style.opacity=total>0?'1':'.4';}
+  if(btn){btn.disabled=totalNew<=0;btn.style.opacity=totalNew>0?'1':'.4';}
 }
 
 export function corkageAdj(i,delta){
-  _corkageQtys[i]=Math.max(0,_corkageQtys[i]+delta);
+  _corkageQtys[i]=Math.max(_corkageInitial[i],_corkageQtys[i]+delta);
   _renderCorkage();
 }
 
 export function _quickCorkagePick(tNum){_quickCorkageOpen=false;openCorkagePicker(tNum);}
 export function openCorkagePicker(tNum){
-  _corkageTable=tNum;_corkageQtys=[0,0,0];
+  _corkageTable=tNum;
+  const date=todayStr();
+  const meta=getTMeta(date,tNum);
+  const sid=meta.sid||'default';
+  _corkageInitial=[0,0,0];
+  S.orders.forEach(o=>{
+    if(o.date!==date||String(o.table)!==String(tNum)||(o.sid||'default')!==sid)return;
+    (o.items||[]).forEach(it=>{
+      for(let i=0;i<CORKAGE_TYPES.length;i++){
+        if(it.name===`Пробковый сбор — ${CORKAGE_TYPES[i].label}`)_corkageInitial[i]+=it.qty;
+      }
+    });
+  });
+  _corkageQtys=[..._corkageInitial];
   const sub=document.getElementById('corkageSub');
-  if(sub)sub.textContent='Стол '+tNum;
+  if(sub)sub.textContent='Стол '+tNum+(_corkageInitial.some(q=>q>0)?' · уже добавлено':'');
   _renderCorkage();
   document.getElementById('corkageOverlay').classList.remove('hidden');
   lockScroll();
@@ -222,14 +239,17 @@ export function closeCorkageModal(){
 }
 export async function confirmCorkage(){
   if(!_corkageTable)return;
-  const tNum=_corkageTable;closeCorkageModal();
+  const tNum=_corkageTable;
+  const deltas=CORKAGE_TYPES.map((t,i)=>_corkageQtys[i]-_corkageInitial[i]);
+  if(!deltas.some(d=>d>0)){closeCorkageModal();return;}
+  closeCorkageModal();
   const date=todayStr();const meta=getTMeta(date,tNum);
   const sid=meta.sid||(meta.sid=Date.now().toString(36));
   const _ro=S.orderNumResetAt?S.orders.filter(o=>(o.createdAt||0)>=S.orderNumResetAt):S.orders;
   let num=(_ro.length?Math.max(..._ro.map(o=>o.num||0)):0)+1;
   let total=0;
   for(let i=0;i<CORKAGE_TYPES.length;i++){
-    const q=_corkageQtys[i];if(!q)continue;
+    const q=deltas[i];if(q<=0)continue;
     const t=CORKAGE_TYPES[i];
     const newRef=push(ref(db,'orders'));
     const itemId=Date.now().toString(36)+'_cork'+i;
@@ -237,7 +257,41 @@ export async function confirmCorkage(){
     await update(ref(db,'orders/'+newRef.key),newOrder);
     total+=t.price*q;num++;
   }
-  fl('fOk',`✅ Пробковый сбор ${total}₽ — Стол ${tNum}`);
+  fl('fOk',`✅ Пробковый сбор +${total}₽ — Стол ${tNum}`);
+}
+
+// ─── TABLE NOTE ───────────────────────────────────────
+export async function editTableNote(date,tNum){
+  const meta=getTMeta(date,tNum);
+  const current=meta.note||'';
+  const result=await new Promise(resolve=>{
+    const d=document.createElement('div');
+    d.style.cssText='position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.85);display:flex;align-items:center;justify-content:center;padding:20px;';
+    d.innerHTML=`<div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:20px;max-width:400px;width:100%;box-sizing:border-box;">
+      <div style="font-family:'Bebas Neue',sans-serif;font-size:20px;color:var(--accent);margin-bottom:4px;letter-spacing:1px;">📝 ЗАМЕТКА К СТОЛУ ${esc(String(tNum))}</div>
+      <div style="font-size:11px;color:var(--muted);margin-bottom:12px;">Видна всем — бармен/официант/менеджер</div>
+      <textarea id="_tnInp" placeholder="ДР, столик у окна, аллергия, особые пожелания..." style="width:100%;min-height:90px;padding:10px;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:'IBM Plex Mono',monospace;font-size:13px;resize:vertical;box-sizing:border-box;">${esc(current)}</textarea>
+      <div style="display:flex;gap:8px;justify-content:space-between;margin-top:16px;flex-wrap:wrap;">
+        ${current?`<button id="_tnDel" style="padding:10px 16px;background:rgba(229,57,53,.15);color:var(--red);border:1px solid rgba(229,57,53,.3);border-radius:8px;font-family:'IBM Plex Mono',monospace;font-size:13px;cursor:pointer;">🗑 Удалить</button>`:'<span></span>'}
+        <div style="display:flex;gap:8px;">
+          <button id="_tnNo" style="padding:10px 18px;background:transparent;color:var(--muted);border:1px solid var(--border);border-radius:8px;font-size:13px;cursor:pointer;">Отмена</button>
+          <button id="_tnOk" style="padding:10px 22px;background:var(--accent);color:#000;border:none;border-radius:8px;font-family:'Bebas Neue',sans-serif;font-size:16px;letter-spacing:1px;cursor:pointer;">СОХРАНИТЬ</button>
+        </div>
+      </div>
+    </div>`;
+    document.body.appendChild(d);
+    const ta=d.querySelector('#_tnInp');setTimeout(()=>ta.focus(),50);
+    d.querySelector('#_tnOk').onclick=()=>{const v=ta.value.trim();document.body.removeChild(d);resolve(v);};
+    d.querySelector('#_tnNo').onclick=()=>{document.body.removeChild(d);resolve(null);};
+    const del=d.querySelector('#_tnDel');
+    if(del)del.onclick=()=>{document.body.removeChild(d);resolve('');};
+  });
+  if(result===null)return;
+  const k=tKey(date,tNum);
+  if(result)meta.note=result;else delete meta.note;
+  await update(ref(db,'tables/'+k),{note:result||null});
+  renderTables();
+  fl('fOk',result?'📝 Заметка сохранена':'🗑 Заметка удалена');
 }
 
 // ─── RENDER TABLES ────────────────────────────────────
@@ -310,8 +364,11 @@ export function renderTables(){
     const mgmtBtns=`<button class="btn-sm bu" data-action="renameTable" data-date="${S.viewDate}" data-tnum="${tNum}" data-sid="${sid}">✏️ Переименовать</button><button class="btn-sm bx" data-action="deleteTable" data-date="${S.viewDate}" data-tnum="${tNum}" data-sid="${sid}">🗑 Удалить стол</button>`;
     const loggedBtn=(S.role==='admin'||S.role==='waiter')&&isOpen?loggedAt?`<div style="display:flex;gap:6px;flex-wrap:wrap;"><button class="btn-sm bu" data-action="logTable" data-date="${S.viewDate}" data-tnum="${tNum}">📋 Вбили дозаказ</button><button class="btn-sm" style="background:rgba(76,175,80,.1);color:var(--green);border:1px solid rgba(76,175,80,.3);" data-action="unlogTable" data-date="${S.viewDate}" data-tnum="${tNum}">✅ Вбито ${fmt2(loggedAt)} — отменить</button></div>`:`<button class="btn-sm bu" data-action="logTable" data-date="${S.viewDate}" data-tnum="${tNum}">📋 Вбили в систему</button>`:'';
     const corkageBtn=(S.role==='admin'||S.role==='waiter')&&isOpen?`<button class="btn-sm" onclick="openCorkagePicker('${tNum}')" style="background:rgba(156,39,176,.1);color:var(--purple);border:1px solid rgba(156,39,176,.3);">🍾 Пробка</button>`:'';
+    const noteBtn=isOpen?`<button class="btn-sm" onclick="editTableNote('${S.viewDate}','${tNum}')" style="background:${meta.note?'rgba(76,175,80,.18)':'rgba(76,175,80,.08)'};color:var(--green);border:1px solid rgba(76,175,80,.3);">📝 ${meta.note?'Заметка ✓':'Заметка'}</button>`:'';
+    const tableNoteHtml=meta.note?`<div style="background:rgba(76,175,80,.08);border-left:3px solid var(--green);padding:8px 12px;margin:0 0 10px;border-radius:0 6px 6px 0;font-size:13px;color:var(--text);white-space:pre-wrap;word-break:break-word;">📝 ${esc(meta.note)}</div>`:'';
+    const headerNoteHint=meta.note?`<span style="display:inline-block;margin-left:6px;padding:1px 6px;border-radius:6px;background:rgba(76,175,80,.18);color:var(--green);font-size:10px;font-family:'IBM Plex Mono',monospace;">📝</span>`:'';
     const cardId='tb-'+tNum+'_'+sid;
-    return`<div class="table-bill ${isOpen?'':'closed'}" id="${cardId}"><div class="tb-header" onclick="toggleBill('${cardId}')"><div class="tb-left"><div class="tb-num"><small>СТОЛ</small>${tNum}</div><div class="tb-meta"><b>${tOrders.length} ${pl(tOrders.length,'заказ','заказа','заказов')} · ${totalItems} позиц.</b> с ${fmt(tOrders[0]?.createdAt)}${closedLbl}</div></div><div style="display:flex;align-items:center;gap:8px;"><span class="tb-st ${isOpen?'tb-open':'tb-closed'}">${isOpen?'🟢 Открыт':'✅ Оплачен'}</span><span class="tb-chev" id="chev-${cardId}">▼</span></div></div><div class="tb-body" id="body-${cardId}">${ordersHtml}<div class="tb-summary"><h4>📋 ИТОГО</h4>${sumLines||'<div style="color:var(--muted);font-size:12px">Нет позиций</div>'}</div><div class="tb-actions">${actions}${loggedBtn}${corkageBtn}${mgmtBtns}</div></div></div>`;
+    return`<div class="table-bill ${isOpen?'':'closed'}" id="${cardId}"><div class="tb-header" onclick="toggleBill('${cardId}')"><div class="tb-left"><div class="tb-num"><small>СТОЛ</small>${tNum}${headerNoteHint}</div><div class="tb-meta"><b>${tOrders.length} ${pl(tOrders.length,'заказ','заказа','заказов')} · ${totalItems} позиц.</b> с ${fmt(tOrders[0]?.createdAt)}${closedLbl}</div></div><div style="display:flex;align-items:center;gap:8px;"><span class="tb-st ${isOpen?'tb-open':'tb-closed'}">${isOpen?'🟢 Открыт':'✅ Оплачен'}</span><span class="tb-chev" id="chev-${cardId}">▼</span></div></div><div class="tb-body" id="body-${cardId}">${tableNoteHtml}${ordersHtml}<div class="tb-summary"><h4>📋 ИТОГО</h4>${sumLines||'<div style="color:var(--muted);font-size:12px">Нет позиций</div>'}</div><div class="tb-actions">${actions}${loggedBtn}${corkageBtn}${noteBtn}${mgmtBtns}</div></div></div>`;
   }).join('');
 }
 
