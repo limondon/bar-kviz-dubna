@@ -9,7 +9,7 @@ import{renderMenuPage}from'./menu.js';
 import{renderStats}from'./render.js';
 import{renderCalls}from'./calls.js';
 import{barItemAction,waiterDeliverItem,waiterDeliverAll,reopenOrder,delOrder,openEditModal,closeEditModal,saveEditOrder,addOrder,updateEditRow,removeEditRow,addEditItem}from'./orders.js';
-import{closeTable,reopenTable,renameTable,doRenameTable,deleteTable,logTable,unlogTable,showQR,closeQrModal,openQrPicker,closeQrPicker,closeRenameModal,confirmRename,shiftDate,jumpDate,shiftClosedDate,jumpClosedDate,toggleBill as _toggleBill,openCorkagePicker,closeCorkageModal,confirmCorkage,corkageAdj,toggleDatesExpanded,toggleClosedDatesExpanded,toggleQuickCorkage,_quickCorkagePick,editTableNote}from'./tables.js';
+import{closeTable,reopenTable,renameTable,doRenameTable,deleteTable,logTable,unlogTable,showQR,closeQrModal,openQrPicker,closeQrPicker,closeRenameModal,confirmRename,shiftDate,jumpDate,shiftClosedDate,jumpClosedDate,toggleBill as _toggleBill,openCorkagePicker,closeCorkageModal,confirmCorkage,corkageAdj,toggleDatesExpanded,toggleClosedDatesExpanded,toggleQuickCorkage,_quickCorkagePick,editTableNote,openDeliveryLog,renderDeliveryLogSidebar}from'./tables.js';
 import{sw,setQF,pickTable,openRoleModal,closeRoleModal,pickRole,confirmRole,applyRole,checkPassword,openPasswordModal,checkAuth,changePassword,buildTabs,toggleSettingsMenu,toggleBill}from'./ui.js';
 import{openMenuPicker,closeMenuPicker,confirmMenuPicker,switchPickerCat,pickerToggleGroup,openMenuEditor,closeMenuEditor,updateMenuCatItem,removeMenuCatItem,addMenuCatItem,addMenuCategory,removeMenuCategory,moveMenuCat,renderMenuEditor,updateMenuItem,removeMenuItem,addNewMenuItem,buildMenuButtons,updateMenuCat,toggleMenuCatHidden,restructureLemonades,openItemEditor,closeItemEditor,saveItemEditor}from'./menu.js';
 import{prepareQuiz,finishQuiz}from'./quiz.js';
@@ -76,6 +76,16 @@ async function loadAll(){
   });
 
   onValue(ref(db,'config/orderNumResetAt'),(snap)=>{S.orderNumResetAt=snap.val()||0;});
+
+  onValue(ref(db,'deliveryLog'),(snap)=>{
+    const raw=snap.val()||{};
+    const cutoff=Date.now()-24*60*60*1000;
+    const cleanupUpd={};
+    Object.entries(raw).forEach(([k,v])=>{if(!v||(v.at||0)<cutoff)cleanupUpd[`deliveryLog/${k}`]=null;});
+    if(Object.keys(cleanupUpd).length)update(ref(db),cleanupUpd).catch(e=>console.error('deliveryLog cleanup',e));
+    S.deliveryLog=Object.fromEntries(Object.entries(raw).filter(([k,v])=>v&&(v.at||0)>=cutoff));
+    if(window.renderDeliveryLogSidebar)window.renderDeliveryLogSidebar();
+  });
 
   onValue(ref(db,'menu2'),(snap)=>{
     const raw=snap.val();
@@ -172,7 +182,7 @@ Object.assign(window,{
   openItemEditor,closeItemEditor,saveItemEditor,
   openMenuPicker,closeMenuPicker,confirmMenuPicker,switchPickerCat,pickerToggleGroup,
   showQR,closeQrModal,openQrPicker,closeQrPicker,openCorkagePicker,closeCorkageModal,confirmCorkage,corkageAdj,toggleDatesExpanded,toggleClosedDatesExpanded,toggleQuickCorkage,_quickCorkagePick,
-  logTable,unlogTable,editTableNote,
+  logTable,unlogTable,editTableNote,openDeliveryLog,renderDeliveryLogSidebar,
   prepareQuiz,finishQuiz,
   renderCalls,clearCalls,checkInCall,
   addEditItem,removeEditRow,updateEditRow,

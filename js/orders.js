@@ -1,5 +1,11 @@
 import{S}from'./state.js';
 import{db,ref,push,update,set,remove}from'./firebase.js';
+
+function logDelivery(o,it){
+  const key=push(ref(db,'deliveryLog')).key;
+  const entry={at:Date.now(),table:o.table,orderNum:o.num,name:it.name,qty:it.qty};
+  update(ref(db,'deliveryLog/'+key),entry).catch(e=>console.error('logDelivery',e));
+}
 import{parseItems,aggStatus,esc,fl,safeDb,showConfirm,todayStr,lockScroll,unlockScroll}from'./utils.js';
 import{applyStockDeltas,deductMenuStock}from'./stock.js';
 import{getTMeta}from'./tables.js';
@@ -79,16 +85,17 @@ export async function waiterDeliverItem(orderId,itemFbKey){
   const upd={[`orders/${orderId}/items/${fbKey}/status`]:'done',[`orders/${orderId}/items/${fbKey}/doneAt`]:it.doneAt};
   if(o.status==='done'){o.doneAt=Date.now();upd[`orders/${orderId}/doneAt`]=o.doneAt;}
   await safeDb(update(ref(db),upd),'❌ Не удалось отметить доставку');
+  logDelivery(o,it);
   fl('fOk','✅ '+it.qty+'× '+it.name+' → Стол '+o.table);
 }
 
 export async function waiterDeliverAll(orderId){
   const o=S.orders.find(x=>x.id===orderId);if(!o)return;
-  let count=0;const upd={};
+  let count=0;const upd={};const delivered=[];
   o.items.forEach(it=>{
     if(it.status==='done')return;
     if(it.status==='ready'||isInstantItem(it.name)){
-      it.status='done';it.doneAt=Date.now();count++;
+      it.status='done';it.doneAt=Date.now();count++;delivered.push(it);
       const fbKey=it._fbKey||it.id;
       upd[`orders/${orderId}/items/${fbKey}/status`]='done';
       upd[`orders/${orderId}/items/${fbKey}/doneAt`]=it.doneAt;
@@ -97,6 +104,7 @@ export async function waiterDeliverAll(orderId){
   o.status=aggStatus(o.items);
   if(o.status==='done'){o.doneAt=Date.now();upd[`orders/${orderId}/doneAt`]=o.doneAt;}
   await safeDb(update(ref(db),upd),'❌ Не удалось отметить доставку');
+  delivered.forEach(it=>logDelivery(o,it));
   fl('fOk','✅ '+count+' позиц. доставлены — Стол '+o.table);
 }
 

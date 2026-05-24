@@ -16,4 +16,5 @@ export const S = {
   editBillMode: false,
   appPassword: null,
   orderNumResetAt: 0,
+  deliveryLog: {},
 };

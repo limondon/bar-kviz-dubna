@@ -306,6 +306,38 @@ export async function confirmCorkage(){
   fl('fOk',`✅ Пробковый сбор ${sign}${totalChange}₽ — Стол ${tNum}`);
 }
 
+// ─── DELIVERY LOG ─────────────────────────────────────
+function _logEntriesSorted(){
+  return Object.entries(S.deliveryLog||{}).map(([k,v])=>({k,...v})).sort((a,b)=>(b.at||0)-(a.at||0));
+}
+
+export function renderDeliveryLogSidebar(){
+  const el=document.getElementById('sidebarLogList');if(!el)return;
+  const entries=_logEntriesSorted().slice(0,10);
+  if(!entries.length){el.innerHTML='<div style="color:var(--muted);font-size:11px;font-style:italic;">Пусто за сутки</div>';return;}
+  el.innerHTML=entries.map(e=>`<div style="display:grid;grid-template-columns:auto 1fr auto;gap:6px;align-items:baseline;font-size:11px;padding:3px 0;border-bottom:1px solid rgba(255,255,255,.04);"><span style="color:var(--muted);font-family:'IBM Plex Mono',monospace;">${fmt(e.at)}</span><span style="color:var(--text);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${esc(e.name)}">${esc(shortItemName(e.name||''))}</span><span style="color:var(--accent);font-family:'IBM Plex Mono',monospace;font-weight:700;white-space:nowrap;">#${e.orderNum||'?'}·${e.table}·${e.qty}шт</span></div>`).join('');
+}
+
+export function openDeliveryLog(){
+  const entries=_logEntriesSorted();
+  const d=document.createElement('div');
+  d.style.cssText='position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.85);display:flex;align-items:center;justify-content:center;padding:20px;';
+  const list=entries.length?entries.map(e=>`<div style="display:grid;grid-template-columns:auto 1fr auto;gap:12px;align-items:baseline;padding:10px 12px;background:var(--card);border:1px solid var(--border);border-radius:8px;margin-bottom:6px;"><span style="color:var(--muted);font-family:'IBM Plex Mono',monospace;font-size:12px;">${fmt(e.at)}</span><span style="color:var(--text);font-size:13px;min-width:0;word-break:break-word;">${esc(shortItemName(e.name||''))}</span><span style="color:var(--accent);font-family:'IBM Plex Mono',monospace;font-weight:700;font-size:12px;white-space:nowrap;">#${e.orderNum||'?'} · Стол ${e.table} · ${e.qty}шт</span></div>`).join(''):'<div style="text-align:center;color:var(--muted);padding:30px;">Нет доставок за последние 24 часа</div>';
+  d.innerHTML=`<div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:20px;max-width:500px;width:100%;max-height:80vh;display:flex;flex-direction:column;box-sizing:border-box;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+      <div style="font-family:'Bebas Neue',sans-serif;font-size:22px;color:var(--accent);letter-spacing:1px;">📜 ЛОГ ДОСТАВОК</div>
+      <div style="font-size:11px;color:var(--muted);">за последние 24ч · ${entries.length} ${pl(entries.length,'событие','события','событий')}</div>
+    </div>
+    <div style="flex:1;overflow-y:auto;margin:0 -4px;padding:0 4px;">${list}</div>
+    <div style="margin-top:12px;display:flex;justify-content:flex-end;">
+      <button id="_dlClose" style="padding:10px 24px;background:transparent;color:var(--muted);border:1px solid var(--border);border-radius:8px;font-size:13px;cursor:pointer;">Закрыть</button>
+    </div>
+  </div>`;
+  document.body.appendChild(d);
+  d.querySelector('#_dlClose').onclick=()=>document.body.removeChild(d);
+  d.addEventListener('click',e=>{if(e.target===d)document.body.removeChild(d);});
+}
+
 // ─── TABLE NOTE ───────────────────────────────────────
 export async function editTableNote(date,tNum){
   const meta=getTMeta(date,tNum);
@@ -386,12 +418,7 @@ export function renderTables(){
     tOrders.forEach(o=>(o.items||[]).forEach(it=>{const k=it.name.trim().toLowerCase();if(!sumMap[k])sumMap[k]={name:it.name,qty:0,price:it.price??getItemPrice(it.name)};sumMap[k].qty+=it.qty;}));
     const sumItems=Object.values(sumMap).sort((a,b)=>a.name.localeCompare(b.name));
     const totalSum=sumItems.reduce((s,x)=>s+(x.price*x.qty),0);
-    const sumLines=sumItems.map(x=>`<div class="sum-line"><span class="sum-item">${esc(shortItemName(x.name))}</span><span class="sum-qty">${x.qty}${x.price?'×'+x.price:''}</span><span class="sum-tot">${x.price?x.price*x.qty+'₽':x.qty+' шт.'}</span></div>`).join('')+(totalSum?`<div class="sum-line sum-total"><span class="sum-item">ИТОГО</span><span class="sum-qty"></span><span class="sum-tot">${totalSum}₽</span></div>`:'');
-    // История доставки — все позиции с doneAt, отсортированные по времени
-    const historyEvents=[];
-    tOrders.forEach(o=>(o.items||[]).forEach(it=>{if(it.doneAt)historyEvents.push({time:it.doneAt,name:it.name,qty:it.qty,num:o.num});}));
-    historyEvents.sort((a,b)=>b.time-a.time);
-    const historyHtml=historyEvents.length?`<div class="tb-history"><h4>📜 ИСТОРИЯ ДОСТАВКИ (${historyEvents.length})</h4>${historyEvents.map(h=>`<div class="th-row"><span class="th-time">${fmt(h.time)}</span><span class="th-name">${esc(shortItemName(h.name))} <span style="color:var(--muted);font-size:10px;">#${h.num}</span></span><span class="th-qty">×${h.qty}</span></div>`).join('')}</div>`:'';
+    const sumLines=sumItems.map(x=>`<div class="sum-line"><span class="sum-item">${esc(shortItemName(x.name))}</span><span class="sum-qty">${x.qty} шт.</span><span class="sum-tot">${x.price?x.price*x.qty+'₽':'—'}</span></div>`).join('')+(totalSum?`<div class="sum-line sum-total"><span class="sum-item">ИТОГО</span><span class="sum-qty"></span><span class="sum-tot">${totalSum}₽</span></div>`:'');
     const loggedAt=meta.loggedAt||null;
     const ordersHtml=(()=>{
       const before=loggedAt?tOrders.filter(o=>o.createdAt<=loggedAt):tOrders;
@@ -419,7 +446,7 @@ export function renderTables(){
     const tableNoteHtml=meta.note?`<div style="background:rgba(76,175,80,.08);border-left:3px solid var(--green);padding:8px 12px;margin:0 0 10px;border-radius:0 6px 6px 0;font-size:13px;color:var(--text);white-space:pre-wrap;word-break:break-word;">📝 ${esc(meta.note)}</div>`:'';
     const headerNoteHint=meta.note?`<span style="display:inline-block;margin-left:6px;padding:1px 6px;border-radius:6px;background:rgba(76,175,80,.18);color:var(--green);font-size:10px;font-family:'IBM Plex Mono',monospace;">📝</span>`:'';
     const cardId='tb-'+tNum+'_'+sid;
-    return`<div class="table-bill ${isOpen?'':'closed'}" id="${cardId}"><div class="tb-header" onclick="toggleBill('${cardId}')"><div class="tb-left"><div class="tb-num"><small>СТОЛ</small>${tNum}${headerNoteHint}</div><div class="tb-meta"><b>${tOrders.length} ${pl(tOrders.length,'заказ','заказа','заказов')} · ${totalItems} позиц.</b> с ${fmt(tOrders[0]?.createdAt)}${closedLbl}</div></div><div style="display:flex;align-items:center;gap:8px;"><span class="tb-st ${isOpen?'tb-open':'tb-closed'}">${isOpen?'🟢 Открыт':'✅ Оплачен'}</span><span class="tb-chev" id="chev-${cardId}">▼</span></div></div><div class="tb-body" id="body-${cardId}">${tableNoteHtml}${ordersHtml}<div class="tb-summary"><h4>📋 ИТОГО</h4>${sumLines||'<div style="color:var(--muted);font-size:12px">Нет позиций</div>'}</div>${historyHtml}<div class="tb-actions">${actions}${loggedBtn}${corkageBtn}${noteBtn}${mgmtBtns}</div></div></div>`;
+    return`<div class="table-bill ${isOpen?'':'closed'}" id="${cardId}"><div class="tb-header" onclick="toggleBill('${cardId}')"><div class="tb-left"><div class="tb-num"><small>СТОЛ</small>${tNum}${headerNoteHint}</div><div class="tb-meta"><b>${tOrders.length} ${pl(tOrders.length,'заказ','заказа','заказов')} · ${totalItems} позиц.</b> с ${fmt(tOrders[0]?.createdAt)}${closedLbl}</div></div><div style="display:flex;align-items:center;gap:8px;"><span class="tb-st ${isOpen?'tb-open':'tb-closed'}">${isOpen?'🟢 Открыт':'✅ Оплачен'}</span><span class="tb-chev" id="chev-${cardId}">▼</span></div></div><div class="tb-body" id="body-${cardId}">${tableNoteHtml}${ordersHtml}<div class="tb-summary"><h4>📋 ИТОГО</h4>${sumLines||'<div style="color:var(--muted);font-size:12px">Нет позиций</div>'}</div><div class="tb-actions">${actions}${loggedBtn}${corkageBtn}${noteBtn}${mgmtBtns}</div></div></div>`;
   }).join('');
 }
 
@@ -454,14 +481,10 @@ export function renderClosed(){
     tOrders.forEach(o=>(o.items||[]).forEach(it=>{const k=it.name.trim().toLowerCase();if(it.status==='done'){if(!sumMap[k])sumMap[k]={name:it.name,qty:0,price:it.price??getItemPrice(it.name)};sumMap[k].qty+=it.qty;}else{if(!pendingMap[k])pendingMap[k]={name:it.name,qty:0};pendingMap[k].qty+=it.qty;}}));
     const doneItems=Object.values(sumMap).sort((a,b)=>a.name.localeCompare(b.name));
     const totalSum=doneItems.reduce((s,x)=>s+(x.price*x.qty),0);
-    const sumLines=[...doneItems.map(x=>`<div class="sum-line"><span class="sum-item">${esc(shortItemName(x.name))}</span><span class="sum-qty">${x.qty}${x.price?'×'+x.price:''}</span><span class="sum-tot">${x.price?x.price*x.qty+'₽':x.qty+' шт.'}</span></div>`),...Object.values(pendingMap).sort((a,b)=>a.name.localeCompare(b.name)).map(x=>`<div class="sum-line" style="opacity:.4;"><span class="sum-item" style="text-decoration:line-through;">${esc(shortItemName(x.name))}</span><span class="sum-qty">${x.qty}</span><span class="sum-tot">не отдано</span></div>`),totalSum?`<div class="sum-line sum-total"><span class="sum-item">ИТОГО</span><span class="sum-qty"></span><span class="sum-tot">${totalSum}₽</span></div>`:''].join('');
+    const sumLines=[...doneItems.map(x=>`<div class="sum-line"><span class="sum-item">${esc(shortItemName(x.name))}</span><span class="sum-qty">${x.qty} шт.</span><span class="sum-tot">${x.price?x.price*x.qty+'₽':'—'}</span></div>`),...Object.values(pendingMap).sort((a,b)=>a.name.localeCompare(b.name)).map(x=>`<div class="sum-line" style="opacity:.4;"><span class="sum-item" style="text-decoration:line-through;">${esc(shortItemName(x.name))}</span><span class="sum-qty">${x.qty}</span><span class="sum-tot">не отдано</span></div>`),totalSum?`<div class="sum-line sum-total"><span class="sum-item">ИТОГО</span><span class="sum-qty"></span><span class="sum-tot">${totalSum}₽</span></div>`:''].join('');
     const ordersHtml=tOrders.map(o=>{const sico={new:'🕐',making:'🍹',ready:'🟢',done:'✅'}[o.status]||'';const note=o.note?`<div class="tbo-note">💬 ${esc(o.note)}</div>`:'';const lines=(o.items||[]).map(it=>`<div class="tbo-line${it.status==='done'?' tl-done':''}"><span class="tl-name">${esc(shortItemName(it.name))}</span><span class="tl-qty">${it.qty} шт.</span></div>`).join('');return`<div class="tbo-item"><div class="tbo-hdr"><span class="tbo-num">#${o.num} ${sico}</span><span class="tbo-time">${fmt(o.createdAt)}</span><button class="btn-edit" data-action="edit" data-oid="${esc(o.id)}" data-bill="1" style="padding:3px 10px;font-size:11px;min-height:32px;">✏️</button></div><div class="tbo-lines">${lines}</div>${note}</div>`;}).join('');
-    const historyEvents=[];
-    tOrders.forEach(o=>(o.items||[]).forEach(it=>{if(it.doneAt)historyEvents.push({time:it.doneAt,name:it.name,qty:it.qty,num:o.num});}));
-    historyEvents.sort((a,b)=>b.time-a.time);
-    const historyHtml=historyEvents.length?`<div class="tb-history"><h4>📜 ИСТОРИЯ ДОСТАВКИ (${historyEvents.length})</h4>${historyEvents.map(h=>`<div class="th-row"><span class="th-time">${fmt(h.time)}</span><span class="th-name">${esc(shortItemName(h.name))} <span style="color:var(--muted);font-size:10px;">#${h.num}</span></span><span class="th-qty">×${h.qty}</span></div>`).join('')}</div>`:'';
     const totalItems=tOrders.reduce((s,o)=>s+(o.items?o.items.reduce((a,i)=>a+i.qty,0):0),0);
     const cardId='cl-'+tNum+'_'+sid;
-    return`<div class="table-bill closed" id="${cardId}"><div class="tb-header" onclick="toggleBill('${cardId}')"><div class="tb-left"><div class="tb-num"><small>СТОЛ</small>${tNum}</div><div class="tb-meta"><b>${tOrders.length} ${pl(tOrders.length,'заказ','заказа','заказов')} · ${totalItems} позиц.</b> с ${fmt(tOrders[0]?.createdAt)}${closedAt?`<span style="color:var(--green);display:block;margin-top:2px;">✅ Закрыт в ${fmt(closedAt)}</span>`:''}</div></div><div style="display:flex;align-items:center;gap:8px;"><span class="tb-st tb-closed">✅ Оплачен</span><span class="tb-chev" id="chev-${cardId}">▼</span></div></div><div class="tb-body" id="body-${cardId}">${ordersHtml}<div class="tb-summary"><h4>📋 ИТОГО</h4>${sumLines||'<div style="color:var(--muted);font-size:12px">Нет позиций</div>'}</div>${historyHtml}<div class="tb-actions"><button class="btn-reopen" data-action="reopenTable" data-date="${S.closedViewDate}" data-tnum="${tNum}">↩ Переоткрыть</button><button class="btn-sm bu" data-action="renameTable" data-date="${S.closedViewDate}" data-tnum="${tNum}" data-sid="${sid}">✏️ Переименовать</button><button class="btn-sm bx" data-action="deleteTable" data-date="${S.closedViewDate}" data-tnum="${tNum}" data-sid="${sid}">🗑 Удалить стол</button></div></div></div>`;
+    return`<div class="table-bill closed" id="${cardId}"><div class="tb-header" onclick="toggleBill('${cardId}')"><div class="tb-left"><div class="tb-num"><small>СТОЛ</small>${tNum}</div><div class="tb-meta"><b>${tOrders.length} ${pl(tOrders.length,'заказ','заказа','заказов')} · ${totalItems} позиц.</b> с ${fmt(tOrders[0]?.createdAt)}${closedAt?`<span style="color:var(--green);display:block;margin-top:2px;">✅ Закрыт в ${fmt(closedAt)}</span>`:''}</div></div><div style="display:flex;align-items:center;gap:8px;"><span class="tb-st tb-closed">✅ Оплачен</span><span class="tb-chev" id="chev-${cardId}">▼</span></div></div><div class="tb-body" id="body-${cardId}">${ordersHtml}<div class="tb-summary"><h4>📋 ИТОГО</h4>${sumLines||'<div style="color:var(--muted);font-size:12px">Нет позиций</div>'}</div><div class="tb-actions"><button class="btn-reopen" data-action="reopenTable" data-date="${S.closedViewDate}" data-tnum="${tNum}">↩ Переоткрыть</button><button class="btn-sm bu" data-action="renameTable" data-date="${S.closedViewDate}" data-tnum="${tNum}" data-sid="${sid}">✏️ Переименовать</button><button class="btn-sm bx" data-action="deleteTable" data-date="${S.closedViewDate}" data-tnum="${tNum}" data-sid="${sid}">🗑 Удалить стол</button></div></div></div>`;
   }).join('');
 }
