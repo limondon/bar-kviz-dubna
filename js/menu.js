@@ -64,10 +64,10 @@ export function renderPickerList(){
     let btn;
     const atLimit=stock!==null&&st.qty>=stock;
     if(isSoldOut)btn=`<span style="font-size:10px;color:var(--red);background:rgba(229,57,53,.12);border:1px solid rgba(229,57,53,.25);border-radius:8px;padding:2px 7px;">Нет</span>`;
-    else btn=`<div class="picker-pill" data-pill="${esc(item.name)}" style="display:flex;align-items:center;background:${hasQty?'rgba(245,166,35,.12)':'transparent'};border:1.5px solid var(--accent);border-radius:100px;overflow:hidden;">
-        <div data-picker-action="minus" data-item="${esc(item.name)}" class="pill-minus" style="width:40px;height:40px;min-width:44px;min-height:44px;display:${hasQty?'flex':'none'};align-items:center;justify-content:center;background:transparent;color:var(--accent);font-size:20px;cursor:pointer;">−</div>
+    else btn=`<div class="picker-pill" data-pill="${esc(item.name)}" style="display:flex;align-items:center;touch-action:manipulation;background:${hasQty?'rgba(245,166,35,.12)':'transparent'};border:1.5px solid var(--accent);border-radius:100px;overflow:hidden;">
+        <div data-picker-action="minus" data-item="${esc(item.name)}" class="pill-minus" style="width:40px;height:40px;min-width:44px;min-height:44px;display:${hasQty?'flex':'none'};align-items:center;justify-content:center;background:transparent;color:var(--accent);font-size:20px;cursor:pointer;touch-action:manipulation;">−</div>
         <div class="pill-qty" style="font-size:14px;font-weight:600;color:var(--text);min-width:24px;text-align:center;font-family:'IBM Plex Mono',monospace;display:${hasQty?'block':'none'};">${st.qty}</div>
-        <div data-picker-action="plus" data-item="${esc(item.name)}" data-stock-limit="${stock===null?'':stock}" class="pill-plus" style="width:40px;height:40px;min-width:44px;min-height:44px;display:flex;align-items:center;justify-content:center;background:transparent;color:${atLimit?'var(--muted)':'var(--accent)'};font-size:22px;cursor:${atLimit?'default':'pointer'};font-weight:700;opacity:${atLimit?'.3':'1'};">+</div>
+        <div data-picker-action="plus" data-item="${esc(item.name)}" data-stock-limit="${stock===null?'':stock}" class="pill-plus" style="width:40px;height:40px;min-width:44px;min-height:44px;display:flex;align-items:center;justify-content:center;background:transparent;color:${atLimit?'var(--muted)':'var(--accent)'};font-size:22px;cursor:${atLimit?'default':'pointer'};font-weight:700;opacity:${atLimit?'.3':'1'};touch-action:manipulation;">+</div>
       </div>`;
     const addonHtml=isLeafTea&&hasQty?`<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;padding-top:8px;border-top:1px solid rgba(255,255,255,.06);">${TEA_ADDONS.map(a=>{const sel=st.addons?.[a];return`<div data-picker-addon="${esc(item.name)}" data-addon-name="${esc(a)}" style="padding:5px 11px;border-radius:20px;font-size:12px;cursor:pointer;user-select:none;background:${sel?'var(--accent)':'rgba(255,255,255,.07)'};color:${sel?'#000':'var(--muted)'};border:1px solid ${sel?'var(--accent)':'rgba(255,255,255,.15)'};">${a} <span style="font-size:11px;opacity:.8;">+50₽</span></div>`;}).join('')}</div>`:'';
     const optionsHtml=hasQty&&item.options?.length?`<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;padding-top:8px;border-top:1px solid rgba(255,255,255,.06);">${item.options.map(opt=>{const sel=st.option===opt;return`<div data-picker-option="${esc(item.name)}" data-option-val="${esc(opt)}" style="padding:5px 13px;border-radius:20px;font-size:12px;cursor:pointer;user-select:none;background:${sel?'var(--green)':'rgba(255,255,255,.07)'};color:${sel?'#000':'var(--text)'};border:1px solid ${sel?'var(--green)':'rgba(255,255,255,.15)'};">${esc(opt)}</div>`;}).join('')}</div>`:'';
@@ -115,6 +115,45 @@ export function confirmMenuPicker(){
 }
 
 // Обработчик кнопок +/– в пикере
+let _pickerRenderTimer=null;
+
+function _handlePickerAction(btn){
+  const action=btn.dataset.pickerAction;const itemName=btn.dataset.item;
+  if(!pickerState[itemName])pickerState[itemName]={qty:0,note:'',addons:{},option:null};
+  let triggerCupsBar=false;
+  if(action==='plus'){
+    const limitStr=btn.dataset.stockLimit;const limit=limitStr!==undefined&&limitStr!==''?parseInt(limitStr):null;
+    if(limit!==null&&pickerState[itemName].qty>=limit)return;
+    pickerState[itemName].qty++;const _menu=S.BUILTIN_MENU_LIVE.length?S.BUILTIN_MENU_LIVE:BUILTIN_MENU;const _isTea=_menu[pickerCat]?.cat?.toLowerCase().includes('чай');if(pickerCups===0&&_isTea){pickerCups++;triggerCupsBar=true;}
+  }
+  if(action==='minus'){pickerState[itemName].qty=Math.max(0,pickerState[itemName].qty-1);if(pickerState[itemName].qty===0){pickerState[itemName].addons={};pickerState[itemName].option=null;}}
+  const pill=document.querySelector(`.picker-pill[data-pill="${itemName.replace(/"/g,'\\"')}"]`);
+  const newQty=pickerState[itemName].qty;
+  if(pill){
+    const minusEl=pill.querySelector('.pill-minus');
+    const qtyEl=pill.querySelector('.pill-qty');
+    const plusEl=pill.querySelector('.pill-plus');
+    pill.style.background=newQty>0?'rgba(245,166,35,.12)':'transparent';
+    if(minusEl)minusEl.style.display=newQty>0?'flex':'none';
+    if(qtyEl){qtyEl.style.display=newQty>0?'block':'none';qtyEl.textContent=newQty;}
+    const limitStr2=plusEl?.dataset.stockLimit;const limit2=limitStr2!==undefined&&limitStr2!==''?parseInt(limitStr2):null;
+    if(plusEl&&limit2!==null){const atLimit=newQty>=limit2;plusEl.style.opacity=atLimit?'.3':'1';plusEl.style.cursor=atLimit?'default':'pointer';plusEl.style.color=atLimit?'var(--muted)':'var(--accent)';}
+  }
+  updatePickerBtn();
+  clearTimeout(_pickerRenderTimer);
+  if(triggerCupsBar||action==='minus'&&newQty===0||(action==='plus'&&newQty===1))_pickerRenderTimer=setTimeout(renderPickerList,180);
+  else _pickerRenderTimer=setTimeout(renderPickerList,400);
+}
+
+// pointerdown — мгновенная реакция без 300мс задержки клика (важно для быстрых тапов)
+document.addEventListener('pointerdown',e=>{
+  const btn=e.target.closest('[data-picker-action]');if(!btn)return;
+  const overlay=document.getElementById('menuPickerOverlay');
+  if(!overlay||overlay.classList.contains('hidden'))return;
+  e.preventDefault();
+  _handlePickerAction(btn);
+},true);
+
 document.addEventListener('click',e=>{
   const addonPill=e.target.closest('[data-picker-addon]');
   if(addonPill){const itemName=addonPill.dataset.pickerAddon,addon=addonPill.dataset.addonName;if(!pickerState[itemName])pickerState[itemName]={qty:0,note:'',addons:{},option:null};if(!pickerState[itemName].addons)pickerState[itemName].addons={};pickerState[itemName].addons[addon]=!pickerState[itemName].addons[addon];renderPickerList();return;}
@@ -126,38 +165,7 @@ document.addEventListener('click',e=>{
     if(cupsTotal.dataset.cupsTotalAction==='minus')pickerCups=Math.max(0,pickerCups-1);
     renderPickerList();return;
   }
-  const btn=e.target.closest('[data-picker-action]');if(!btn)return;
-  const action=btn.dataset.pickerAction;const itemName=btn.dataset.item;
-  if(!pickerState[itemName])pickerState[itemName]={qty:0,note:'',addons:{},option:null};
-  let triggerCupsBar=false;
-  if(action==='plus'){
-    const limitStr=btn.dataset.stockLimit;const limit=limitStr!==undefined&&limitStr!==''?parseInt(limitStr):null;
-    if(limit!==null&&pickerState[itemName].qty>=limit)return;
-    pickerState[itemName].qty++;const _menu=S.BUILTIN_MENU_LIVE.length?S.BUILTIN_MENU_LIVE:BUILTIN_MENU;const _isTea=_menu[pickerCat]?.cat?.toLowerCase().includes('чай');if(pickerCups===0&&_isTea){pickerCups++;triggerCupsBar=true;}
-  }
-  if(action==='minus'){pickerState[itemName].qty=Math.max(0,pickerState[itemName].qty-1);if(pickerState[itemName].qty===0){pickerState[itemName].addons={};pickerState[itemName].option=null;}}
-  // Точечное обновление пилюли без полного перерисовывания списка — чтобы можно было быстро тапать +
-  const pill=document.querySelector(`.picker-pill[data-pill="${itemName.replace(/"/g,'\\"')}"]`);
-  const newQty=pickerState[itemName].qty;
-  if(pill){
-    const minusEl=pill.querySelector('.pill-minus');
-    const qtyEl=pill.querySelector('.pill-qty');
-    const plusEl=pill.querySelector('.pill-plus');
-    pill.style.background=newQty>0?'rgba(245,166,35,.12)':'transparent';
-    if(minusEl)minusEl.style.display=newQty>0?'flex':'none';
-    if(qtyEl){qtyEl.style.display=newQty>0?'block':'none';qtyEl.textContent=newQty;}
-    const limitStr=plusEl?.dataset.stockLimit;const limit=limitStr!==undefined&&limitStr!==''?parseInt(limitStr):null;
-    if(plusEl&&limit!==null){const atLimit=newQty>=limit;plusEl.style.opacity=atLimit?'.3':'1';plusEl.style.cursor=atLimit?'default':'pointer';plusEl.style.color=atLimit?'var(--muted)':'var(--accent)';}
-  }
-  updatePickerBtn();
-  // Полный рендер с задержкой — для появления добавок/опций/чай-бара, но не блокирует тапы
-  clearTimeout(_pickerRenderTimer);
-  if(triggerCupsBar||action==='minus'&&newQty===0||(action==='plus'&&newQty===1))_pickerRenderTimer=setTimeout(renderPickerList,180);
-  else _pickerRenderTimer=setTimeout(renderPickerList,400);
 },true);
-let _pickerRenderTimer=null;
-// Обработчик пилюль добавок к чаю (заменили чекбоксы для совместимости с iOS)
-// обрабатывается в общем click-обработчике выше через data-picker-addon
 
 // ─── MENU EDITOR ──────────────────────────────────────
 export function buildMenuButtons(){const el=document.getElementById('menuBtns');if(el)el.innerHTML='';}
