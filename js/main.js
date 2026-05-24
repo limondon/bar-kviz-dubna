@@ -42,6 +42,30 @@ async function loadAll(){
       if(Object.keys(cleanupUpd).length>0)update(ref(db),cleanupUpd).catch(e=>console.error('cleanup',e));
     }
     S.orders=raw?Object.values(raw).filter(o=>!o.date||o.date>=cutoffDate).map(normalizeOrder):[];
+    // Self-heal: восстановить meta для (date,table,sid) у которых есть заказы но нет meta
+    const todayKey=(()=>{const d=new Date();return d.getFullYear()+'-'+(d.getMonth()+1).toString().padStart(2,'0')+'-'+d.getDate().toString().padStart(2,'0');})();
+    const orphanUpd={};const seenSession=new Set();
+    S.orders.forEach(o=>{
+      if(!o.date||!o.table)return;
+      const sid=o.sid||'default';const sessKey=`${o.date}_${o.table}_${sid}`;
+      if(seenSession.has(sessKey))return;seenSession.add(sessKey);
+      const tk=`${o.date}_${o.table}`;const meta=S.tablesMeta[tk];
+      const sidKnown=meta&&(meta.sid===sid||(meta.closedSessions||[]).some(s=>s.sid===sid));
+      if(!meta){
+        const sessOrders=S.orders.filter(x=>x.date===o.date&&String(x.table)===String(o.table)&&(x.sid||'default')===sid);
+        const openedAt=Math.min(...sessOrders.map(x=>x.createdAt||Date.now()));
+        const isToday=o.date===todayKey;
+        orphanUpd[`tables/${tk}`]={status:isToday?'open':'closed',openedAt,date:o.date,tNum:o.table,sid,token:Math.random().toString(36).slice(2,10)+Math.random().toString(36).slice(2,6),...(isToday?{}:{closedAt:Math.max(...sessOrders.map(x=>x.doneAt||x.createdAt||Date.now()))})};
+      } else if(!sidKnown){
+        // meta есть, но sid не знакомый — добавить в closedSessions
+        const sessOrders=S.orders.filter(x=>x.date===o.date&&String(x.table)===String(o.table)&&(x.sid||'default')===sid);
+        const openedAt=Math.min(...sessOrders.map(x=>x.createdAt||Date.now()));
+        const closedAt=Math.max(...sessOrders.map(x=>x.doneAt||x.createdAt||Date.now()));
+        const cs=[...(meta.closedSessions||[]),{sid,openedAt,closedAt}];
+        orphanUpd[`tables/${tk}/closedSessions`]=cs;
+      }
+    });
+    if(Object.keys(orphanUpd).length){update(ref(db),orphanUpd).catch(e=>console.error('orphan recover',e));console.log('🔧 Восстановлено сессий:',Object.keys(orphanUpd).length);}
     checkNewOrders(S.orders);
     renderAll();
   },(e)=>console.error(e));
