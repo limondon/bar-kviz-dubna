@@ -313,9 +313,9 @@ function _logEntriesSorted(){
 
 export function renderDeliveryLogSidebar(){
   const el=document.getElementById('sidebarLogList');if(!el)return;
-  const entries=_logEntriesSorted().slice(0,10);
-  if(!entries.length){el.innerHTML='<div style="color:var(--muted);font-size:11px;font-style:italic;">Пусто за сутки</div>';return;}
-  el.innerHTML=entries.map(e=>`<div style="display:grid;grid-template-columns:auto 1fr auto;gap:6px;align-items:baseline;font-size:11px;padding:3px 0;border-bottom:1px solid rgba(255,255,255,.04);"><span style="color:var(--muted);font-family:'IBM Plex Mono',monospace;">${fmt(e.at)}</span><span style="color:var(--text);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${esc(e.name)}">${esc(shortItemName(e.name||''))}</span><span style="color:var(--accent);font-family:'IBM Plex Mono',monospace;font-weight:700;white-space:nowrap;">#${e.orderNum||'?'}·${e.table}·${e.qty}шт</span></div>`).join('');
+  const entries=_logEntriesSorted().slice(0,5);
+  if(!entries.length){el.innerHTML='<div style="color:var(--muted);font-size:10px;font-style:italic;">Пусто за сутки</div>';return;}
+  el.innerHTML=entries.map(e=>`<div style="display:grid;grid-template-columns:auto 1fr;gap:6px;font-size:10px;padding:2px 0;line-height:1.3;"><span style="color:var(--muted);font-family:'IBM Plex Mono',monospace;">${fmt(e.at)}</span><span style="color:var(--text);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${esc(e.name)} · #${e.orderNum||'?'} · Стол ${e.table} · ${e.qty}шт"><b style="color:var(--accent);">${e.table}</b> · ${esc(shortItemName(e.name||''))} <span style="color:var(--muted);">×${e.qty}</span></span></div>`).join('');
 }
 
 export function openDeliveryLog(){

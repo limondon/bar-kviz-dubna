@@ -68,16 +68,16 @@ function buildSidebar(tabs){
   sb.innerHTML=`<div style="padding:0 20px 16px;border-bottom:1px solid var(--border);margin-bottom:8px;"><div style="display:flex;align-items:center;gap:8px;"><span style="font-family:'Bebas Neue',sans-serif;font-size:22px;color:var(--accent);letter-spacing:2px;">1708</span></div><div style="font-size:11px;color:var(--muted);margin-top:2px;">${roleNames[S.role]||''}</div></div>
     ${tabs.map(t=>`<div class="sidebar-item" id="sb-${t.id}" onclick="sw('${t.id}')"><span class="sidebar-ico">${t.ico}</span><span>${t.label}</span>${t.badge?`<span class="sidebar-badge${t.badgeCls==='.bg'?' green':t.badgeCls==='.bp'?' purple':''}" id="sbb-${t.badge}"></span>`:''}</div>`).join('')}
     ${extraTabs.map(t=>`<div class="sidebar-item" id="sb-${t.id}" onclick="sw('${t.id}')"><span class="sidebar-ico">${t.ico}</span><span>${t.label}</span></div>`).join('')}
-    <div style="padding:12px 20px;border-top:1px solid var(--border);margin-top:16px;">
-      <div style="font-family:'Bebas Neue',sans-serif;font-size:12px;letter-spacing:1px;color:var(--accent);margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;">
+    <div style="margin-top:auto;padding:10px 20px;border-top:1px solid var(--border);">
+      <div onclick="openDeliveryLog()" style="font-family:'Bebas Neue',sans-serif;font-size:11px;letter-spacing:1px;color:var(--accent);margin-bottom:6px;display:flex;justify-content:space-between;align-items:center;cursor:pointer;">
         <span>📜 ЛОГ ДОСТАВОК</span>
-        <span onclick="openDeliveryLog()" style="font-family:'IBM Plex Mono',monospace;font-size:10px;color:var(--muted);cursor:pointer;letter-spacing:0;">всё →</span>
+        <span style="font-family:'IBM Plex Mono',monospace;font-size:9px;color:var(--muted);letter-spacing:0;">всё →</span>
       </div>
-      <div id="sidebarLogList" style="max-height:200px;overflow-y:auto;"></div>
+      <div id="sidebarLogList"></div>
     </div>
-    <div style="margin-top:auto;padding:16px 20px 0;border-top:1px solid var(--border);">
-      ${actions.map(a=>`<div onclick="${a.fn}()" style="font-size:11px;color:var(--muted);cursor:pointer;padding:8px 0;">${a.ico} ${a.label}</div>`).join('')}
-      <div class="notif-btn" onclick="enableNotifications()" style="font-size:11px;cursor:pointer;padding:8px 0;"></div>
+    <div style="padding:10px 20px;border-top:1px solid var(--border);">
+      ${actions.filter(a=>a.fn!=='openDeliveryLog').map(a=>`<div onclick="${a.fn}()" style="font-size:11px;color:var(--muted);cursor:pointer;padding:6px 0;">${a.ico} ${a.label}</div>`).join('')}
+      <div class="notif-btn" onclick="enableNotifications()" style="font-size:11px;cursor:pointer;padding:6px 0;"></div>
     </div>`;
   updateNotifBtn();
   if(window.renderDeliveryLogSidebar)window.renderDeliveryLogSidebar();
