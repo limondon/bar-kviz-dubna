@@ -77,11 +77,11 @@ async function loadAll(){
 
   onValue(ref(db,'config/orderNumResetAt'),(snap)=>{S.orderNumResetAt=snap.val()||0;});
 
-  onValue(ref(db,'deliveryLog'),(snap)=>{
+  onValue(ref(db,'config/deliveryLog'),(snap)=>{
     const raw=snap.val()||{};
     const cutoff=Date.now()-24*60*60*1000;
     const cleanupUpd={};
-    Object.entries(raw).forEach(([k,v])=>{if(!v||(v.at||0)<cutoff)cleanupUpd[`deliveryLog/${k}`]=null;});
+    Object.entries(raw).forEach(([k,v])=>{if(!v||(v.at||0)<cutoff)cleanupUpd[`config/deliveryLog/${k}`]=null;});
     if(Object.keys(cleanupUpd).length)update(ref(db),cleanupUpd).catch(e=>console.error('deliveryLog cleanup',e));
     S.deliveryLog=Object.fromEntries(Object.entries(raw).filter(([k,v])=>v&&(v.at||0)>=cutoff));
     if(window.renderDeliveryLogSidebar)window.renderDeliveryLogSidebar();

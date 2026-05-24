@@ -2,9 +2,9 @@ import{S}from'./state.js';
 import{db,ref,push,update,set,remove}from'./firebase.js';
 
 function logDelivery(o,it){
-  const key=push(ref(db,'deliveryLog')).key;
+  const key=push(ref(db,'config/deliveryLog')).key;
   const entry={at:Date.now(),table:o.table,orderNum:o.num,name:it.name,qty:it.qty};
-  update(ref(db,'deliveryLog/'+key),entry).catch(e=>console.error('logDelivery',e));
+  update(ref(db,'config/deliveryLog/'+key),entry).catch(e=>console.error('logDelivery',e));
 }
 import{parseItems,aggStatus,esc,fl,safeDb,showConfirm,todayStr,lockScroll,unlockScroll}from'./utils.js';
 import{applyStockDeltas,deductMenuStock}from'./stock.js';
