@@ -57,12 +57,23 @@ async function loadAll(){
         const isToday=o.date===todayKey;
         orphanUpd[`tables/${tk}`]={status:isToday?'open':'closed',openedAt,date:o.date,tNum:o.table,sid,token:Math.random().toString(36).slice(2,10)+Math.random().toString(36).slice(2,6),...(isToday?{}:{closedAt:Math.max(...sessOrders.map(x=>x.doneAt||x.createdAt||Date.now()))})};
       } else if(!sidKnown){
-        // meta есть, но sid не знакомый — добавить в closedSessions
+        // meta есть, но sid не знакомый
         const sessOrders=S.orders.filter(x=>x.date===o.date&&String(x.table)===String(o.table)&&(x.sid||'default')===sid);
         const openedAt=Math.min(...sessOrders.map(x=>x.createdAt||Date.now()));
-        const closedAt=Math.max(...sessOrders.map(x=>x.doneAt||x.createdAt||Date.now()));
-        const cs=[...(meta.closedSessions||[]),{sid,openedAt,closedAt}];
-        orphanUpd[`tables/${tk}/closedSessions`]=cs;
+        if(!meta.sid){
+          // у meta вообще нет sid (например только note) — привязать к этой сессии как открытой
+          orphanUpd[`tables/${tk}/sid`]=sid;
+          orphanUpd[`tables/${tk}/openedAt`]=openedAt;
+          if(!meta.status)orphanUpd[`tables/${tk}/status`]='open';
+          if(!meta.date)orphanUpd[`tables/${tk}/date`]=o.date;
+          if(!meta.tNum)orphanUpd[`tables/${tk}/tNum`]=o.table;
+          if(!meta.token)orphanUpd[`tables/${tk}/token`]=Math.random().toString(36).slice(2,10)+Math.random().toString(36).slice(2,6);
+        } else {
+          // у meta есть sid но другой — значит это историческая закрытая сессия
+          const closedAt=Math.max(...sessOrders.map(x=>x.doneAt||x.createdAt||Date.now()));
+          const cs=[...(meta.closedSessions||[]),{sid,openedAt,closedAt}];
+          orphanUpd[`tables/${tk}/closedSessions`]=cs;
+        }
       }
     });
     if(Object.keys(orphanUpd).length){update(ref(db),orphanUpd).catch(e=>console.error('orphan recover',e));console.log('🔧 Восстановлено сессий:',Object.keys(orphanUpd).length);}

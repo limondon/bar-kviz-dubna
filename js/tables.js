@@ -366,8 +366,15 @@ export async function editTableNote(date,tNum){
   });
   if(result===null)return;
   const k=tKey(date,tNum);
+  // Гарантируем что у meta есть sid — иначе после перезагрузки стол выпадет из фильтра
+  if(!meta.sid){
+    const o=S.orders.find(x=>x.date===date&&String(x.table)===String(tNum));
+    meta.sid=(o&&o.sid)||Date.now().toString(36);
+  }
   if(result)meta.note=result;else delete meta.note;
-  await update(ref(db,'tables/'+k),{note:result||null});
+  // Сохраняем всю мету целиком (а не только поле note) чтобы не создать «огрызок» без sid/status
+  const payload={...meta,note:result||null};
+  await update(ref(db,'tables/'+k),payload);
   renderTables();
   fl('fOk',result?'📝 Заметка сохранена':'🗑 Заметка удалена');
 }
