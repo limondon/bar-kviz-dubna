@@ -141,8 +141,7 @@ function _handlePickerAction(btn){
   }
   updatePickerBtn();
   clearTimeout(_pickerRenderTimer);
-  if(triggerCupsBar||action==='minus'&&newQty===0||(action==='plus'&&newQty===1))_pickerRenderTimer=setTimeout(renderPickerList,180);
-  else _pickerRenderTimer=setTimeout(renderPickerList,400);
+  _pickerRenderTimer=setTimeout(renderPickerList,triggerCupsBar?180:400);
 }
 
 // pointerdown — мгновенная реакция без 300мс задержки клика (важно для быстрых тапов)
