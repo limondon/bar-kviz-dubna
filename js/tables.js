@@ -183,10 +183,11 @@ function _renderCorkage(){
   if(itemsEl)itemsEl.innerHTML=CORKAGE_TYPES.map((t,i)=>{
     const q=_corkageQtys[i];
     const init=_corkageInitial[i];
-    const canDec=q>init;
+    const canDec=q>0;
     const colors=[['rgba(245,166,35,.15)','var(--accent)','rgba(245,166,35,.4)'],['rgba(156,39,176,.15)','var(--purple)','rgba(156,39,176,.4)'],['rgba(229,57,53,.15)','var(--red)','rgba(229,57,53,.4)']];
     const[bg,clr,brd]=colors[i];
-    const existingHint=init>0?`<span style="font-size:10px;color:var(--muted);margin-left:6px;">(уже ${init})</span>`:'';
+    const diff=q-init;
+    const existingHint=init>0?`<span style="font-size:10px;color:var(--muted);margin-left:6px;">(было ${init}${diff!==0?` → ${q}`:''})</span>`:'';
     return`<div style="display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid rgba(255,255,255,.06);">
       <div style="flex:1;">
         <div style="font-size:13px;font-weight:600;color:var(--text);">${t.emoji} ${t.label}${existingHint}</div>
@@ -200,14 +201,20 @@ function _renderCorkage(){
     </div>`;
   }).join('');
   const totalNew=CORKAGE_TYPES.reduce((s,t,i)=>s+t.price*(_corkageQtys[i]-_corkageInitial[i]),0);
+  const hasChange=CORKAGE_TYPES.some((t,i)=>_corkageQtys[i]!==_corkageInitial[i]);
   const totalEl=document.getElementById('corkageTotal');
-  if(totalEl)totalEl.textContent=totalNew>0?`ДОБАВИТЬ: ${totalNew} ₽`:'';
+  if(totalEl){
+    if(totalNew>0)totalEl.textContent=`ДОБАВИТЬ: +${totalNew} ₽`;
+    else if(totalNew<0)totalEl.textContent=`УБРАТЬ: ${totalNew} ₽`;
+    else if(hasChange)totalEl.textContent='ОБНОВИТЬ';
+    else totalEl.textContent='';
+  }
   const btn=document.getElementById('corkageConfirmBtn');
-  if(btn){btn.disabled=totalNew<=0;btn.style.opacity=totalNew>0?'1':'.4';}
+  if(btn){btn.disabled=!hasChange;btn.style.opacity=hasChange?'1':'.4';btn.textContent=totalNew<0?'УБРАТЬ':totalNew>0?'ДОБАВИТЬ':'СОХРАНИТЬ';}
 }
 
 export function corkageAdj(i,delta){
-  _corkageQtys[i]=Math.max(_corkageInitial[i],_corkageQtys[i]+delta);
+  _corkageQtys[i]=Math.max(0,_corkageQtys[i]+delta);
   _renderCorkage();
 }
 
@@ -241,13 +248,43 @@ export async function confirmCorkage(){
   if(!_corkageTable)return;
   const tNum=_corkageTable;
   const deltas=CORKAGE_TYPES.map((t,i)=>_corkageQtys[i]-_corkageInitial[i]);
-  if(!deltas.some(d=>d>0)){closeCorkageModal();return;}
+  if(deltas.every(d=>d===0)){closeCorkageModal();return;}
   closeCorkageModal();
   const date=todayStr();const meta=getTMeta(date,tNum);
   const sid=meta.sid||(meta.sid=Date.now().toString(36));
+  const upd={};
+  let totalChange=0;
+
+  // 1) Уменьшение — урезаем/удаляем существующие позиции пробки
+  for(let i=0;i<CORKAGE_TYPES.length;i++){
+    let toRemove=-deltas[i];if(toRemove<=0)continue;
+    const t=CORKAGE_TYPES[i];const targetName=`Пробковый сбор — ${t.label}`;
+    const matches=[];
+    S.orders.forEach(o=>{
+      if(o.date!==date||String(o.table)!==String(tNum)||(o.sid||'default')!==sid)return;
+      (o.items||[]).forEach(it=>{if(it.name===targetName)matches.push({order:o,item:it});});
+    });
+    matches.sort((a,b)=>(b.order.createdAt||0)-(a.order.createdAt||0));
+    for(const{order,item}of matches){
+      if(toRemove<=0)break;
+      const cur=item.qty||0;
+      if(cur<=toRemove){
+        upd[`orders/${order.id}`]=null;
+        toRemove-=cur;totalChange-=cur*t.price;
+      } else {
+        const newQty=cur-toRemove;
+        const itemKey=item._fbKey||item.id;
+        upd[`orders/${order.id}/items/${itemKey}/qty`]=newQty;
+        upd[`orders/${order.id}/note`]=`${newQty*t.price}₽`;
+        totalChange-=toRemove*t.price;toRemove=0;
+      }
+    }
+  }
+  if(Object.keys(upd).length)await update(ref(db),upd);
+
+  // 2) Увеличение — создаём новые заказы на дельту
   const _ro=S.orderNumResetAt?S.orders.filter(o=>(o.createdAt||0)>=S.orderNumResetAt):S.orders;
   let num=(_ro.length?Math.max(..._ro.map(o=>o.num||0)):0)+1;
-  let total=0;
   for(let i=0;i<CORKAGE_TYPES.length;i++){
     const q=deltas[i];if(q<=0)continue;
     const t=CORKAGE_TYPES[i];
@@ -255,9 +292,10 @@ export async function confirmCorkage(){
     const itemId=Date.now().toString(36)+'_cork'+i;
     const newOrder={id:newRef.key,table:tNum,items:{[itemId]:{id:itemId,name:`Пробковый сбор — ${t.label}`,qty:q,price:t.price,status:'done',doneAt:Date.now()}},note:`${t.price*q}₽`,priority:'normal',status:'done',doneAt:Date.now(),createdAt:Date.now(),num,date,sid};
     await update(ref(db,'orders/'+newRef.key),newOrder);
-    total+=t.price*q;num++;
+    totalChange+=t.price*q;num++;
   }
-  fl('fOk',`✅ Пробковый сбор +${total}₽ — Стол ${tNum}`);
+  const sign=totalChange>=0?'+':'';
+  fl('fOk',`✅ Пробковый сбор ${sign}${totalChange}₽ — Стол ${tNum}`);
 }
 
 // ─── TABLE NOTE ───────────────────────────────────────
