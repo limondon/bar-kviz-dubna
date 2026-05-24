@@ -424,10 +424,22 @@ textarea{resize:vertical;min-height:clamp(70px,18vw,100px);}
   font-family:'Bebas Neue',sans-serif;font-size:clamp(13px,3.5vw,15px);
   letter-spacing:1px;color:var(--accent);margin-bottom:var(--sp-sm);
 }
-.sum-line{display:flex;justify-content:space-between;font-size:clamp(12px,3vw,14px);padding:3px 0;border-bottom:1px solid rgba(255,255,255,.04);}
+.sum-line{display:grid;grid-template-columns:1fr auto auto;gap:10px;align-items:baseline;font-size:clamp(12px,3vw,14px);padding:4px 0;border-bottom:1px solid rgba(255,255,255,.04);}
 .sum-line:last-child{border:none;}
-.sum-item{color:var(--text);}
+.sum-item{color:var(--text);min-width:0;word-break:break-word;}
+.sum-qty{color:var(--muted);font-size:11px;font-family:'IBM Plex Mono',monospace;white-space:nowrap;}
+.sum-tot{color:var(--text);font-weight:700;font-family:'IBM Plex Mono',monospace;white-space:nowrap;min-width:54px;text-align:right;}
 .sum-cnt{color:var(--accent);font-weight:700;}
+.sum-total{border-top:2px solid var(--border)!important;margin-top:6px;padding-top:8px!important;}
+.sum-total .sum-item{font-family:'Bebas Neue',sans-serif;letter-spacing:1px;color:var(--accent);font-size:14px;}
+.sum-total .sum-tot{font-family:'Bebas Neue',sans-serif;color:var(--accent);font-size:22px;}
+.tb-history{margin-top:var(--sp-md);background:rgba(255,255,255,.02);border:1px solid var(--border);border-radius:6px;padding:var(--sp-sm) var(--sp-md);}
+.tb-history h4{font-family:'Bebas Neue',sans-serif;font-size:13px;letter-spacing:1px;color:var(--muted);margin-bottom:6px;}
+.th-row{display:grid;grid-template-columns:auto 1fr auto;gap:8px;align-items:baseline;padding:3px 0;font-size:12px;border-bottom:1px solid rgba(255,255,255,.03);}
+.th-row:last-child{border:none;}
+.th-time{color:var(--muted);font-family:'IBM Plex Mono',monospace;font-size:11px;}
+.th-name{color:var(--text);min-width:0;word-break:break-word;}
+.th-qty{color:var(--accent);font-family:'IBM Plex Mono',monospace;font-weight:700;white-space:nowrap;}
 .tb-actions{display:flex;gap:var(--sp-sm);margin-top:var(--sp-md);flex-wrap:wrap;}
 .btn-pay{
   background:var(--purple);color:#fff;border:none;
