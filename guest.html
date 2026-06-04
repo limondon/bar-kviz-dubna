@@ -277,7 +277,7 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
 
 <script type="module">
 import{initializeApp}from'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
-import{getDatabase,ref,onValue,push,update,get}from'https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js';
+import{getDatabase,ref,onValue,push,update,get,runTransaction}from'https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js';
 import{getAuth,signInAnonymously}from'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js';
 
 const BAR_NAME='Кальянная 1708';
@@ -640,10 +640,8 @@ async function placeOrder(){
       return;
     }
     // Get order num
-    const snapO=await get(ref(db,'orders'));
-    const allO=snapO.val();
-    const maxNum=allO?Math.max(...Object.values(allO).map(o=>o.num||0)):0;
-    const orderNum=maxNum+1;
+    const numRes=await runTransaction(ref(db,'publicCounters/orderNum'),n=>(n||0)+1);
+    const orderNum=numRes.snapshot.val();
     const note=document.getElementById('orderNote').value.trim();
     const total=entries.reduce((s,[k,v])=>s+v.price*v.qty,0);
     const today=todayStr();

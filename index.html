@@ -169,14 +169,21 @@
 <div class="overlay hidden" id="passwordOverlay">
   <div class="modal" style="max-width:360px;">
     <h2>🔐 1708</h2>
-    <p>Введите пароль для доступа</p>
+    <p>Войдите по email и паролю Firebase</p>
+    <div style="margin-bottom:10px;">
+      <input type="email" id="emailInput" placeholder="Email"
+        style="font-size:15px;text-align:center;"
+        autocomplete="username"
+        onkeydown="if(event.key==='Enter')document.getElementById('passwordInput').focus()">
+    </div>
     <div style="margin-bottom:16px;">
       <input type="password" id="passwordInput" placeholder="Пароль"
         style="font-size:18px;text-align:center;letter-spacing:4px;"
+        autocomplete="current-password"
         onkeydown="if(event.key==='Enter')checkPassword()">
     </div>
     <div id="passwordError" style="color:var(--red);font-size:12px;text-align:center;margin-bottom:12px;min-height:16px;"></div>
-    <button class="modal-btn" onclick="checkPassword()">ВОЙТИ</button>
+    <button class="modal-btn" id="loginBtn" onclick="checkPassword()">ВОЙТИ</button>
   </div>
 </div>
 

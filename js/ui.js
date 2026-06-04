@@ -1,5 +1,5 @@
 import{S}from'./state.js';
-import{db,ref,set,onValue}from'./firebase.js';
+import{auth,signInWithEmailAndPassword}from'./firebase.js';
 import{fl,lockScroll,unlockScroll}from'./utils.js';
 import{updateNotifBtn,enableNotifications}from'./notifications.js';
 import{renderAll,buildQuickTableBtns,renderStats}from'./render.js';
@@ -148,33 +148,40 @@ export function applyRole(){
 
 // ─── PASSWORD ─────────────────────────────────────────
 export function checkPassword(){
-  const val=document.getElementById('passwordInput')?.value||'';
-  if(!S.appPassword){localStorage.setItem('bar_auth',Date.now().toString());localStorage.setItem('bar_auth_ok','1');document.getElementById('passwordOverlay').classList.add('hidden');const sr=localStorage.getItem('bar_role');if(!sr)openRoleModal();return;}
-  if(val===S.appPassword){localStorage.setItem('bar_auth',Date.now().toString());localStorage.setItem('bar_auth_ok','1');document.getElementById('passwordOverlay').classList.add('hidden');const sr=localStorage.getItem('bar_role');if(!sr)openRoleModal();}
-  else{const err=document.getElementById('passwordError');if(err){err.textContent='❌ Неверный пароль';setTimeout(()=>err.textContent='',2000);}const inp=document.getElementById('passwordInput');if(inp){inp.value='';inp.focus();}}
+  return staffLogin();
 }
-export function openPasswordModal(){document.getElementById('passwordOverlay').classList.remove('hidden');setTimeout(()=>document.getElementById('passwordInput')?.focus(),100);}
+async function staffLogin(){
+  const email=(document.getElementById('emailInput')?.value||'').trim();
+  const pass=document.getElementById('passwordInput')?.value||'';
+  const err=document.getElementById('passwordError');
+  const btn=document.getElementById('loginBtn');
+  if(!email||!pass){if(err)err.textContent='Введите email и пароль';return;}
+  if(btn){btn.disabled=true;btn.style.opacity='.6';}
+  try{
+    await signInWithEmailAndPassword(auth,email,pass);
+    localStorage.setItem('bar_staff_email',email);
+    localStorage.setItem('bar_auth',Date.now().toString());
+    localStorage.setItem('bar_auth_ok','1');
+    document.getElementById('passwordOverlay').classList.add('hidden');
+    const sr=localStorage.getItem('bar_role');
+    if(sr){S.role=sr;applyRole();}else openRoleModal();
+    await window.startApp?.();
+  }catch(e){
+    if(err){err.textContent='Неверный email или пароль';setTimeout(()=>err.textContent='',2500);}
+    const inp=document.getElementById('passwordInput');if(inp){inp.value='';inp.focus();}
+  }finally{if(btn){btn.disabled=false;btn.style.opacity='';}}
+}
+export function openPasswordModal(){
+  const email=document.getElementById('emailInput');
+  if(email&&!email.value)email.value=localStorage.getItem('bar_staff_email')||'';
+  document.getElementById('passwordOverlay').classList.remove('hidden');
+  setTimeout(()=>document.getElementById(email?.value?'passwordInput':'emailInput')?.focus(),100);
+}
 export function checkAuth(){
-  if(!S.appPassword)return true;
-  const savedAuth=localStorage.getItem('bar_auth');if(!savedAuth)return false;
-  return Date.now()-parseInt(savedAuth)<30*24*60*60*1000;
+  return !!auth.currentUser?.email;
 }
 export async function changePassword(){
-  const newPass=await new Promise(resolve=>{
-    const overlay=document.getElementById('confirmOverlay');
-    if(!overlay){resolve(window.prompt('Новый пароль (оставьте пустым чтобы убрать пароль):',''));return;}
-    document.getElementById('confirmTitle').textContent='🔐 Смена пароля';
-    document.getElementById('confirmMsg').innerHTML=`<input type="password" id="newPasswordInput" placeholder="Новый пароль" style="width:100%;padding:10px;margin-top:8px;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:'IBM Plex Mono',monospace;font-size:16px;text-align:center;letter-spacing:3px;" onkeydown="if(event.key==='Enter')confirmOk()"><div style="font-size:11px;color:var(--muted);margin-top:8px;">Оставьте пустым чтобы убрать пароль</div>`;
-    document.getElementById('confirmOkBtn').textContent='СОХРАНИТЬ';
-    document.getElementById('confirmOkBtn').style.background='var(--accent)';
-    document.getElementById('confirmOkBtn').style.color='#000';
-    overlay.classList.remove('hidden');
-    setTimeout(()=>document.getElementById('newPasswordInput')?.focus(),100);
-    window._confirmResolve=()=>{const val=document.getElementById('newPasswordInput')?.value||'';overlay.classList.add('hidden');resolve(val);};
-  });
-  if(newPass===null)return;
-  if(newPass===''){await set(ref(db,'config/password'),null);S.appPassword=null;fl('fOk','🔓 Пароль удалён');}
-  else{await set(ref(db,'config/password'),newPass);S.appPassword=newPass;fl('fOk','🔐 Пароль установлен');}
+  fl('fInfo','Пароль персонала меняется в Firebase Authentication');
 }
 
 export function toggleBill(cardId){

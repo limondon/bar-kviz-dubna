@@ -1,6 +1,6 @@
 import{initializeApp}from'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
-import{getDatabase,ref,push,update,set,remove,onValue,serverTimestamp}from'https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js';
-import{getAuth,signInAnonymously,onAuthStateChanged}from'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js';
+import{getDatabase,ref,push,update,set,remove,onValue,serverTimestamp,runTransaction}from'https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js';
+import{getAuth,signInAnonymously,signInWithEmailAndPassword,onAuthStateChanged}from'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js';
 
 const fbApp=initializeApp({
   apiKey:'AIzaSyAdPAuuu7TRsJfI9jxyYkdscPvPObm-6h8',
@@ -14,7 +14,7 @@ const fbApp=initializeApp({
 
 export const db=getDatabase(fbApp);
 export const auth=getAuth(fbApp);
-export{ref,push,update,set,remove,onValue,serverTimestamp,signInAnonymously,onAuthStateChanged};
+export{ref,push,update,set,remove,onValue,serverTimestamp,runTransaction,signInAnonymously,signInWithEmailAndPassword,onAuthStateChanged};
 
 export function setConnStatus(ok){
   const dot=document.querySelector('.dot');

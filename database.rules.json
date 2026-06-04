@@ -1,10 +1,50 @@
 {
   "rules": {
-    "orders":      { ".read": "auth != null", ".write": "auth != null" },
-    "tables":      { ".read": "auth != null", ".write": "auth != null" },
-    "menu2":       { ".read": "auth != null", ".write": "auth != null" },
-    "config":      { ".read": "auth != null", ".write": "auth != null" },
-    "waiterCalls": { ".read": "auth != null", ".write": "auth != null" },
-    "quiz_tokens": { ".read": "auth != null", ".write": "auth != null" }
+    "menu2": {
+      ".read": "auth != null",
+      ".write": "auth != null && auth.token.email === 'manager@1708.local'",
+      "$catId": {
+        "items": {
+          "$itemId": {
+            "stock": {
+              ".write": "auth != null && (auth.token.email === 'manager@1708.local' || (data.isNumber() && newData.isNumber() && newData.val() >= 0 && newData.val() <= data.val()))"
+            }
+          }
+        }
+      }
+    },
+    "config": {
+      ".read": "auth != null && auth.token.email === 'manager@1708.local'",
+      ".write": "auth != null && auth.token.email === 'manager@1708.local'"
+    },
+    "tables": {
+      ".read": "auth != null",
+      "$tableId": {
+        ".write": "auth != null && (auth.token.email === 'manager@1708.local' || (!data.exists() && newData.child('autoOpened').val() === true && newData.child('status').val() === 'open'))"
+      }
+    },
+    "orders": {
+      ".read": "auth != null && auth.token.email === 'manager@1708.local'",
+      "$orderId": {
+        ".write": "auth != null && (auth.token.email === 'manager@1708.local' || (!data.exists() && newData.child('source').val() === 'guest' && newData.child('status').val() === 'new'))"
+      }
+    },
+    "waiterCalls": {
+      ".read": "auth != null && auth.token.email === 'manager@1708.local'",
+      "$callId": {
+        ".write": "auth != null && (auth.token.email === 'manager@1708.local' || (!data.exists() && newData.child('status').val() === 'pending'))"
+      }
+    },
+    "quiz_tokens": {
+      ".read": "auth != null",
+      ".write": "auth != null && auth.token.email === 'manager@1708.local'"
+    },
+    "publicCounters": {
+      "orderNum": {
+        ".read": "auth != null",
+        ".write": "auth != null",
+        ".validate": "newData.isNumber() && newData.val() >= 0"
+      }
+    }
   }
 }
