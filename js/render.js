@@ -1,5 +1,5 @@
 import{S}from'./state.js';
-import{esc,fmt,empty,setBadge,setEl,todayStr,shiftDS,aggStatus}from'./utils.js';
+import{esc,escAttr,fmt,empty,setBadge,setEl,todayStr,shiftDS,aggStatus}from'./utils.js';
 import{BUILTIN_MENU}from'./menu-data.js';
 import{renderTables,renderClosed,getTMeta,getItemPrice}from'./tables.js';
 
@@ -20,12 +20,12 @@ export function isInstantItem(name){
 export function barmanItemRow(orderId,it){
   const cls={new:'',making:'is-making',ready:'is-ready',done:'is-done'}[it.status]||'';
   const ico={new:'⬜',making:'🍹',ready:'🟢',done:'✅'}[it.status]||'⬜';
-  const oid=esc(orderId),iid=esc(it._fbKey||it.id);
+  const oid=escAttr(orderId),iid=escAttr(it._fbKey||it.id);
   let btns='';
   if(it.status==='new'){btns=`<button class="ib ib-start" data-oid="${oid}" data-iid="${iid}" data-st="making">🍹 Начал</button><button class="ib ib-barready" data-oid="${oid}" data-iid="${iid}" data-st="ready">🟢 Готово</button>`;}
   else if(it.status==='making'){btns=`<button class="ib ib-barready" data-oid="${oid}" data-iid="${iid}" data-st="ready">🟢 Готово</button><button class="ib ib-undo" data-oid="${oid}" data-iid="${iid}" data-st="new">↩</button>`;}
   else if(it.status==='ready'){btns=`<span class="item-status-chip isc-ready">✓ ждёт офиц.</span><button class="ib ib-undo" data-oid="${oid}" data-iid="${iid}" data-st="making">↩</button>`;}
-  return`<div class="item-row ${cls}"><span class="item-ico">${ico}</span><span class="item-qty">${it.qty}</span><span class="item-name">${esc(it.name)}</span><div class="item-btns">${btns}</div></div>`;
+  return`<div class="item-row ${cls}"><span class="item-ico">${ico}</span><span class="item-qty">${esc(it.qty)}</span><span class="item-name">${esc(it.name)}</span><div class="item-btns">${btns}</div></div>`;
 }
 
 export function waiterItemRow(orderId,it){
@@ -33,12 +33,12 @@ export function waiterItemRow(orderId,it){
   const needsDeliver=it.status==='ready'||(instant&&it.status!=='done');
   const cls=it.status==='done'?'is-done':needsDeliver?'is-ready':(it.status==='making'&&!instant?'is-making':'');
   const ico={new:'⬜',making:'🍹',ready:'🟢',done:'✅'}[it.status]||'⬜';
-  const oid=esc(orderId),iid=esc(it._fbKey||it.id);
+  const oid=escAttr(orderId),iid=escAttr(it._fbKey||it.id);
   let btns='';
   if(it.status==='ready'){btns=`<button class="ib ib-deliver" data-oid="${oid}" data-iid="${iid}" data-action="deliver">✅ Отнёс</button>`;}
   else if(it.status==='making'){btns=instant?`<button class="ib ib-deliver" data-oid="${oid}" data-iid="${iid}" data-action="deliver">✅ Отнёс</button>`:`<span class="item-status-chip isc-making">🍹 готовится</span>`;}
   else if(it.status==='new'){btns=instant?`<button class="ib ib-deliver" data-oid="${oid}" data-iid="${iid}" data-action="deliver">✅ Отнёс</button>`:`<span class="item-status-chip isc-waiting">ожидает</span>`;}
-  return`<div class="item-row ${cls}"><span class="item-ico">${ico}</span><span class="item-qty">${it.qty}</span><span class="item-name">${esc(it.name)}</span><div class="item-btns">${btns}</div></div>`;
+  return`<div class="item-row ${cls}"><span class="item-ico">${ico}</span><span class="item-qty">${esc(it.qty)}</span><span class="item-name">${esc(it.name)}</span><div class="item-btns">${btns}</div></div>`;
 }
 
 export function adminItemRow(orderId,it){
@@ -46,12 +46,12 @@ export function adminItemRow(orderId,it){
   const needsDeliver=it.status==='ready'||(instant&&it.status!=='done');
   const cls=it.status==='done'?'is-done':needsDeliver?'is-ready':(it.status==='making'&&!instant?'is-making':'');
   const ico={new:'⬜',making:'🍹',ready:'🟢',done:'✅'}[it.status]||'⬜';
-  const oid=esc(orderId),iid=esc(it._fbKey||it.id);
+  const oid=escAttr(orderId),iid=escAttr(it._fbKey||it.id);
   let btns='';
   if(it.status==='new'){btns=instant?`<button class="ib ib-deliver" data-oid="${oid}" data-iid="${iid}" data-action="deliver">✅ Отнёс</button>`:`<button class="ib ib-start" data-oid="${oid}" data-iid="${iid}" data-st="making">🍹 Начал</button><button class="ib ib-barready" data-oid="${oid}" data-iid="${iid}" data-st="ready">🟢 Готово</button>`;}
   else if(it.status==='making'){btns=instant?`<button class="ib ib-deliver" data-oid="${oid}" data-iid="${iid}" data-action="deliver">✅ Отнёс</button><button class="ib ib-undo" data-oid="${oid}" data-iid="${iid}" data-st="new">↩</button>`:`<button class="ib ib-barready" data-oid="${oid}" data-iid="${iid}" data-st="ready">🟢 Готово</button><button class="ib ib-undo" data-oid="${oid}" data-iid="${iid}" data-st="new">↩</button>`;}
   else if(it.status==='ready'){btns=`<button class="ib ib-deliver" data-oid="${oid}" data-iid="${iid}" data-action="deliver">✅ Отнёс</button><button class="ib ib-undo" data-oid="${oid}" data-iid="${iid}" data-st="making">↩</button>`;}
-  return`<div class="item-row ${cls}"><span class="item-ico">${ico}</span><span class="item-qty">${it.qty}</span><span class="item-name">${esc(it.name)}</span><div class="item-btns">${btns}</div></div>`;
+  return`<div class="item-row ${cls}"><span class="item-ico">${ico}</span><span class="item-qty">${esc(it.qty)}</span><span class="item-name">${esc(it.name)}</span><div class="item-btns">${btns}</div></div>`;
 }
 
 // ─── ORDER CARD ───────────────────────────────────────
@@ -67,15 +67,15 @@ export function orderCard(o,isDone){
   const pTag=o.priority==='urgent'?`<span class="tag t-urgent">🔥 СРОЧНО</span>`:'';
   const note=o.note?`<div class="order-note">💬 ${esc(o.note)}</div>`:'';
   let banner='';
-  if(st==='ready')banner=`<div class="ready-banner"><div class="rdot"></div>Всё готово — неси на Стол ${o.table}!</div>`;
+  if(st==='ready')banner=`<div class="ready-banner"><div class="rdot"></div>Всё готово — неси на Стол ${esc(o.table)}!</div>`;
   else if(readyC>0&&st==='making')banner=`<div class="partial-banner">🟢 ${readyC} из ${total} позиц. готовы — можно частично забрать!</div>`;
   const prog=(st==='making'||st==='ready')&&total>1?`<div class="progress-bar"><div class="progress-fill" style="width:${pct}%"></div></div><div class="progress-label">${doneC+readyC} / ${total} готово</div>`:'';
   let itemsHtml='';
   if(!isDone&&S.role==='barman')itemsHtml=`<div class="items-list">${allItems.map(it=>barmanItemRow(o.id,it)).join('')}</div>`;
   else if(!isDone&&S.role==='admin')itemsHtml=`<div class="items-list">${allItems.map(it=>adminItemRow(o.id,it)).join('')}</div>`;
   else if(!isDone&&S.role==='waiter')itemsHtml=`<div class="items-list">${allItems.map(it=>waiterItemRow(o.id,it)).join('')}</div>`;
-  else itemsHtml=`<div class="items-list">${allItems.map(it=>{const ico={new:'⬜',making:'🍹',ready:'🟢',done:'✅'}[it.status]||'⬜';return`<div class="item-row${it.status==='done'?' is-done':''}" style="cursor:default;"><span class="item-ico">${ico}</span><span class="item-qty">${it.qty}</span><span class="item-name">${esc(it.name)}</span></div>`;}).join('')}</div>`;
-  let acts='';const oid=esc(o.id);
+  else itemsHtml=`<div class="items-list">${allItems.map(it=>{const ico={new:'⬜',making:'🍹',ready:'🟢',done:'✅'}[it.status]||'⬜';return`<div class="item-row readonly${it.status==='done'?' is-done':''}"><span class="item-ico">${ico}</span><span class="item-qty">${esc(it.qty)}</span><span class="item-name">${esc(it.name)}</span></div>`;}).join('')}</div>`;
+  let acts='';const oid=escAttr(o.id);
   if(isDone){if(S.role==='admin')acts+=`<button class="btn-sm bx" data-action="del" data-oid="${oid}">🗑 Удалить</button>`;}
   else{
     if(S.role==='waiter'||S.role==='admin')acts+=`<button class="btn-edit" data-action="edit" data-oid="${oid}">✏️ Изменить</button>`;
@@ -83,8 +83,8 @@ export function orderCard(o,isDone){
     if(S.role==='admin')acts+=` <button class="btn-sm bx" data-action="del" data-oid="${oid}">🗑</button>`;
   }
   const waitMins=isDone?0:Math.floor((Date.now()-o.createdAt)/60000);
-  const waitLbl=!isDone&&o.createdAt?`<span data-created="${o.createdAt}" style="font-size:var(--fs-xs);padding:2px 8px;border-radius:8px;font-weight:700;margin-left:6px;background:${waitMins>=15?'rgba(229,57,53,.18)':'rgba(255,255,255,.06)'};color:${waitMins>=15?'var(--red)':'var(--muted)'};">${waitMins>0?`⏱ ${waitMins} мин${waitMins>=15?' !':''}`:'⏱ <1 мин'}</span>`:'';
-  return`<div class="order-card ${borderCls}"><div class="cnum">#${o.num}</div><div class="card-header"><div class="tnum-big"><small>СТОЛ</small>${o.table}</div><div class="tags">${pTag}${stTag}</div></div>${banner}<div class="order-time">принят в ${fmt(o.createdAt)}${waitLbl}</div>${note}${prog}${itemsHtml}${acts?`<div class="order-actions">${acts}</div>`:''}</div>`;
+  const waitLbl=!isDone&&o.createdAt?`<span data-created="${escAttr(o.createdAt)}" class="wait-chip${waitMins>=15?' urgent':''}">${waitMins>0?`⏱ ${waitMins} мин${waitMins>=15?' !':''}`:'⏱ &lt;1 мин'}</span>`:'';
+  return`<div class="order-card ${borderCls}"><div class="cnum">#${esc(o.num)}</div><div class="card-header"><div class="tnum-big"><small>СТОЛ</small>${esc(o.table)}</div><div class="tags">${pTag}${stTag}</div></div>${banner}<div class="order-time">принят в ${fmt(o.createdAt)}${waitLbl}</div>${note}${prog}${itemsHtml}${acts?`<div class="order-actions">${acts}</div>`:''}</div>`;
 }
 
 // ─── QUICK TABLE BUTTONS ──────────────────────────────
@@ -94,11 +94,11 @@ export function buildQuickTableBtns(){
   const current=document.getElementById('inpTable')?.value?.toUpperCase().trim();
   el.innerHTML=TABLES.map(t=>{
     const val=String(t);const isPS=val.startsWith('PS');const isActive=val===current;
-    return`<button onclick="pickTable('${val}')" data-tval="${val}" style="min-width:${isPS?56:44}px;min-height:44px;padding:6px ${isPS?'10px':'8px'};background:${isActive?'rgba(245,166,35,.25)':'var(--card)'};border:${isActive?'2px solid var(--accent)':'1px solid var(--border)'};border-radius:8px;color:${isPS?'var(--purple)':isActive?'var(--accent)':'var(--text)'};font-family:'Bebas Neue',sans-serif;font-size:${isPS?'14px':'18px'};cursor:pointer;transition:all .15s;letter-spacing:1px;${isPS?'border-color:rgba(156,39,176,.5);background:rgba(156,39,176,.08);':''}${isActive&&isPS?'border-color:var(--purple)!important;background:rgba(156,39,176,.25)!important;':''}">${val}</button>`;
+    return`<button onclick="pickTable('${escAttr(val)}')" data-tval="${escAttr(val)}" class="quick-table-btn${isPS?' ps':''}${isActive?' active':''}">${esc(val)}</button>`;
   }).join('');
 }
 
-function mkFb(val,label){return`<button class="fb${S.qf===val?' active':''}" onclick="setQF('${val}',this)">${label}</button>`;}
+function mkFb(val,label){return`<button class="fb${S.qf===val?' active':''}" onclick="setQF('${escAttr(val)}',this)">${esc(label)}</button>`;}
 
 // ─── RENDER ALL ───────────────────────────────────────
 export function renderAll(){

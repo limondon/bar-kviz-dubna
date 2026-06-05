@@ -6,7 +6,7 @@ function logDelivery(o,it){
   const entry={at:Date.now(),table:o.table,orderNum:o.num,name:it.name,qty:it.qty};
   update(ref(db,'config/deliveryLog/'+key),entry).catch(e=>console.error('logDelivery',e));
 }
-import{parseItems,aggStatus,esc,fl,safeDb,showConfirm,todayStr,lockScroll,unlockScroll}from'./utils.js';
+import{parseItems,aggStatus,esc,escAttr,fl,safeDb,showConfirm,todayStr,lockScroll,unlockScroll}from'./utils.js';
 import{applyStockDeltas,deductMenuStock}from'./stock.js';
 import{getTMeta}from'./tables.js';
 import{buildQuickTableBtns,isInstantItem}from'./render.js';
@@ -151,11 +151,11 @@ export function openEditModal(orderId,billMode=false){
   const sub=document.getElementById('editSub');
   let itemsToEdit;
   if(billMode){
-    sub.innerHTML=`Заказ #${o.num} · Стол ${o.table}<br><span style="color:var(--accent);font-size:10px;">📋 Правка чека — позиции сохранятся как доставленные</span>`;
+    sub.innerHTML=`Заказ #${esc(o.num)} · Стол ${esc(o.table)}<br><span class="edit-sub-accent">📋 Правка чека — позиции сохранятся как доставленные</span>`;
     itemsToEdit=(o.items||[]);
   } else {
     itemsToEdit=activeItems;
-    if(doneItems.length)sub.innerHTML=`Заказ #${o.num} · Стол ${o.table}<br><span style="color:var(--muted);font-size:10px;">✅ Доставлено: ${doneItems.map(it=>it.qty+'× '+it.name).join(', ')}</span>`;
+    if(doneItems.length)sub.innerHTML=`Заказ #${esc(o.num)} · Стол ${esc(o.table)}<br><span class="edit-sub-muted">✅ Доставлено: ${doneItems.map(it=>esc(it.qty)+'× '+esc(it.name)).join(', ')}</span>`;
     else sub.textContent='Заказ #'+o.num+' · Стол '+o.table;
   }
   renderEditItemsList(itemsToEdit.map(it=>({qty:it.qty,name:it.name})));
@@ -166,14 +166,10 @@ export function openEditModal(orderId,billMode=false){
 function renderEditItemsList(items){
   const el=document.getElementById('editItemsList');if(!el)return;
   el.innerHTML=items.map((it,i)=>`
-    <div style="display:flex;align-items:center;gap:8px;" id="edit-row-${i}">
-      <input type="number" value="${it.qty}" min="1" max="99"
-        style="width:52px;text-align:center;padding:8px;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--accent);font-family:'Bebas Neue',sans-serif;font-size:20px;"
-        onchange="updateEditRow(${i},'qty',+this.value)">
-      <input type="text" value="${esc(it.name)}"
-        style="flex:1;padding:9px;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:'IBM Plex Mono',monospace;font-size:13px;"
-        onchange="updateEditRow(${i},'name',this.value)">
-      <button onclick="removeEditRow(${i})" style="width:36px;height:36px;min-width:36px;border-radius:6px;background:rgba(229,57,53,.15);color:var(--red);border:1px solid rgba(229,57,53,.3);cursor:pointer;font-size:16px;display:flex;align-items:center;justify-content:center;">✕</button>
+    <div class="edit-items-row" id="edit-row-${i}">
+      <input class="edit-qty-input" type="number" value="${escAttr(it.qty)}" min="1" max="99" onchange="updateEditRow(${i},'qty',+this.value)">
+      <input class="edit-name-input" type="text" value="${escAttr(it.name)}" onchange="updateEditRow(${i},'name',this.value)">
+      <button class="edit-remove-row" onclick="removeEditRow(${i})">✕</button>
     </div>`).join('');
   syncEditItemsToTextarea(items);
 }

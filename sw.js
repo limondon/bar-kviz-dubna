@@ -1,4 +1,4 @@
-const CACHE_NAME = 'bar-v15';
+const CACHE_NAME = 'bar-v16';
 const ASSETS = [
   './',
   'index.html',
