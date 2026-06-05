@@ -123,12 +123,12 @@
 
 <!-- CORKAGE MODAL -->
 <div class="overlay hidden" id="corkageOverlay">
-  <div class="modal" style="max-width:360px;">
+  <div class="modal corkage-modal">
     <h2>🍾 ПРОБКОВЫЙ СБОР</h2>
-    <p id="corkageSub" style="color:var(--muted);font-size:12px;margin-bottom:12px;"></p>
-    <div id="corkageItems" style="margin-bottom:8px;"></div>
-    <div id="corkageTotal" style="font-family:'Bebas Neue',sans-serif;font-size:22px;letter-spacing:1px;color:var(--accent);text-align:right;margin-bottom:12px;min-height:28px;"></div>
-    <button id="corkageConfirmBtn" onclick="confirmCorkage()" style="width:100%;padding:14px;background:var(--accent);color:#000;font-family:'Bebas Neue',sans-serif;font-size:18px;letter-spacing:2px;border-radius:10px;cursor:pointer;border:none;margin-bottom:10px;opacity:.4;" disabled>ДОБАВИТЬ</button>
+    <p id="corkageSub" class="corkage-sub"></p>
+    <div id="corkageItems" class="corkage-items"></div>
+    <div id="corkageTotal" class="corkage-total"></div>
+    <button id="corkageConfirmBtn" class="corkage-confirm" onclick="confirmCorkage()" disabled>ДОБАВИТЬ</button>
     <span class="modal-close" onclick="closeCorkageModal()">Отмена</span>
   </div>
 </div>
@@ -136,31 +136,31 @@
 <!-- ITEM EDITOR SHEET -->
 <div class="overlay sheet-overlay hidden" id="itemEditorOverlay" onclick="if(event.target===this)closeItemEditor()">
   <div class="bottom-sheet">
-    <div style="width:36px;height:4px;background:var(--border);border-radius:2px;margin:0 auto 16px;"></div>
-    <h3 style="font-family:'Bebas Neue',sans-serif;font-size:18px;letter-spacing:1px;color:var(--accent);margin-bottom:16px;">✏️ РЕДАКТИРОВАТЬ</h3>
-    <div style="margin-bottom:14px;">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:.5px;text-transform:uppercase;margin-bottom:5px;">Название</div>
-      <input id="ieNameInp" type="text" style="width:100%;box-sizing:border-box;font-family:'IBM Plex Mono',monospace;font-size:15px;padding:12px;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--text);">
+    <div class="item-editor-handle"></div>
+    <h3 class="item-editor-title">✏️ РЕДАКТИРОВАТЬ</h3>
+    <div class="item-editor-field">
+      <div class="item-editor-label">Название</div>
+      <input id="ieNameInp" class="item-editor-input" type="text">
     </div>
-    <div style="display:flex;gap:12px;margin-bottom:14px;">
-      <div style="flex:1;">
-        <div style="font-size:10px;color:var(--muted);letter-spacing:.5px;text-transform:uppercase;margin-bottom:5px;">Цена, ₽</div>
-        <input id="iePriceInp" type="number" min="0" style="width:100%;box-sizing:border-box;font-family:'IBM Plex Mono',monospace;font-size:15px;padding:12px;background:var(--bg);border:1px solid rgba(245,166,35,.4);border-radius:8px;color:var(--accent);">
+    <div class="item-editor-row">
+      <div class="item-editor-col">
+        <div class="item-editor-label">Цена, ₽</div>
+        <input id="iePriceInp" class="item-editor-input accent" type="number" min="0">
       </div>
-      <div style="flex:1;">
-        <div style="font-size:10px;color:var(--muted);letter-spacing:.5px;text-transform:uppercase;margin-bottom:5px;">Остаток</div>
-        <input id="ieStockInp" type="number" min="0" placeholder="∞" style="width:100%;box-sizing:border-box;font-family:'IBM Plex Mono',monospace;font-size:15px;padding:12px;background:var(--bg);border:1px solid rgba(245,166,35,.4);border-radius:8px;color:var(--accent);">
+      <div class="item-editor-col">
+        <div class="item-editor-label">Остаток</div>
+        <input id="ieStockInp" class="item-editor-input accent" type="number" min="0" placeholder="∞">
       </div>
     </div>
-    <div style="margin-bottom:14px;">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:.5px;text-transform:uppercase;margin-bottom:5px;">Группа <span style="font-weight:400;font-size:9px;">(необязательно)</span></div>
-      <input id="ieGroupInp" type="text" placeholder="например: Сидр Chestnut" style="width:100%;box-sizing:border-box;font-family:'IBM Plex Mono',monospace;font-size:15px;padding:12px;background:var(--bg);border:1px solid rgba(156,39,176,.4);border-radius:8px;color:var(--purple);">
+    <div class="item-editor-field">
+      <div class="item-editor-label">Группа <small>(необязательно)</small></div>
+      <input id="ieGroupInp" class="item-editor-input purple" type="text" placeholder="например: Сидр Chestnut">
     </div>
-    <div style="margin-bottom:20px;">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:.5px;text-transform:uppercase;margin-bottom:5px;">Опции гостя <span style="font-weight:400;font-size:9px;">(через запятую, необязательно)</span></div>
-      <input id="ieOptionsInp" type="text" placeholder="с лаймом, без лайма" style="width:100%;box-sizing:border-box;font-family:'IBM Plex Mono',monospace;font-size:15px;padding:12px;background:var(--bg);border:1px solid rgba(76,175,80,.4);border-radius:8px;color:var(--green);">
+    <div class="item-editor-field wide">
+      <div class="item-editor-label">Опции гостя <small>(через запятую, необязательно)</small></div>
+      <input id="ieOptionsInp" class="item-editor-input green" type="text" placeholder="с лаймом, без лайма">
     </div>
-    <button onclick="saveItemEditor()" style="width:100%;padding:16px;background:var(--accent);color:#000;font-family:'Bebas Neue',sans-serif;font-size:18px;letter-spacing:2px;border-radius:10px;cursor:pointer;border:none;margin-bottom:8px;">СОХРАНИТЬ</button>
+    <button class="item-editor-save" onclick="saveItemEditor()">СОХРАНИТЬ</button>
     <span class="modal-close" onclick="closeItemEditor()">Отмена</span>
   </div>
 </div>

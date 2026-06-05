@@ -84,6 +84,127 @@ body.modal-open{touch-action:none;}
 .bottom-sheet{transition:padding-bottom .1s;}
 .bottom-sheet{width:100%;background:var(--surface);border:1px solid var(--border);border-bottom:none;border-radius:16px 16px 0 0;padding:20px 20px 40px;max-height:80vh;overflow-y:auto;-webkit-overflow-scrolling:touch;}
 
+.corkage-modal{max-width:360px;}
+.corkage-sub{color:var(--muted);font-size:12px;margin-bottom:12px;}
+.corkage-items{margin-bottom:8px;}
+.corkage-total{
+  font-family:'Bebas Neue',sans-serif;
+  font-size:22px;
+  letter-spacing:1px;
+  color:var(--accent);
+  text-align:right;
+  margin-bottom:12px;
+  min-height:28px;
+}
+.corkage-confirm{
+  width:100%;
+  padding:14px;
+  background:var(--accent);
+  color:#000;
+  font-family:'Bebas Neue',sans-serif;
+  font-size:18px;
+  letter-spacing:2px;
+  border-radius:10px;
+  cursor:pointer;
+  border:none;
+  margin-bottom:10px;
+}
+.corkage-confirm:disabled{opacity:.4;cursor:not-allowed;}
+.corkage-row{
+  display:flex;
+  align-items:center;
+  gap:12px;
+  padding:10px 0;
+  border-bottom:1px solid rgba(255,255,255,.06);
+}
+.corkage-main{flex:1;}
+.corkage-name{font-size:13px;font-weight:600;color:var(--text);}
+.corkage-hint{font-size:10px;color:var(--muted);margin-left:6px;}
+.corkage-price{
+  font-size:16px;
+  font-family:'Bebas Neue',sans-serif;
+  letter-spacing:1px;
+}
+.corkage-row.type-0 .corkage-price,.corkage-row.type-0 .corkage-action{color:var(--accent);}
+.corkage-row.type-1 .corkage-price,.corkage-row.type-1 .corkage-action{color:var(--purple);}
+.corkage-row.type-2 .corkage-price,.corkage-row.type-2 .corkage-action{color:var(--red);}
+.corkage-stepper{
+  display:flex;
+  align-items:center;
+  gap:0;
+  border:1.5px solid var(--border);
+  border-radius:100px;
+  overflow:hidden;
+  transition:all .15s;
+}
+.corkage-stepper.active.type-0{background:rgba(245,166,35,.15);border-color:rgba(245,166,35,.4);}
+.corkage-stepper.active.type-1{background:rgba(156,39,176,.15);border-color:rgba(156,39,176,.4);}
+.corkage-stepper.active.type-2{background:rgba(229,57,53,.15);border-color:rgba(229,57,53,.4);}
+.corkage-action{
+  width:38px;height:38px;
+  display:flex;align-items:center;justify-content:center;
+  background:transparent;border:none;
+  font-size:20px;
+  cursor:pointer;
+}
+.corkage-action:disabled{cursor:not-allowed;opacity:.3;}
+.corkage-qty{
+  min-width:24px;
+  text-align:center;
+  font-size:14px;
+  font-weight:700;
+  font-family:'IBM Plex Mono',monospace;
+  color:var(--text);
+}
+
+.item-editor-handle{width:36px;height:4px;background:var(--border);border-radius:2px;margin:0 auto 16px;}
+.item-editor-title{
+  font-family:'Bebas Neue',sans-serif;
+  font-size:18px;
+  letter-spacing:1px;
+  color:var(--accent);
+  margin-bottom:16px;
+}
+.item-editor-field{margin-bottom:14px;}
+.item-editor-field.wide{margin-bottom:20px;}
+.item-editor-row{display:flex;gap:12px;margin-bottom:14px;}
+.item-editor-col{flex:1;}
+.item-editor-label{
+  font-size:10px;
+  color:var(--muted);
+  letter-spacing:.5px;
+  text-transform:uppercase;
+  margin-bottom:5px;
+}
+.item-editor-label small{font-size:9px;font-weight:400;}
+.item-editor-input{
+  width:100%;
+  box-sizing:border-box;
+  font-family:'IBM Plex Mono',monospace;
+  font-size:15px;
+  padding:12px;
+  background:var(--bg);
+  border:1px solid var(--border);
+  border-radius:8px;
+  color:var(--text);
+}
+.item-editor-input.accent{border-color:rgba(245,166,35,.4);color:var(--accent);}
+.item-editor-input.purple{border-color:rgba(156,39,176,.4);color:var(--purple);}
+.item-editor-input.green{border-color:rgba(76,175,80,.4);color:var(--green);}
+.item-editor-save{
+  width:100%;
+  padding:16px;
+  background:var(--accent);
+  color:#000;
+  font-family:'Bebas Neue',sans-serif;
+  font-size:18px;
+  letter-spacing:2px;
+  border-radius:10px;
+  cursor:pointer;
+  border:none;
+  margin-bottom:8px;
+}
+
 .app-modal-overlay{
   position:fixed;inset:0;z-index:9999;
   background:rgba(0,0,0,.85);

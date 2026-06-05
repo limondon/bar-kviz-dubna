@@ -196,19 +196,17 @@ function _renderCorkage(){
     const q=_corkageQtys[i];
     const init=_corkageInitial[i];
     const canDec=q>0;
-    const colors=[['rgba(245,166,35,.15)','var(--accent)','rgba(245,166,35,.4)'],['rgba(156,39,176,.15)','var(--purple)','rgba(156,39,176,.4)'],['rgba(229,57,53,.15)','var(--red)','rgba(229,57,53,.4)']];
-    const[bg,clr,brd]=colors[i];
     const diff=q-init;
-    const existingHint=init>0?`<span style="font-size:10px;color:var(--muted);margin-left:6px;">(было ${init}${diff!==0?` → ${q}`:''})</span>`:'';
-    return`<div style="display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid rgba(255,255,255,.06);">
-      <div style="flex:1;">
-        <div style="font-size:13px;font-weight:600;color:var(--text);">${t.emoji} ${t.label}${existingHint}</div>
-        <div style="font-size:16px;font-family:'Bebas Neue',sans-serif;letter-spacing:1px;color:${clr};">${t.price} ₽</div>
+    const existingHint=init>0?`<span class="corkage-hint">(было ${init}${diff!==0?` → ${q}`:''})</span>`:'';
+    return`<div class="corkage-row type-${i}">
+      <div class="corkage-main">
+        <div class="corkage-name">${t.emoji} ${t.label}${existingHint}</div>
+        <div class="corkage-price">${t.price} ₽</div>
       </div>
-      <div style="display:flex;align-items:center;gap:0;background:${q?bg:'transparent'};border:1.5px solid ${q?brd:'var(--border)'};border-radius:100px;overflow:hidden;transition:all .15s;">
-        <div onclick="corkageAdj(${i},-1)" style="width:38px;height:38px;display:flex;align-items:center;justify-content:center;font-size:20px;color:${clr};cursor:${canDec?'pointer':'not-allowed'};opacity:${canDec?1:.3};">−</div>
-        <div style="min-width:24px;text-align:center;font-size:14px;font-weight:700;font-family:'IBM Plex Mono',monospace;color:var(--text);">${q||'·'}</div>
-        <div onclick="corkageAdj(${i},1)" style="width:38px;height:38px;display:flex;align-items:center;justify-content:center;font-size:20px;color:${clr};cursor:pointer;">+</div>
+      <div class="corkage-stepper type-${i}${q?' active':''}">
+        <button class="corkage-action" data-corkage-index="${i}" data-corkage-delta="-1" ${canDec?'':'disabled'} type="button">−</button>
+        <div class="corkage-qty">${q||'·'}</div>
+        <button class="corkage-action" data-corkage-index="${i}" data-corkage-delta="1" type="button">+</button>
       </div>
     </div>`;
   }).join('');
@@ -222,8 +220,14 @@ function _renderCorkage(){
     else totalEl.textContent='';
   }
   const btn=document.getElementById('corkageConfirmBtn');
-  if(btn){btn.disabled=!hasChange;btn.style.opacity=hasChange?'1':'.4';btn.textContent=totalNew<0?'УБРАТЬ':totalNew>0?'ДОБАВИТЬ':'СОХРАНИТЬ';}
+  if(btn){btn.disabled=!hasChange;btn.textContent=totalNew<0?'УБРАТЬ':totalNew>0?'ДОБАВИТЬ':'СОХРАНИТЬ';}
 }
+
+document.addEventListener('click',e=>{
+  const btn=e.target.closest('[data-corkage-delta]');
+  if(!btn)return;
+  corkageAdj(Number(btn.dataset.corkageIndex),Number(btn.dataset.corkageDelta));
+});
 
 export function corkageAdj(i,delta){
   _corkageQtys[i]=Math.max(0,_corkageQtys[i]+delta);
