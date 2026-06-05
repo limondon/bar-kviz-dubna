@@ -26,9 +26,9 @@ S.closedViewDate=todayStr();
 window.renderAll=renderAll;
 
 // ─── FIREBASE LISTENERS ───────────────────────────────
-let _ordersLoaded=false,_tablesLoaded=false,_selfHealDone=false,_counterSeedDone=false;
+let _ordersLoaded=false,_tablesLoaded=false,_selfHealDone=false,_counterSeedDone=false,_counterConfigLoaded=false;
 function _seedOrderCounter(){
-  if(_counterSeedDone||!S.orders.length)return;
+  if(_counterSeedDone||!_ordersLoaded||!_counterConfigLoaded||!S.orders.length)return;
   const orders=S.orderNumResetAt?S.orders.filter(o=>(o.createdAt||0)>=S.orderNumResetAt):S.orders;
   if(!orders.length)return;
   _counterSeedDone=true;
@@ -87,8 +87,7 @@ async function loadAll(){
       if(Object.keys(cleanupUpd).length>0)update(ref(db),cleanupUpd).catch(e=>console.error('cleanup',e));
     }
     S.orders=raw?Object.values(raw).filter(o=>!o.date||o.date>=cutoffDate).map(normalizeOrder):[];
-    _seedOrderCounter();
-    _ordersLoaded=true;_maybeRunSelfHeal();
+    _ordersLoaded=true;_seedOrderCounter();_maybeRunSelfHeal();
     checkNewOrders(S.orders);
     renderAll();
   },(e)=>console.error(e));
@@ -99,7 +98,7 @@ async function loadAll(){
     if(S.activeTab==='tables')renderTables();
   });
 
-  onValue(ref(db,'config/orderNumResetAt'),(snap)=>{S.orderNumResetAt=snap.val()||0;});
+  onValue(ref(db,'config/orderNumResetAt'),(snap)=>{S.orderNumResetAt=snap.val()||0;_counterConfigLoaded=true;_seedOrderCounter();});
 
   onValue(ref(db,'config/deliveryLog'),(snap)=>{
     const raw=snap.val()||{};
