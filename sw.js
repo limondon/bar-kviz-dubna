@@ -1,13 +1,15 @@
-const CACHE_NAME = 'bar-v6';
+const CACHE_NAME = 'bar-v7';
 const ASSETS = [
   './',
   'index.html',
   'guest.html',
+  'guest.css',
   'style.css',
   'manifest.json',
   'js/main.js',
   'js/state.js',
   'js/firebase.js',
+  'js/guest.js',
   'js/counters.js',
   'js/utils.js',
   'js/render.js',
