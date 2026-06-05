@@ -124,21 +124,71 @@ export async function reopenOrder(id){
   });
   o.status='new';delete o.doneAt;
   await update(ref(db),upd);
-  await applyStockDeltas(o.items.map(it=>({name:it.name,delta:-it.qty})));
 }
 
 export async function delOrder(id){
   const o=S.orders.find(x=>x.id===id);
   const ok=await showConfirm('🗑 Удалить заказ?',`Заказ #${o?.num||'?'} будет удалён безвозвратно.`);
   if(!ok)return;
-  if(o&&Array.isArray(o.items)){
-    await applyStockDeltas(o.items.map(it=>({name:it.name,delta:-it.qty})));
+  let stockReturned=false;
+  try{
+    if(o&&Array.isArray(o.items)){
+      await applyStockDeltas(o.items.map(it=>({name:it.name,delta:-it.qty})));
+      stockReturned=true;
+    }
+    await remove(ref(db,'orders/'+id));
+  }catch(e){
+    if(stockReturned&&o&&Array.isArray(o.items)){
+      await applyStockDeltas(o.items.map(it=>({name:it.name,delta:it.qty}))).catch(err=>console.error('stock rollback failed:',err));
+    }
+    console.error('delOrder error:',e);
+    fl('fInfo','❌ Ошибка удаления: '+(e?.message||e));
   }
-  await remove(ref(db,'orders/'+id));
 }
 
 // ─── EDIT ORDER MODAL ─────────────────────────────────
 let _editItems=[];
+
+function stockKey(name){return String(name||'').trim().toLowerCase();}
+function buildStockDeltas(beforeItems,afterItems){
+  const map=new Map();
+  const add=(it,sign)=>{
+    const key=stockKey(it.name);
+    if(!key)return;
+    const qty=Math.max(0,Number(it.qty)||0);
+    if(!qty)return;
+    const row=map.get(key)||{name:it.name,delta:0};
+    row.delta+=sign*qty;
+    map.set(key,row);
+  };
+  (beforeItems||[]).forEach(it=>add(it,-1));
+  (afterItems||[]).forEach(it=>add(it,1));
+  return [...map.values()].filter(it=>it.delta!==0);
+}
+function itemsToDbObject(items){
+  const itemsObj={};
+  items.forEach(it=>{
+    const k=it._fbKey||it.id;
+    const{_fbKey,...clean}=it;
+    itemsObj[k]=clean;
+  });
+  return itemsObj;
+}
+function orderSnapshot(o){
+  return {
+    items:Object.fromEntries(o.items.map(it=>{
+      const{_fbKey,...clean}=it;
+      return[it._fbKey||it.id,clean];
+    })),
+    note:o.note||'',
+    priority:o.priority||'normal',
+    editedAt:Date.now(),
+    editedBy:S.role||'unknown'
+  };
+}
+async function rollbackStockDeltas(stockDeltas){
+  if(stockDeltas.length)await applyStockDeltas(stockDeltas.map(it=>({name:it.name,delta:-it.delta})));
+}
 
 export function openEditModal(orderId,billMode=false){
   const o=S.orders.find(x=>x.id===orderId);if(!o)return;
@@ -200,39 +250,30 @@ export async function saveEditOrder(){
   const note=document.getElementById('editNote').value.trim();
   const prio=document.getElementById('editPriority').value;
   if(!rawItems){fl('fInfo','Введите позиции!');return;}
-  let mergedItems;
+  const originalItems=Array.isArray(o.items)?o.items:[];
+  let mergedItems,stockDeltas;
   if(S.editBillMode){
     const parsed=parseItems(rawItems);
     mergedItems=parsed.map(it=>({...it,status:'done',doneAt:Date.now()}));
+    stockDeltas=buildStockDeltas(originalItems,mergedItems);
   } else {
-    const doneItems=o.items.filter(it=>it.status==='done');
+    const doneItems=originalItems.filter(it=>it.status==='done');
     const newParsed=parseItems(rawItems);
     mergedItems=[...doneItems,...newParsed];
-    // Считаем дельту стока
-    const origNonDone=o.items.filter(it=>it.status!=='done');
-    const origMap={};for(const it of origNonDone){const k=it.name.trim().toLowerCase();origMap[k]=(origMap[k]||0)+it.qty;}
-    const newMap={};for(const it of newParsed){const k=it.name.trim().toLowerCase();newMap[k]=(newMap[k]||0)+it.qty;}
-    const allNames=new Set([...Object.keys(origMap),...Object.keys(newMap)]);
-    const stockDeltas=[];
-    for(const k of allNames){const delta=(newMap[k]||0)-(origMap[k]||0);if(delta!==0)stockDeltas.push({name:k,delta});}
-    const itemsObj={};
-    mergedItems.forEach(it=>{const k=it._fbKey||it.id;const{_fbKey,...clean}=it;itemsObj[k]=clean;});
-    try{
-      const snapshot={items:Object.fromEntries(o.items.map(it=>{const{_fbKey,...clean}=it;return[it._fbKey||it.id,clean];})),note:o.note||'',priority:o.priority||'normal',editedAt:Date.now(),editedBy:S.role||'unknown'};
-      await set(ref(db,'orders/'+S.editOrderId+'/history/'+Date.now()),snapshot);
-      await set(ref(db,'orders/'+S.editOrderId+'/items'),itemsObj);
-      await update(ref(db,'orders/'+S.editOrderId),{note,priority:prio});
-      if(stockDeltas.length)await applyStockDeltas(stockDeltas);
-      closeEditModal();fl('fOk','✅ Заказ #'+o.num+' обновлён');
-    }catch(e){console.error('saveEditOrder error:',e);fl('fInfo','❌ Ошибка: '+e.message);}
-    return;
+    stockDeltas=buildStockDeltas(originalItems.filter(it=>it.status!=='done'),newParsed);
   }
-  const itemsObj={};mergedItems.forEach(it=>{const k=it._fbKey||it.id;const{_fbKey,...clean}=it;itemsObj[k]=clean;});
+  const itemsObj=itemsToDbObject(mergedItems);
+  let stockApplied=false;
   try{
-    const snapshot={items:Object.fromEntries(o.items.map(it=>{const{_fbKey,...clean}=it;return[it._fbKey||it.id,clean];})),note:o.note||'',priority:o.priority||'normal',editedAt:Date.now(),editedBy:S.role||'unknown'};
+    if(stockDeltas.length){await applyStockDeltas(stockDeltas);stockApplied=true;}
+    const snapshot=orderSnapshot(o);
     await set(ref(db,'orders/'+S.editOrderId+'/history/'+Date.now()),snapshot);
     await set(ref(db,'orders/'+S.editOrderId+'/items'),itemsObj);
     await update(ref(db,'orders/'+S.editOrderId),{note,priority:prio});
     closeEditModal();fl('fOk','✅ Заказ #'+o.num+' обновлён');
-  }catch(e){console.error('saveEditOrder error:',e);fl('fInfo','❌ Ошибка: '+e.message);}
+  }catch(e){
+    if(stockApplied)await rollbackStockDeltas(stockDeltas).catch(err=>console.error('stock rollback failed:',err));
+    console.error('saveEditOrder error:',e);
+    fl('fInfo','❌ Ошибка: '+e.message);
+  }
 }
