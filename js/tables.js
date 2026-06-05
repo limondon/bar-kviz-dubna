@@ -2,6 +2,7 @@ import{S}from'./state.js';
 import{db,ref,update,fbUpdate,push}from'./firebase.js';
 import{todayStr,dateLbl,shiftDS,fmt,fmt2,esc,pl,fl,showConfirm,lockScroll,unlockScroll}from'./utils.js';
 import{BUILTIN_MENU}from'./menu-data.js';
+import{nextOrderNum}from'./counters.js';
 
 // ─── DATE NAV STATE ──────────────────────────────────
 let _datesExpanded=false;
@@ -291,16 +292,15 @@ export async function confirmCorkage(){
   if(Object.keys(upd).length)await update(ref(db),upd);
 
   // 2) Увеличение — создаём новые заказы на дельту
-  const _ro=S.orderNumResetAt?S.orders.filter(o=>(o.createdAt||0)>=S.orderNumResetAt):S.orders;
-  let num=(_ro.length?Math.max(..._ro.map(o=>o.num||0)):0)+1;
   for(let i=0;i<CORKAGE_TYPES.length;i++){
     const q=deltas[i];if(q<=0)continue;
     const t=CORKAGE_TYPES[i];
+    const num=await nextOrderNum();
     const newRef=push(ref(db,'orders'));
     const itemId=Date.now().toString(36)+'_cork'+i;
     const newOrder={id:newRef.key,table:tNum,items:{[itemId]:{id:itemId,name:`Пробковый сбор — ${t.label}`,qty:q,price:t.price,status:'done',doneAt:Date.now()}},note:`${t.price*q}₽`,priority:'normal',status:'done',doneAt:Date.now(),createdAt:Date.now(),num,date,sid};
     await update(ref(db,'orders/'+newRef.key),newOrder);
-    totalChange+=t.price*q;num++;
+    totalChange+=t.price*q;
   }
   const sign=totalChange>=0?'+':'';
   fl('fOk',`✅ Пробковый сбор ${sign}${totalChange}₽ — Стол ${tNum}`);

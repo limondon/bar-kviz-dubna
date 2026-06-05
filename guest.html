@@ -382,6 +382,30 @@ function stockText(item){
   if(s===0)return'Нет в наличии';
   return'Осталось: '+s+' шт.';
 }
+async function deductGuestStock(entries){
+  const txs=[];
+  for(const[,ci]of entries){
+    const oName=ci.name.trim().toLowerCase();
+    for(let ci2=0;ci2<menuData.length;ci2++){
+      const catItems=menuData[ci2].items||[];
+      for(let ii=0;ii<catItems.length;ii++){
+        if(catItems[ii].name.trim().toLowerCase()===oName&&getStock(catItems[ii])!==null){
+          txs.push({path:`menu2/${ci2}/items/${ii}/stock`,item:catItems[ii],qty:ci.qty,name:ci.name});
+        }
+      }
+    }
+  }
+  for(const tx of txs){
+    const res=await runTransaction(ref(db,tx.path),cur=>{
+      if(cur===undefined||cur===null||cur==='')return cur;
+      const n=Math.max(0,parseInt(cur,10)||0);
+      if(n<tx.qty)return;
+      return n-tx.qty;
+    });
+    if(!res.committed)throw new Error('Недостаточно остатков: '+tx.name);
+    tx.item.stock=res.snapshot.val();
+  }
+}
 function isOut(item){const s=getStock(item);return s!==null&&s===0;}
 function canAdd(item,key){
   const s=getStock(item);
@@ -655,31 +679,13 @@ async function placeOrder(){
       items[id]={id,name,qty:ci.qty,status:'new'};
     });
     if(guestCups>0){const cid=Date.now().toString(36)+'_cups';const pl=guestCups===1?'кружка':guestCups<5?'кружки':'кружек';items[cid]={id:cid,name:`${guestCups} ${pl}`,qty:1,status:'new'};};
+    await deductGuestStock(entries);
     const newRef=push(ref(db,'orders'));
     await update(ref(db,'orders/'+newRef.key),{
       id:newRef.key,table:parseInt(tableNum)||tableNum,
       items,note,priority:'normal',status:'new',
       createdAt:Date.now(),num:orderNum,date:today,sid:sessionId,source:'guest',total
     });
-    // Deduct stock — search by name to match Firebase numeric-index paths
-    const stockUpd={};
-    for(const[,ci]of entries){
-      const oName=ci.name.trim().toLowerCase();
-      for(let ci2=0;ci2<menuData.length;ci2++){
-        const catItems=menuData[ci2].items||[];
-        for(let ii=0;ii<catItems.length;ii++){
-          if(catItems[ii].name.trim().toLowerCase()===oName){
-            const s=getStock(catItems[ii]);
-            if(s!==null){
-              const ns=Math.max(0,s-ci.qty);
-              stockUpd[`menu2/${ci2}/items/${ii}/stock`]=ns;
-              catItems[ii].stock=ns;
-            }
-          }
-        }
-      }
-    }
-    if(Object.keys(stockUpd).length)await update(ref(db),stockUpd);
     // Show confirm
     document.getElementById('confirmInfo').textContent=`Заказ #${orderNum} · Стол ${tableNum} · ${fmt(total)}`;
     cart={};document.getElementById('orderNote').value='';

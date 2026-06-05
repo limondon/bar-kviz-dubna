@@ -1,4 +1,4 @@
-const CACHE_NAME = 'bar-v4';
+const CACHE_NAME = 'bar-v5';
 const ASSETS = [
   './',
   'index.html',
@@ -8,6 +8,7 @@ const ASSETS = [
   'js/main.js',
   'js/state.js',
   'js/firebase.js',
+  'js/counters.js',
   'js/utils.js',
   'js/render.js',
   'js/orders.js',

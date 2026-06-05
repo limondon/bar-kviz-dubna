@@ -1,5 +1,5 @@
 import{S}from'./state.js';
-import{db,auth,ref,update,set,remove,onValue,onAuthStateChanged}from'./firebase.js';
+import{db,auth,ref,update,set,remove,onValue,runTransaction,onAuthStateChanged}from'./firebase.js';
 import{todayStr,normalizeOrder,fl,closeConfirmModal,confirmOk,setBadge}from'./utils.js';
 import{BUILTIN_MENU}from'./menu-data.js';
 import{registerSW,checkNewOrders,playBeep,notifMuted,swReg,updateNotifBtn}from'./notifications.js';
@@ -26,7 +26,15 @@ S.closedViewDate=todayStr();
 window.renderAll=renderAll;
 
 // ─── FIREBASE LISTENERS ───────────────────────────────
-let _ordersLoaded=false,_tablesLoaded=false,_selfHealDone=false;
+let _ordersLoaded=false,_tablesLoaded=false,_selfHealDone=false,_counterSeedDone=false;
+function _seedOrderCounter(){
+  if(_counterSeedDone||!S.orders.length)return;
+  const orders=S.orderNumResetAt?S.orders.filter(o=>(o.createdAt||0)>=S.orderNumResetAt):S.orders;
+  if(!orders.length)return;
+  _counterSeedDone=true;
+  const maxNum=Math.max(...orders.map(o=>o.num||0),0);
+  runTransaction(ref(db,'publicCounters/orderNum'),n=>Math.max(n||0,maxNum)).catch(e=>console.error('order counter seed',e));
+}
 function _maybeRunSelfHeal(){
   if(_selfHealDone||!_ordersLoaded||!_tablesLoaded)return;
   _selfHealDone=true;
@@ -79,6 +87,7 @@ async function loadAll(){
       if(Object.keys(cleanupUpd).length>0)update(ref(db),cleanupUpd).catch(e=>console.error('cleanup',e));
     }
     S.orders=raw?Object.values(raw).filter(o=>!o.date||o.date>=cutoffDate).map(normalizeOrder):[];
+    _seedOrderCounter();
     _ordersLoaded=true;_maybeRunSelfHeal();
     checkNewOrders(S.orders);
     renderAll();
@@ -178,6 +187,7 @@ async function resetOrderCounter(){
   });
   if(!ok)return;
   await set(ref(db,'config/orderNumResetAt'),Date.now());
+  await set(ref(db,'publicCounters/orderNum'),0);
   fl('fOk','✅ Счётчик сброшен — следующий заказ будет #1');
 }
 window.resetOrderCounter=resetOrderCounter;

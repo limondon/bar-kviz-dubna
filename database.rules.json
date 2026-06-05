@@ -42,7 +42,7 @@
     "publicCounters": {
       "orderNum": {
         ".read": "auth != null",
-        ".write": "auth != null",
+        ".write": "auth != null && (auth.token.email === 'manager@1708.local' || (!data.exists() && newData.val() === 1) || (data.exists() && newData.val() === data.val() + 1))",
         ".validate": "newData.isNumber() && newData.val() >= 0"
       }
     }

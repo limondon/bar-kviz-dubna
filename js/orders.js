@@ -10,6 +10,7 @@ import{parseItems,aggStatus,esc,fl,safeDb,showConfirm,todayStr,lockScroll,unlock
 import{applyStockDeltas,deductMenuStock}from'./stock.js';
 import{getTMeta}from'./tables.js';
 import{buildQuickTableBtns,isInstantItem}from'./render.js';
+import{nextOrderNum}from'./counters.js';
 
 // ─── ADD ORDER ────────────────────────────────────────
 export async function addOrder(){
@@ -27,8 +28,7 @@ export async function addOrder(){
       const tNum=tableRaw;const items=parseItems(rawItems);
       if(!items.length){fl('fInfo','Не удалось распознать позиции!');}
       else{
-        const _ro=S.orderNumResetAt?S.orders.filter(o=>(o.createdAt||0)>=S.orderNumResetAt):S.orders;
-        const num=(_ro.length?Math.max(..._ro.map(o=>o.num||0)):0)+1;
+        const num=await nextOrderNum();
         const date=todayStr();
         const existingMeta=getTMeta(date,tNum);
         if(existingMeta.status==='closed'){
@@ -42,10 +42,10 @@ export async function addOrder(){
         const newRef=push(ref(db,'orders'));
         const itemsObj={};items.forEach(it=>itemsObj[it.id]=it);
         const newOrder={id:newRef.key,table:tNum,items:itemsObj,note,priority:prio,status:'new',createdAt:Date.now(),num,date,sid};
-        const ok=await safeDb(update(ref(db,'orders/'+newRef.key),newOrder),'❌ Не удалось создать заказ — проверь интернет');
-        if(!ok)return;
-        await safeDb(update(ref(db,'tables/'+date+'_'+tNum),existingMeta));
         await deductMenuStock(items);
+        const ok=await safeDb(update(ref(db,'orders/'+newRef.key),newOrder),'❌ Не удалось создать заказ — проверь интернет');
+        if(!ok){await applyStockDeltas(items.map(it=>({name:it.name,delta:-it.qty})));return;}
+        await safeDb(update(ref(db,'tables/'+date+'_'+tNum),existingMeta));
         fl('fOk','✅ Заказ #'+num+' — Стол '+tNum+' ('+items.length+' поз.)');
         ['inpTable','inpItems','inpNote'].forEach(id=>document.getElementById(id).value='');
         document.getElementById('inpPriority').value='normal';
@@ -53,6 +53,9 @@ export async function addOrder(){
         if(S.role==='waiter')window.sw('queue');
       }
     }
+  }catch(e){
+    console.error('addOrder',e);
+    fl('fErr',e?.message||'Ошибка создания заказа');
   }finally{if(btn){btn.disabled=false;btn.style.opacity='';}}
 }
 
