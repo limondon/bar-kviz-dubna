@@ -1,6 +1,6 @@
 import{S}from'./state.js';
 import{db,ref,update,fbUpdate,push}from'./firebase.js';
-import{todayStr,dateLbl,shiftDS,fmt,fmt2,esc,pl,fl,showConfirm,lockScroll,unlockScroll}from'./utils.js';
+import{todayStr,dateLbl,shiftDS,fmt,fmt2,esc,escAttr,pl,fl,showConfirm,lockScroll,unlockScroll}from'./utils.js';
 import{BUILTIN_MENU}from'./menu-data.js';
 import{nextOrderNum}from'./counters.js';
 import{applyStockDeltas}from'./stock.js';
@@ -173,12 +173,19 @@ export function openQrPicker(){
   const list=document.getElementById('qrPickerList');
   if(!overlay||!list)return;
   list.innerHTML=TABLES.map(t=>
-    `<button onclick="showQR('${t}');closeQrPicker();" style="min-height:52px;padding:8px 12px;background:var(--card);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:'Bebas Neue',sans-serif;font-size:20px;cursor:pointer;">${t}</button>`
+    `<button class="qr-picker-btn" data-qr-table="${escAttr(t)}" type="button">${esc(t)}</button>`
   ).join('');
   overlay.classList.remove('hidden');
   lockScroll();
 }
 export function closeQrPicker(){document.getElementById('qrPickerOverlay')?.classList.add('hidden');unlockScroll();}
+
+document.addEventListener('click',async e=>{
+  const btn=e.target.closest('[data-qr-table]');
+  if(!btn)return;
+  closeQrPicker();
+  await showQR(btn.dataset.qrTable);
+});
 
 // ─── CORKAGE FEE ─────────────────────────────────────
 const CORKAGE_TYPES=[
