@@ -132,8 +132,7 @@ export async function delOrder(id){
   const ok=await showConfirm('🗑 Удалить заказ?',`Заказ #${o?.num||'?'} будет удалён безвозвратно.`);
   if(!ok)return;
   if(o&&Array.isArray(o.items)){
-    const toRestore=o.items.filter(it=>it.status!=='done');
-    if(toRestore.length)await applyStockDeltas(toRestore.map(it=>({name:it.name,delta:-it.qty})));
+    await applyStockDeltas(o.items.map(it=>({name:it.name,delta:-it.qty})));
   }
   await remove(ref(db,'orders/'+id));
 }

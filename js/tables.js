@@ -3,6 +3,7 @@ import{db,ref,update,fbUpdate,push}from'./firebase.js';
 import{todayStr,dateLbl,shiftDS,fmt,fmt2,esc,pl,fl,showConfirm,lockScroll,unlockScroll}from'./utils.js';
 import{BUILTIN_MENU}from'./menu-data.js';
 import{nextOrderNum}from'./counters.js';
+import{applyStockDeltas}from'./stock.js';
 
 // ─── DATE NAV STATE ──────────────────────────────────
 let _datesExpanded=false;
@@ -112,6 +113,9 @@ export async function deleteTable(date,tNum,sid){
   const tOrders=S.orders.filter(o=>o.date===date&&String(o.table)===String(tNum)&&(o.sid||'default')===sid);
   const ok=await showConfirm(`🗑 Удалить стол ${tNum}?`,`Будет удалено ${tOrders.length} ${pl(tOrders.length,'заказ','заказа','заказов')}.`);
   if(!ok)return;
+  const stockDeltas=[];
+  tOrders.forEach(o=>(o.items||[]).forEach(it=>stockDeltas.push({name:it.name,delta:-it.qty})));
+  if(stockDeltas.length)await applyStockDeltas(stockDeltas);
   const upd={};
   tOrders.forEach(o=>{upd[`orders/${o.id}`]=null;});
   const k=tKey(date,tNum);upd[`tables/${k}`]=null;delete S.tablesMeta[k];
