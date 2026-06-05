@@ -29,7 +29,7 @@ export function renderPickerTabs(){
   const el=document.getElementById('menuPickerTabs');if(!el)return;
   const menu=(S.BUILTIN_MENU_LIVE.length?S.BUILTIN_MENU_LIVE:BUILTIN_MENU).filter(c=>!c.hidden);
   el.innerHTML=menu.map((cat,i)=>`
-    <div onclick="switchPickerCat(${i})" style="flex-shrink:0;padding:8px 16px;cursor:pointer;white-space:nowrap;font-size:12px;font-weight:500;font-family:'IBM Plex Mono',monospace;border-radius:100px;min-height:44px;display:flex;align-items:center;border:1px solid ${i===pickerCat?'var(--accent)':'rgba(255,255,255,.08)'};background:${i===pickerCat?'var(--accent)':'transparent'};color:${i===pickerCat?'#000':'var(--muted)'};transition:all .2s;">${esc(cat.cat)}</div>
+    <button class="menu-picker-tab${i===pickerCat?' active':''}" data-picker-cat="${i}" type="button">${esc(cat.cat)}</button>
   `).join('');
 }
 
@@ -60,23 +60,22 @@ export function renderPickerList(){
     const stock=item.stock===undefined||item.stock===null||item.stock===''?null:Math.max(0,parseInt(item.stock,10)||0);
     const isSoldOut=stock===0;
     const stockLabel=stock===null?'':(isSoldOut?'Нет в наличии':`Осталось: ${stock}`);
-    const pad=compact?'10px 20px 10px 32px':'13px 20px';
     let btn;
     const atLimit=stock!==null&&st.qty>=stock;
-    if(isSoldOut)btn=`<span style="font-size:10px;color:var(--red);background:rgba(229,57,53,.12);border:1px solid rgba(229,57,53,.25);border-radius:8px;padding:2px 7px;">Нет</span>`;
-    else btn=`<div class="picker-pill" data-pill="${escAttr(item.name)}" style="display:flex;align-items:center;touch-action:manipulation;background:${hasQty?'rgba(245,166,35,.12)':'transparent'};border:1.5px solid var(--accent);border-radius:100px;overflow:hidden;">
-        <div data-picker-action="minus" data-item="${escAttr(item.name)}" class="pill-minus" style="width:40px;height:40px;min-width:44px;min-height:44px;display:${hasQty?'flex':'none'};align-items:center;justify-content:center;background:transparent;color:var(--accent);font-size:20px;cursor:pointer;touch-action:manipulation;">−</div>
-        <div class="pill-qty" style="font-size:14px;font-weight:600;color:var(--text);min-width:24px;text-align:center;font-family:'IBM Plex Mono',monospace;display:${hasQty?'block':'none'};">${st.qty}</div>
-        <div data-picker-action="plus" data-item="${escAttr(item.name)}" data-stock-limit="${stock===null?'':stock}" class="pill-plus" style="width:40px;height:40px;min-width:44px;min-height:44px;display:flex;align-items:center;justify-content:center;background:transparent;color:${atLimit?'var(--muted)':'var(--accent)'};font-size:22px;cursor:${atLimit?'default':'pointer'};font-weight:700;opacity:${atLimit?'.3':'1'};touch-action:manipulation;">+</div>
+    if(isSoldOut)btn=`<span class="picker-soldout">Нет</span>`;
+    else btn=`<div class="picker-pill${hasQty?' active':''}" data-pill="${escAttr(item.name)}">
+        <div data-picker-action="minus" data-item="${escAttr(item.name)}" class="pill-minus${hasQty?'':' is-hidden'}">−</div>
+        <div class="pill-qty${hasQty?'':' is-hidden'}">${st.qty}</div>
+        <div data-picker-action="plus" data-item="${escAttr(item.name)}" data-stock-limit="${stock===null?'':stock}" class="pill-plus${atLimit?' at-limit':''}">+</div>
       </div>`;
-    const addonHtml=isLeafTea&&hasQty?`<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;padding-top:8px;border-top:1px solid rgba(255,255,255,.06);">${TEA_ADDONS.map(a=>{const sel=st.addons?.[a];return`<div data-picker-addon="${escAttr(item.name)}" data-addon-name="${escAttr(a)}" style="padding:5px 11px;border-radius:20px;font-size:12px;cursor:pointer;user-select:none;background:${sel?'var(--accent)':'rgba(255,255,255,.07)'};color:${sel?'#000':'var(--muted)'};border:1px solid ${sel?'var(--accent)':'rgba(255,255,255,.15)'};">${esc(a)} <span style="font-size:11px;opacity:.8;">+50₽</span></div>`;}).join('')}</div>`:'';
-    const optionsHtml=hasQty&&item.options?.length?`<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;padding-top:8px;border-top:1px solid rgba(255,255,255,.06);">${item.options.map(opt=>{const sel=st.option===opt;return`<div data-picker-option="${escAttr(item.name)}" data-option-val="${escAttr(opt)}" style="padding:5px 13px;border-radius:20px;font-size:12px;cursor:pointer;user-select:none;background:${sel?'var(--green)':'rgba(255,255,255,.07)'};color:${sel?'#000':'var(--text)'};border:1px solid ${sel?'var(--green)':'rgba(255,255,255,.15)'};">${esc(opt)}</div>`;}).join('')}</div>`:'';
-    return`<div style="display:flex;align-items:center;padding:${pad};gap:12px;border-bottom:1px solid rgba(255,255,255,.045);${isSoldOut?'opacity:.5;':''}"><div style="flex:1;min-width:0;"><div style="font-size:${compact?'13px':'15px'};color:var(--text);${hasQty?'font-weight:600;':''}margin-bottom:3px;">${esc(item.name)}</div><div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;"><span style="font-size:${compact?'12px':'13px'};color:var(--accent);font-family:'IBM Plex Mono',monospace;">${item.price} ₽</span>${stockLabel?`<span style="font-size:11px;color:${isSoldOut?'var(--red)':'var(--muted)'};">${stockLabel}</span>`:''}</div>${addonHtml}${optionsHtml}</div><div style="flex-shrink:0;">${btn}</div></div>`;
+    const addonHtml=isLeafTea&&hasQty?`<div class="picker-chip-row">${TEA_ADDONS.map(a=>{const sel=st.addons?.[a];return`<div data-picker-addon="${escAttr(item.name)}" data-addon-name="${escAttr(a)}" class="picker-chip addon${sel?' active':''}">${esc(a)} <span class="picker-chip-price">+50₽</span></div>`;}).join('')}</div>`:'';
+    const optionsHtml=hasQty&&item.options?.length?`<div class="picker-chip-row">${item.options.map(opt=>{const sel=st.option===opt;return`<div data-picker-option="${escAttr(item.name)}" data-option-val="${escAttr(opt)}" class="picker-chip option${sel?' active':''}">${esc(opt)}</div>`;}).join('')}</div>`:'';
+    return`<div class="picker-choice-row${compact?' compact':''}${isSoldOut?' sold-out':''}"><div class="picker-choice-main"><div class="picker-choice-name${hasQty?' selected':''}">${esc(item.name)}</div><div class="picker-choice-meta"><span class="picker-choice-price">${item.price} ₽</span>${stockLabel?`<span class="picker-stock${isSoldOut?' sold-out':''}">${stockLabel}</span>`:''}</div>${addonHtml}${optionsHtml}</div><div class="picker-choice-control">${btn}</div></div>`;
   };
 
   const anyTeaSelected=isTea&&items.some(i=>(pickerState[i.name]?.qty||0)>0);
   const cupsBarEl=document.getElementById('menuPickerCupsBar');
-  if(cupsBarEl)cupsBarEl.innerHTML=anyTeaSelected?`<div style="display:flex;align-items:center;gap:12px;padding:14px 20px;background:rgba(245,166,35,.1);border-top:2px solid rgba(245,166,35,.35);"><div style="flex:1;"><div style="font-family:'Bebas Neue',sans-serif;font-size:16px;letter-spacing:1px;color:var(--accent);">☕ КРУЖКИ НА СТОЛ</div><div style="font-size:11px;color:var(--muted);margin-top:1px;">укажи сколько кружек принести</div></div><div data-cups-total-action="minus" style="width:40px;height:40px;min-width:40px;border-radius:50%;border:1.5px solid var(--border);color:var(--text);font-size:20px;cursor:pointer;display:flex;align-items:center;justify-content:center;">−</div><span style="font-size:28px;font-weight:700;font-family:'Bebas Neue',sans-serif;min-width:32px;text-align:center;color:var(--accent);">${pickerCups}</span><div data-cups-total-action="plus" style="width:40px;height:40px;min-width:40px;border-radius:50%;border:1.5px solid var(--accent);color:var(--accent);font-size:20px;cursor:pointer;display:flex;align-items:center;justify-content:center;">+</div></div>`:'';
+  if(cupsBarEl)cupsBarEl.innerHTML=anyTeaSelected?`<div class="picker-cups-bar"><div class="picker-cups-copy"><div class="picker-cups-title">☕ КРУЖКИ НА СТОЛ</div><div class="picker-cups-sub">укажи сколько кружек принести</div></div><div data-cups-total-action="minus" class="picker-cups-action">−</div><span class="picker-cups-count">${pickerCups}</span><div data-cups-total-action="plus" class="picker-cups-action plus">+</div></div>`:'';
   el.innerHTML=orderedGroups.map(group=>{
     if(group==='__no_group__')return groups[group].map(i=>renderSingleItem(i,false)).join('');
     const isOpen=pickerOpenGroups.has(group);
@@ -84,7 +83,7 @@ export function renderPickerList(){
     const cartTotal=groupItems.reduce((s,i)=>s+(pickerState[i.name]?.qty||0),0);
     const allOut=groupItems.every(i=>{const s=i.stock===undefined||i.stock===null||i.stock===''?null:parseInt(i.stock,10);return s!==null&&s===0;});
     const sub=allOut?'Нет в наличии':cartTotal>0?`Выбрано: ${cartTotal}`:`${groupItems.length} вариантов`;
-    return`<div data-picker-group="${escAttr(group)}" style="display:flex;align-items:center;padding:13px 20px;cursor:pointer;border-bottom:1px solid rgba(255,255,255,.045);"><div style="flex:1;"><div style="font-size:15px;color:var(--text);margin-bottom:3px;">${esc(group)}</div><div style="font-size:11px;color:var(--muted);">${sub}</div></div><span style="font-size:13px;color:var(--accent);display:inline-block;transition:transform .2s;${isOpen?'transform:rotate(180deg);':''}">▼</span></div>${isOpen?`<div>${groupItems.map(i=>renderSingleItem(i,true)).join('')}</div>`:''}`;
+    return`<div data-picker-group="${escAttr(group)}" class="picker-group-row"><div class="picker-group-main"><div class="picker-group-name">${esc(group)}</div><div class="picker-group-sub">${sub}</div></div><span class="picker-group-chevron${isOpen?' open':''}">▼</span></div>${isOpen?`<div>${groupItems.map(i=>renderSingleItem(i,true)).join('')}</div>`:''}`;
   }).join('');
 }
 
@@ -133,11 +132,11 @@ function _handlePickerAction(btn){
     const minusEl=pill.querySelector('.pill-minus');
     const qtyEl=pill.querySelector('.pill-qty');
     const plusEl=pill.querySelector('.pill-plus');
-    pill.style.background=newQty>0?'rgba(245,166,35,.12)':'transparent';
-    if(minusEl)minusEl.style.display=newQty>0?'flex':'none';
-    if(qtyEl){qtyEl.style.display=newQty>0?'block':'none';qtyEl.textContent=newQty;}
+    pill.classList.toggle('active',newQty>0);
+    if(minusEl)minusEl.classList.toggle('is-hidden',newQty<=0);
+    if(qtyEl){qtyEl.classList.toggle('is-hidden',newQty<=0);qtyEl.textContent=newQty;}
     const limitStr2=plusEl?.dataset.stockLimit;const limit2=limitStr2!==undefined&&limitStr2!==''?parseInt(limitStr2):null;
-    if(plusEl&&limit2!==null){const atLimit=newQty>=limit2;plusEl.style.opacity=atLimit?'.3':'1';plusEl.style.cursor=atLimit?'default':'pointer';plusEl.style.color=atLimit?'var(--muted)':'var(--accent)';}
+    if(plusEl&&limit2!==null)plusEl.classList.toggle('at-limit',newQty>=limit2);
   }
   updatePickerBtn();
   clearTimeout(_pickerRenderTimer);
@@ -154,6 +153,8 @@ document.addEventListener('pointerdown',e=>{
 },true);
 
 document.addEventListener('click',e=>{
+  const catTab=e.target.closest('[data-picker-cat]');
+  if(catTab){switchPickerCat(Number(catTab.dataset.pickerCat));return;}
   const group=e.target.closest('[data-picker-group]');
   if(group){pickerToggleGroup(group.dataset.pickerGroup);return;}
   const addonPill=e.target.closest('[data-picker-addon]');
