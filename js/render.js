@@ -149,19 +149,19 @@ export function renderStats(){
   for(let i=6;i>=0;i--){const d=shiftDS(today,-i);dayStats[d]={date:d,orders:0,tables:new Set()};}
   S.orders.forEach(o=>{if(dayStats[o.date]){dayStats[o.date].orders++;dayStats[o.date].tables.add(o.table);}});
   const maxOrders=Math.max(...Object.values(dayStats).map(d=>d.orders),1);
-  el.innerHTML=`<div style="display:flex;flex-direction:column;gap:var(--sp-md);">
-    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:var(--sp-sm);">
+  el.innerHTML=`<div class="stats-layout">
+    <div class="stats-cards">
       <div class="sc"><span class="n">${todayOrders.length}</span><span>заказов сегодня</span></div>
-      <div class="sc"><span class="n" style="color:var(--green);">${todayDone.length}</span><span>выполнено</span></div>
-      <div class="sc"><span class="n" style="color:var(--blue);">${new Set(todayOrders.map(o=>o.table)).size}</span><span>столов</span></div>
+      <div class="sc"><span class="n g">${todayDone.length}</span><span>выполнено</span></div>
+      <div class="sc"><span class="n b">${new Set(todayOrders.map(o=>o.table)).size}</span><span>столов</span></div>
     </div>
-    <div style="background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:var(--sp-md);">
-      <div style="font-family:'Bebas Neue',sans-serif;font-size:14px;letter-spacing:1px;color:var(--accent);margin-bottom:var(--sp-sm);">📅 ЗАКАЗЫ ЗА 7 ДНЕЙ</div>
-      <div style="display:flex;align-items:flex-end;gap:6px;height:80px;">${Object.values(dayStats).map(d=>{const h=d.orders?Math.max(8,Math.round(d.orders/maxOrders*70)):2;const isToday=d.date===today;const lbl=d.date.slice(8);return`<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;"><div style="font-size:9px;color:var(--muted);">${d.orders||''}</div><div style="width:100%;height:${h}px;background:${isToday?'var(--accent)':'rgba(201,169,110,.35)'};border-radius:3px 3px 0 0;"></div><div style="font-size:9px;color:${isToday?'var(--accent)':'var(--muted)'};">${lbl}</div></div>`;}).join('')}</div>
+    <div class="stats-card">
+      <div class="stats-card-title">📅 ЗАКАЗЫ ЗА 7 ДНЕЙ</div>
+      <div class="stats-chart">${Object.values(dayStats).map(d=>{const h=d.orders?Math.max(8,Math.round(d.orders/maxOrders*70)):2;const isToday=d.date===today;const lbl=d.date.slice(8);return`<div class="stats-bar-col${isToday?' today':''}"><div class="stats-bar-count">${d.orders||''}</div><div class="stats-bar-line" style="height:${h}px"></div><div class="stats-bar-label">${lbl}</div></div>`;}).join('')}</div>
     </div>
-    <div style="background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:var(--sp-md);">
-      <div style="font-family:'Bebas Neue',sans-serif;font-size:14px;letter-spacing:1px;color:var(--accent);margin-bottom:var(--sp-sm);">🏆 ТОП ПОЗИЦИЙ (30 дней)</div>
-      ${popular.length?popular.map((p,i)=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid var(--border);"><div style="display:flex;align-items:center;gap:8px;"><span style="font-family:'Bebas Neue',sans-serif;font-size:16px;color:var(--muted);min-width:20px;">${i+1}</span><span style="font-size:13px;">${esc(p.name)}</span></div><span style="font-family:'Bebas Neue',sans-serif;font-size:18px;color:var(--accent);">${p.count}</span></div>`).join(''):'<div style="color:var(--muted);font-size:12px;">Нет данных</div>'}
+    <div class="stats-card">
+      <div class="stats-card-title">🏆 ТОП ПОЗИЦИЙ (30 дней)</div>
+      ${popular.length?popular.map((p,i)=>`<div class="stats-pop-row"><div class="stats-pop-name"><span class="stats-pop-rank">${i+1}</span><span>${esc(p.name)}</span></div><span class="stats-pop-count">${esc(p.count)}</span></div>`).join(''):'<div class="stats-empty">Нет данных</div>'}
     </div>
   </div>`;
 }
@@ -169,5 +169,5 @@ export function renderStats(){
 // ─── POLL ─────────────────────────────────────────────
 export function startPoll(){
   setInterval(()=>{const el=document.getElementById('hTime');if(el)el.textContent=new Date().toLocaleTimeString('ru',{hour:'2-digit',minute:'2-digit'});},1000);
-  setInterval(()=>{document.querySelectorAll('[data-created]').forEach(el=>{const created=parseInt(el.dataset.created);if(!created)return;const mins=Math.floor((Date.now()-created)/60000);const urgent=mins>=15;el.textContent=mins>0?`⏱ ${mins} мин${urgent?' !':''}`:'' ;el.style.background=urgent?'rgba(229,57,53,.18)':'rgba(255,255,255,.06)';el.style.color=urgent?'var(--red)':'var(--muted)';});},60000);
+  setInterval(()=>{document.querySelectorAll('[data-created]').forEach(el=>{const created=parseInt(el.dataset.created);if(!created)return;const mins=Math.floor((Date.now()-created)/60000);const urgent=mins>=15;el.textContent=mins>0?`⏱ ${mins} мин${urgent?' !':''}`:'';el.classList.toggle('urgent',urgent);});},60000);
 }
