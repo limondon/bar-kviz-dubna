@@ -110,8 +110,7 @@ export function showConfirm(title,msg,okLabel='ОК'){
     document.getElementById('confirmMsg').textContent=msg;
     const okBtn=document.getElementById('confirmOkBtn');
     okBtn.textContent=okLabel;
-    okBtn.style.background='var(--red)';
-    okBtn.style.color='#fff';
+    okBtn.classList.add('modal-btn-danger');
     overlay.classList.remove('hidden');
   });
 }

@@ -173,13 +173,13 @@ document.addEventListener('click',async e=>{
 async function resetOrderCounter(){
   const ok=await new Promise(resolve=>{
     const d=document.createElement('div');
-    d.style.cssText='position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.85);display:flex;align-items:center;justify-content:center;';
-    d.innerHTML=`<div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:24px;max-width:320px;text-align:center;">
-      <div style="font-family:\'Bebas Neue\',sans-serif;font-size:20px;color:var(--accent);margin-bottom:8px;">СБРОСИТЬ СЧЁТЧИК?</div>
-      <div style="font-size:13px;color:var(--muted);margin-bottom:20px;">Следующий заказ получит номер #1. Старые заказы не удалятся.</div>
-      <div style="display:flex;gap:10px;justify-content:center;">
-        <button id="_rcOk" style="padding:10px 24px;background:var(--accent);color:#000;border:none;border-radius:8px;font-family:\'Bebas Neue\',sans-serif;font-size:16px;cursor:pointer;">СБРОСИТЬ</button>
-        <button id="_rcNo" style="padding:10px 24px;background:transparent;color:var(--muted);border:1px solid var(--border);border-radius:8px;font-size:14px;cursor:pointer;">Отмена</button>
+    d.className='app-modal-overlay';
+    d.innerHTML=`<div class="app-modal-panel compact">
+      <div class="app-modal-title">СБРОСИТЬ СЧЁТЧИК?</div>
+      <div class="app-modal-copy">Следующий заказ получит номер #1. Старые заказы не удалятся.</div>
+      <div class="app-modal-actions center">
+        <button id="_rcOk" class="app-modal-btn primary">СБРОСИТЬ</button>
+        <button id="_rcNo" class="app-modal-btn">Отмена</button>
       </div></div>`;
     document.body.appendChild(d);
     d.querySelector('#_rcOk').onclick=()=>{document.body.removeChild(d);resolve(true);};

@@ -325,16 +325,16 @@ export function renderDeliveryLogSidebar(){
 export function openDeliveryLog(){
   const entries=_logEntriesSorted();
   const d=document.createElement('div');
-  d.style.cssText='position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.85);display:flex;align-items:center;justify-content:center;padding:20px;';
-  const list=entries.length?entries.map(e=>`<div style="display:grid;grid-template-columns:auto 1fr auto;gap:12px;align-items:baseline;padding:10px 12px;background:var(--card);border:1px solid var(--border);border-radius:8px;margin-bottom:6px;"><span style="color:var(--muted);font-family:'IBM Plex Mono',monospace;font-size:12px;">${fmt(e.at)}</span><span style="color:var(--text);font-size:13px;min-width:0;word-break:break-word;">${esc(shortItemName(e.name||''))}</span><span style="color:var(--accent);font-family:'IBM Plex Mono',monospace;font-weight:700;font-size:12px;white-space:nowrap;">#${e.orderNum||'?'} · Стол ${e.table} · ${e.qty}шт</span></div>`).join(''):'<div style="text-align:center;color:var(--muted);padding:30px;">Нет доставок за последние 24 часа</div>';
-  d.innerHTML=`<div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:20px;max-width:500px;width:100%;max-height:80vh;display:flex;flex-direction:column;box-sizing:border-box;">
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
-      <div style="font-family:'Bebas Neue',sans-serif;font-size:22px;color:var(--accent);letter-spacing:1px;">📜 ЛОГ ДОСТАВОК</div>
-      <div style="font-size:11px;color:var(--muted);">за последние 24ч · ${entries.length} ${pl(entries.length,'событие','события','событий')}</div>
+  d.className='app-modal-overlay';
+  const list=entries.length?entries.map(e=>`<div class="delivery-log-row"><span class="delivery-log-time">${fmt(e.at)}</span><span class="delivery-log-name">${esc(shortItemName(e.name||''))}</span><span class="delivery-log-info">#${e.orderNum||'?'} · Стол ${e.table} · ${e.qty}шт</span></div>`).join(''):'<div class="delivery-log-empty">Нет доставок за последние 24 часа</div>';
+  d.innerHTML=`<div class="app-modal-panel delivery-log-panel">
+    <div class="delivery-log-head">
+      <div class="delivery-log-title">📜 ЛОГ ДОСТАВОК</div>
+      <div class="delivery-log-meta">за последние 24ч · ${entries.length} ${pl(entries.length,'событие','события','событий')}</div>
     </div>
-    <div style="flex:1;overflow-y:auto;margin:0 -4px;padding:0 4px;">${list}</div>
-    <div style="margin-top:12px;display:flex;justify-content:flex-end;">
-      <button id="_dlClose" style="padding:10px 24px;background:transparent;color:var(--muted);border:1px solid var(--border);border-radius:8px;font-size:13px;cursor:pointer;">Закрыть</button>
+    <div class="delivery-log-list">${list}</div>
+    <div class="app-modal-actions">
+      <button id="_dlClose" class="app-modal-btn">Закрыть</button>
     </div>
   </div>`;
   document.body.appendChild(d);
@@ -348,16 +348,16 @@ export async function editTableNote(date,tNum){
   const current=meta.note||'';
   const result=await new Promise(resolve=>{
     const d=document.createElement('div');
-    d.style.cssText='position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.85);display:flex;align-items:center;justify-content:center;padding:20px;';
-    d.innerHTML=`<div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:20px;max-width:400px;width:100%;box-sizing:border-box;">
-      <div style="font-family:'Bebas Neue',sans-serif;font-size:20px;color:var(--accent);margin-bottom:4px;letter-spacing:1px;">📝 ЗАМЕТКА К СТОЛУ ${esc(String(tNum))}</div>
-      <div style="font-size:11px;color:var(--muted);margin-bottom:12px;">Видна всем — бармен/официант/менеджер</div>
-      <textarea id="_tnInp" placeholder="ДР, столик у окна, аллергия, особые пожелания..." style="width:100%;min-height:90px;padding:10px;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:'IBM Plex Mono',monospace;font-size:13px;resize:vertical;box-sizing:border-box;">${esc(current)}</textarea>
-      <div style="display:flex;gap:8px;justify-content:space-between;margin-top:16px;flex-wrap:wrap;">
-        ${current?`<button id="_tnDel" style="padding:10px 16px;background:rgba(229,57,53,.15);color:var(--red);border:1px solid rgba(229,57,53,.3);border-radius:8px;font-family:'IBM Plex Mono',monospace;font-size:13px;cursor:pointer;">🗑 Удалить</button>`:'<span></span>'}
-        <div style="display:flex;gap:8px;">
-          <button id="_tnNo" style="padding:10px 18px;background:transparent;color:var(--muted);border:1px solid var(--border);border-radius:8px;font-size:13px;cursor:pointer;">Отмена</button>
-          <button id="_tnOk" style="padding:10px 22px;background:var(--accent);color:#000;border:none;border-radius:8px;font-family:'Bebas Neue',sans-serif;font-size:16px;letter-spacing:1px;cursor:pointer;">СОХРАНИТЬ</button>
+    d.className='app-modal-overlay';
+    d.innerHTML=`<div class="app-modal-panel">
+      <div class="app-modal-title">📝 ЗАМЕТКА К СТОЛУ ${esc(String(tNum))}</div>
+      <div class="app-modal-hint">Видна всем — бармен/официант/менеджер</div>
+      <textarea id="_tnInp" class="app-modal-textarea" placeholder="ДР, столик у окна, аллергия, особые пожелания...">${esc(current)}</textarea>
+      <div class="app-modal-actions split">
+        ${current?`<button id="_tnDel" class="app-modal-btn danger">🗑 Удалить</button>`:'<span></span>'}
+        <div class="app-modal-action-group">
+          <button id="_tnNo" class="app-modal-btn">Отмена</button>
+          <button id="_tnOk" class="app-modal-btn primary">СОХРАНИТЬ</button>
         </div>
       </div>
     </div>`;
