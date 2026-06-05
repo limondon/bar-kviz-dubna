@@ -38,10 +38,14 @@ let flashTmr=null;
   try{
     const snap=await get(ref(db,'tables/'+metaKey));
     const meta=snap.val();
-    if(!meta){
-      // Стол не существует — проверяем quiz_tokens (для печатных QR квиза)
+    const readQuizToken=async()=>{
       const quizSnap=await get(ref(db,'quiz_tokens/'+token));
       const qt=quizSnap.val();
+      return qt&&String(qt.table)===String(tableNum)?qt:null;
+    };
+    if(!meta){
+      // Стол не существует — проверяем quiz_tokens (для печатных QR квиза)
+      const qt=await readQuizToken();
       if(!qt||String(qt.table)!==String(tableNum)){showInvalid();return;}
       // Токен валидный — автоматически открываем стол
       const newSid=Date.now().toString(36);
@@ -49,7 +53,10 @@ let flashTmr=null;
       sessionId=newSid;
     } else {
       if(meta.status==='closed'){showInvalid('closed');return;}
-      if(meta.token!==token){showInvalid();return;}
+      if(meta.token!==token){
+        const qt=await readQuizToken();
+        if(!qt){showInvalid();return;}
+      }
       sessionId=meta.sid||'default';
     }
     // Load menu once then subscribe
