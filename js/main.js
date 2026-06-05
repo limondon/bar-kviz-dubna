@@ -96,6 +96,7 @@ async function loadAll(){
     S.tablesMeta=snap.val()||{};
     _tablesLoaded=true;_maybeRunSelfHeal();
     if(S.activeTab==='tables')renderTables();
+    renderAll();
   });
 
   onValue(ref(db,'config/orderNumResetAt'),(snap)=>{S.orderNumResetAt=snap.val()||0;_counterConfigLoaded=true;_seedOrderCounter();});
