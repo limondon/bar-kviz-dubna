@@ -43,7 +43,7 @@ export function buildTabs(){
 
 function buildBottomNav(tabs){
   const nav=document.getElementById('bottomNav');
-  nav.innerHTML=tabs.map(t=>`<div class="bnav-item" id="bn-${t.id}" onclick="sw('${t.id}')"><span class="bnav-ico">${t.ico}</span><span class="bnav-lbl">${t.label.replace('+ ','')}</span>${t.badge?`<span class="bnav-badge${t.badgeCls==='.bg'?' green':t.badgeCls==='.bp'?' purple':''}" id="bnb-${t.badge}"></span>`:''}</div>`).join('')+`<div class="bnav-item" id="bn-settings" onclick="toggleSettingsMenu()"><span class="bnav-ico">⚙️</span><span class="bnav-lbl">Ещё</span></div>`;
+  nav.innerHTML=tabs.map(t=>`<div class="bnav-item" id="bn-${t.id}" onclick="sw('${t.id}')"><span class="bnav-ico">${t.ico}</span><span class="bnav-lbl">${t.label.replace('+ ','')}</span>${t.badge?`<span class="bnav-badge${t.badgeCls==='bg'?' green':t.badgeCls==='bp'?' purple':''}" id="bnb-${t.badge}"></span>`:''}</div>`).join('')+`<div class="bnav-item" id="bn-settings" onclick="toggleSettingsMenu()"><span class="bnav-ico">⚙️</span><span class="bnav-lbl">Ещё</span></div>`;
 }
 
 // ─── ЕДИНЫЙ СПИСОК ДОП. ПУНКТОВ ──────────────────────
@@ -66,7 +66,7 @@ function buildSidebar(tabs){
   const extraTabs=getExtraTabItems();
   const actions=getActionItems();
   sb.innerHTML=`<div style="padding:0 20px 16px;border-bottom:1px solid var(--border);margin-bottom:8px;"><div style="display:flex;align-items:center;gap:8px;"><span style="font-family:'Bebas Neue',sans-serif;font-size:22px;color:var(--accent);letter-spacing:2px;">1708</span></div><div style="font-size:11px;color:var(--muted);margin-top:2px;">${roleNames[S.role]||''}</div></div>
-    ${tabs.map(t=>`<div class="sidebar-item" id="sb-${t.id}" onclick="sw('${t.id}')"><span class="sidebar-ico">${t.ico}</span><span>${t.label}</span>${t.badge?`<span class="sidebar-badge${t.badgeCls==='.bg'?' green':t.badgeCls==='.bp'?' purple':''}" id="sbb-${t.badge}"></span>`:''}</div>`).join('')}
+    ${tabs.map(t=>`<div class="sidebar-item" id="sb-${t.id}" onclick="sw('${t.id}')"><span class="sidebar-ico">${t.ico}</span><span>${t.label}</span>${t.badge?`<span class="sidebar-badge${t.badgeCls==='bg'?' green':t.badgeCls==='bp'?' purple':''}" id="sbb-${t.badge}"></span>`:''}</div>`).join('')}
     ${extraTabs.map(t=>`<div class="sidebar-item" id="sb-${t.id}" onclick="sw('${t.id}')"><span class="sidebar-ico">${t.ico}</span><span>${t.label}</span></div>`).join('')}
     <div style="margin-top:auto;padding:10px 20px;border-top:1px solid var(--border);">
       <div onclick="openDeliveryLog()" style="font-family:'Bebas Neue',sans-serif;font-size:11px;letter-spacing:1px;color:var(--accent);margin-bottom:6px;display:flex;justify-content:space-between;align-items:center;cursor:pointer;">
