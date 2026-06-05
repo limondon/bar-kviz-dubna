@@ -1,0 +1,24 @@
+{
+  "name": "bar-kviz-dubna-main",
+  "version": "1.0.0",
+  "description": "Real-time система управления заказами бара 1708.",
+  "main": "sw.js",
+  "scripts": {
+    "test": "playwright test"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/limondon/bar-kviz-dubna.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/limondon/bar-kviz-dubna/issues"
+  },
+  "homepage": "https://github.com/limondon/bar-kviz-dubna#readme",
+  "devDependencies": {
+    "@playwright/test": "^1.60.0"
+  }
+}
