@@ -305,57 +305,57 @@ export async function saveItemEditor(){
 export function renderMenuEditor(){
   const el=document.getElementById('menuEditorList');if(!el)return;
   const menu=S.BUILTIN_MENU_LIVE.length?S.BUILTIN_MENU_LIVE:BUILTIN_MENU;
-  if(!menu.length){el.innerHTML=`<div style="color:var(--muted);font-size:12px;padding:8px 0;">Меню пусто</div>`;return;}
+  if(!menu.length){el.innerHTML=`<div class="menu-editor-empty">Меню пусто</div>`;return;}
   el.innerHTML=menu.map((cat,ci)=>{
     const spaceIdx=cat.cat.indexOf(' ');
     const catEmoji=spaceIdx>0?cat.cat.substring(0,spaceIdx):'';
     const catName=spaceIdx>0?cat.cat.substring(spaceIdx+1):cat.cat;
     const isHidden=cat.hidden||false;
     return`
-    <div class="menu-editor-category" draggable="true" data-menu-cat="${ci}" style="margin-bottom:16px;${isHidden?'opacity:.5;':''}">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;padding-bottom:6px;border-bottom:1px solid var(--border);">
-        <div style="display:flex;align-items:center;gap:6px;flex:1;min-width:0;">
-          <div class="drag-handle" style="width:24px;height:24px;display:flex;align-items:center;justify-content:center;cursor:grab;color:var(--muted);font-size:14px;user-select:none;flex-shrink:0;">≡</div>
-          <input type="text" value="${esc(catEmoji)}" placeholder="🍺" onchange="updateMenuCat(${ci},'emoji',this.value)" style="width:36px;text-align:center;font-size:18px;padding:3px;background:var(--bg);border:1px solid var(--border);border-radius:5px;color:var(--text);">
-          <input type="text" value="${esc(catName)}" onchange="updateMenuCat(${ci},'catname',this.value)" style="flex:1;min-width:0;font-family:'Bebas Neue',sans-serif;font-size:14px;color:var(--accent);letter-spacing:1px;padding:3px 6px;background:var(--bg);border:1px solid var(--border);border-radius:5px;">
+    <div class="menu-editor-category${isHidden?' is-hidden':''}" draggable="true" data-menu-cat="${ci}">
+      <div class="menu-editor-cat-head">
+        <div class="menu-editor-cat-main">
+          <div class="drag-handle menu-editor-cat-drag">≡</div>
+          <input class="menu-admin-input menu-editor-cat-emoji" type="text" value="${esc(catEmoji)}" placeholder="🍺" onchange="updateMenuCat(${ci},'emoji',this.value)">
+          <input class="menu-admin-input menu-editor-cat-name" type="text" value="${esc(catName)}" onchange="updateMenuCat(${ci},'catname',this.value)">
         </div>
-        <div style="display:flex;align-items:center;gap:4px;flex-shrink:0;margin-left:6px;">
-          <button onclick="toggleMenuCatHidden(${ci})" title="${isHidden?'Показать в меню':'Скрыть из меню'}" style="background:transparent;border:1px solid var(--border);cursor:pointer;border-radius:4px;padding:2px 6px;font-size:14px;">${isHidden?'🙈':'👁'}</button>
-          ${ci>0?`<button onclick="moveMenuCat(${ci},-1)" style="background:transparent;border:1px solid var(--border);color:var(--muted);cursor:pointer;border-radius:4px;padding:2px 7px;font-size:12px;">▲</button>`:'<span style="width:28px;"></span>'}
-          ${ci<menu.length-1?`<button onclick="moveMenuCat(${ci},+1)" style="background:transparent;border:1px solid var(--border);color:var(--muted);cursor:pointer;border-radius:4px;padding:2px 7px;font-size:12px;">▼</button>`:'<span style="width:28px;"></span>'}
-          <button onclick="removeMenuCategory(${ci})" style="background:transparent;border:none;color:var(--muted);cursor:pointer;font-size:12px;padding:2px 6px;">🗑</button>
+        <div class="menu-editor-cat-actions">
+          <button class="menu-editor-icon-btn eye" onclick="toggleMenuCatHidden(${ci})" title="${isHidden?'Показать в меню':'Скрыть из меню'}">${isHidden?'🙈':'👁'}</button>
+          ${ci>0?`<button class="menu-editor-icon-btn" onclick="moveMenuCat(${ci},-1)">▲</button>`:'<span class="menu-editor-spacer"></span>'}
+          ${ci<menu.length-1?`<button class="menu-editor-icon-btn" onclick="moveMenuCat(${ci},+1)">▼</button>`:'<span class="menu-editor-spacer"></span>'}
+          <button class="menu-editor-icon-btn delete" onclick="removeMenuCategory(${ci})">🗑</button>
         </div>
       </div>
-      ${window.innerWidth<768?'':`<div style="display:flex;gap:8px;padding:2px 0 4px;font-size:9px;color:var(--muted);letter-spacing:.5px;text-transform:uppercase;"><span style="width:24px;"></span><span style="flex:1;">Название</span><span style="width:65px;text-align:center;">Цена</span><span style="width:52px;text-align:center;color:var(--accent);">Остаток</span><span style="width:80px;text-align:center;color:var(--purple);">Группа</span><span style="width:30px;"></span></div>`}
+      ${window.innerWidth<768?'':`<div class="menu-editor-head-row"><span class="menu-editor-head-drag"></span><span class="menu-editor-head-name">Название</span><span class="menu-editor-head-price">Цена</span><span class="menu-editor-head-stock">Остаток</span><span class="menu-editor-head-group">Группа</span><span class="menu-editor-head-actions"></span></div>`}
       ${cat.items.map((item,ii)=>{
         const sv=item.stock;const hasStock=sv!==null&&sv!==undefined&&sv!=='';
         if(window.innerWidth<768){
-          return`<div class="menu-editor-item" draggable="true" data-menu-cat="${ci}" data-menu-item="${ii}" onclick="openItemEditor(${ci},${ii})" style="display:flex;align-items:center;gap:10px;padding:11px 0;border-bottom:1px solid rgba(255,255,255,.05);cursor:pointer;">
-            <div class="drag-handle" onclick="event.stopPropagation()" style="color:var(--muted);font-size:15px;user-select:none;flex-shrink:0;padding:0 4px;cursor:grab;">⋮⋮</div>
-            <div style="flex:1;min-width:0;">
-              <div style="font-size:14px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(item.name)}</div>
-              <div style="display:flex;align-items:center;gap:6px;margin-top:3px;flex-wrap:wrap;">
-                <span style="font-size:12px;color:var(--accent);font-family:'IBM Plex Mono',monospace;">${item.price||0} ₽</span>
-                ${item.group?`<span style="font-size:10px;color:var(--purple);background:rgba(156,39,176,.15);border-radius:4px;padding:1px 6px;">${esc(item.group)}</span>`:''}
-                ${hasStock?`<span style="font-size:10px;color:var(--accent);background:rgba(245,166,35,.12);border-radius:4px;padding:1px 6px;">ост: ${sv}</span>`:''}
+          return`<div class="menu-editor-item mobile" draggable="true" data-menu-cat="${ci}" data-menu-item="${ii}" onclick="openItemEditor(${ci},${ii})">
+            <div class="drag-handle menu-editor-item-drag" onclick="event.stopPropagation()">⋮⋮</div>
+            <div class="menu-editor-mobile-main">
+              <div class="menu-editor-mobile-name">${esc(item.name)}</div>
+              <div class="menu-editor-mobile-meta">
+                <span class="menu-editor-price">${item.price||0} ₽</span>
+                ${item.group?`<span class="menu-editor-chip group">${esc(item.group)}</span>`:''}
+                ${hasStock?`<span class="menu-editor-chip stock">ост: ${sv}</span>`:''}
               </div>
             </div>
-            <button onclick="event.stopPropagation();removeMenuCatItem(${ci},${ii})" style="background:rgba(229,57,53,.15);color:var(--red);border:1px solid rgba(229,57,53,.3);border-radius:6px;padding:7px 10px;cursor:pointer;font-size:12px;flex-shrink:0;">✕</button>
+            <button class="menu-editor-remove-mobile" onclick="event.stopPropagation();removeMenuCatItem(${ci},${ii})">✕</button>
           </div>`;
         }
-        return`<div class="menu-editor-item" draggable="true" data-menu-cat="${ci}" data-menu-item="${ii}" style="display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid rgba(255,255,255,.04);">
-          <div class="drag-handle" style="width:24px;height:24px;display:flex;align-items:center;justify-content:center;cursor:grab;color:var(--muted);font-size:14px;user-select:none;flex-shrink:0;">⋮⋮</div>
-          <input type="text" value="${esc(item.name)}" onchange="updateMenuCatItem(${ci},${ii},'name',this.value)" style="flex:1;font-family:'IBM Plex Mono',monospace;font-size:12px;padding:5px 8px;background:var(--bg);border:1px solid var(--border);border-radius:5px;color:var(--text);">
-          <input type="number" value="${item.price||0}" min="0" onchange="updateMenuCatItem(${ci},${ii},'price',+this.value)" style="width:65px;text-align:center;font-family:'IBM Plex Mono',monospace;font-size:12px;padding:5px;background:var(--bg);border:1px solid var(--border);border-radius:5px;color:var(--muted);">
-          <span style="font-size:11px;color:var(--muted);">₽</span>
-          <input type="number" value="${hasStock?sv:''}" min="0" placeholder="∞" onchange="updateMenuCatItem(${ci},${ii},'stock',this.value===''?null:+this.value)" style="width:52px;text-align:center;font-family:'IBM Plex Mono',monospace;font-size:12px;padding:5px;background:var(--bg);border:1px solid rgba(245,166,35,.3);border-radius:5px;color:var(--accent);">
-          <input type="text" value="${esc(item.group||'')}" placeholder="группа" onchange="updateMenuCatItem(${ci},${ii},'group',this.value.trim()||null)" style="width:80px;font-family:'IBM Plex Mono',monospace;font-size:11px;padding:5px;background:var(--bg);border:1px solid rgba(156,39,176,.3);border-radius:5px;color:var(--purple);">
-          <button onclick="openItemEditor(${ci},${ii})" title="Опции позиции" style="background:transparent;border:1px solid var(--border);color:var(--muted);border-radius:6px;padding:4px 7px;cursor:pointer;font-size:12px;flex-shrink:0;">✏️</button>
-          <button onclick="removeMenuCatItem(${ci},${ii})" style="background:rgba(229,57,53,.15);color:var(--red);border:1px solid rgba(229,57,53,.3);border-radius:6px;padding:4px 8px;cursor:pointer;font-size:12px;flex-shrink:0;">✕</button>
+        return`<div class="menu-editor-item desktop" draggable="true" data-menu-cat="${ci}" data-menu-item="${ii}">
+          <div class="drag-handle menu-editor-item-drag desktop">⋮⋮</div>
+          <input class="menu-editor-line-input name" type="text" value="${esc(item.name)}" onchange="updateMenuCatItem(${ci},${ii},'name',this.value)">
+          <input class="menu-editor-line-input price" type="number" value="${item.price||0}" min="0" onchange="updateMenuCatItem(${ci},${ii},'price',+this.value)">
+          <span class="menu-editor-currency">₽</span>
+          <input class="menu-editor-line-input stock" type="number" value="${hasStock?sv:''}" min="0" placeholder="∞" onchange="updateMenuCatItem(${ci},${ii},'stock',this.value===''?null:+this.value)">
+          <input class="menu-editor-line-input group" type="text" value="${esc(item.group||'')}" placeholder="группа" onchange="updateMenuCatItem(${ci},${ii},'group',this.value.trim()||null)">
+          <button class="menu-editor-line-btn" onclick="openItemEditor(${ci},${ii})" title="Опции позиции">✏️</button>
+          <button class="menu-editor-line-btn remove" onclick="removeMenuCatItem(${ci},${ii})">✕</button>
         </div>`;}).join('')}
-      <div style="display:flex;gap:6px;margin-top:8px;">
-        <input type="text" id="newItem_${ci}" placeholder="Новая позиция" style="flex:1;font-family:'IBM Plex Mono',monospace;font-size:13px;padding:9px 10px;background:var(--bg);border:1px dashed var(--border);border-radius:8px;color:var(--text);" onkeydown="if(event.key==='Enter')addMenuCatItem(${ci})">
-        <button onclick="addMenuCatItem(${ci})" style="background:rgba(76,175,80,.15);color:var(--green);border:1px solid rgba(76,175,80,.3);border-radius:8px;padding:9px 14px;cursor:pointer;font-size:13px;white-space:nowrap;">+ Добавить</button>
+      <div class="menu-editor-add-row">
+        <input class="menu-editor-add-input" type="text" id="newItem_${ci}" placeholder="Новая позиция" onkeydown="if(event.key==='Enter')addMenuCatItem(${ci})">
+        <button class="menu-editor-add-btn" onclick="addMenuCatItem(${ci})">+ Добавить</button>
       </div>
     </div>`;}).join('');
 }
@@ -413,8 +413,27 @@ export async function addNewMenuItem(){fl('fInfo','Используй кнопк
 export function renderMenuPage(){
   const el=document.getElementById('menuPageContent');if(!el)return;
   el.innerHTML=`
-    ${S.role==='admin'?`<div style="background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:var(--sp-md);margin-bottom:var(--sp-md);"><div style="font-family:'Bebas Neue',sans-serif;font-size:16px;letter-spacing:1px;color:var(--purple);margin-bottom:var(--sp-sm);">🎯 КВИЗ</div><div style="font-size:11px;color:var(--muted);margin-bottom:var(--sp-sm);">Генерирует QR-коды для всех столов для печати.</div><div style="display:flex;gap:var(--sp-sm);flex-wrap:wrap;"><button onclick="prepareQuiz()" style="min-height:44px;padding:8px 16px;background:rgba(156,39,176,.15);color:var(--purple);border:1px solid rgba(156,39,176,.4);border-radius:8px;font-family:'Bebas Neue',sans-serif;font-size:16px;letter-spacing:1px;cursor:pointer;">🎯 ПОДГОТОВИТЬ КВИЗ</button><button onclick="finishQuiz()" style="min-height:44px;padding:8px 16px;background:rgba(229,57,53,.1);color:var(--red);border:1px solid rgba(229,57,53,.3);border-radius:8px;font-family:'Bebas Neue',sans-serif;font-size:16px;letter-spacing:1px;cursor:pointer;">🏁 ЗАВЕРШИТЬ КВИЗ</button></div></div>`:''}
-    <div style="background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:var(--sp-md);margin-bottom:var(--sp-md);"><div style="font-family:'Bebas Neue',sans-serif;font-size:16px;letter-spacing:1px;color:var(--accent);margin-bottom:var(--sp-md);">➕ НОВАЯ КАТЕГОРИЯ</div><div style="display:flex;gap:var(--sp-sm);flex-wrap:wrap;"><input type="text" id="newCatEmoji" placeholder="🍕" maxlength="4" style="width:58px;text-align:center;font-size:20px;padding:8px;font-family:'IBM Plex Mono',monospace;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);"><input type="text" id="newCatName" placeholder="Пицца, Роллы..." style="flex:1;min-width:150px;font-family:'IBM Plex Mono',monospace;font-size:14px;padding:8px;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);" onkeydown="if(event.key==='Enter')addMenuCategory()"><button onclick="addMenuCategory()" class="btn-sm bd" style="min-width:100px;">+ Создать</button></div></div>
-    <div style="background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:var(--sp-md);"><div style="font-family:'Bebas Neue',sans-serif;font-size:16px;letter-spacing:1px;color:var(--accent);margin-bottom:var(--sp-sm);">📋 ТЕКУЩЕЕ МЕНЮ</div><div style="font-size:10px;color:var(--muted);margin-bottom:8px;">Поле "Группа" — для объединения вкусов в раскрывающийся список.</div><div style="font-size:11px;color:var(--muted);margin-bottom:10px;">Перетащите позицию за ⋮⋮, чтобы поменять порядок.</div><div id="menuEditorList"></div></div>`;
+    ${S.role==='admin'?`<div class="menu-admin-card">
+      <div class="menu-admin-title purple small">🎯 КВИЗ</div>
+      <div class="menu-admin-note">Генерирует QR-коды для всех столов для печати.</div>
+      <div class="menu-admin-row">
+        <button onclick="prepareQuiz()" class="btn-sm menu-admin-quiz-btn">🎯 ПОДГОТОВИТЬ КВИЗ</button>
+        <button onclick="finishQuiz()" class="btn-sm menu-admin-quiz-btn danger">🏁 ЗАВЕРШИТЬ КВИЗ</button>
+      </div>
+    </div>`:''}
+    <div class="menu-admin-card">
+      <div class="menu-admin-title">➕ НОВАЯ КАТЕГОРИЯ</div>
+      <div class="menu-admin-row">
+        <input class="menu-admin-input menu-admin-emoji-input" type="text" id="newCatEmoji" placeholder="🍕" maxlength="4">
+        <input class="menu-admin-input menu-admin-name-input" type="text" id="newCatName" placeholder="Пицца, Роллы..." onkeydown="if(event.key==='Enter')addMenuCategory()">
+        <button onclick="addMenuCategory()" class="btn-sm bd menu-admin-create">+ Создать</button>
+      </div>
+    </div>
+    <div class="menu-admin-card">
+      <div class="menu-admin-title small">📋 ТЕКУЩЕЕ МЕНЮ</div>
+      <div class="menu-admin-help">Поле "Группа" — для объединения вкусов в раскрывающийся список.</div>
+      <div class="menu-admin-note">Перетащите позицию за ⋮⋮, чтобы поменять порядок.</div>
+      <div id="menuEditorList"></div>
+    </div>`;
   renderMenuEditor();
 }
