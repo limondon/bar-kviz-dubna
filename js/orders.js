@@ -6,7 +6,7 @@ function logDelivery(o,it){
   const entry={at:Date.now(),table:o.table,orderNum:o.num,name:it.name,qty:it.qty};
   update(ref(db,'config/deliveryLog/'+key),entry).catch(e=>console.error('logDelivery',e));
 }
-import{parseItems,aggStatus,esc,escAttr,fl,safeDb,showConfirm,todayStr,lockScroll,unlockScroll}from'./utils.js';
+import{parseItems,aggStatus,esc,escAttr,fl,safeDb,showConfirm,todayStr,lockScroll,unlockScroll,itemKey}from'./utils.js';
 import{applyStockDeltas,deductMenuStock}from'./stock.js';
 import{getTMeta}from'./tables.js';
 import{buildQuickTableBtns,isInstantItem}from'./render.js';
@@ -149,11 +149,10 @@ export async function delOrder(id){
 // ─── EDIT ORDER MODAL ─────────────────────────────────
 let _editItems=[];
 
-function stockKey(name){return String(name||'').trim().toLowerCase();}
 function buildStockDeltas(beforeItems,afterItems){
   const map=new Map();
   const add=(it,sign)=>{
-    const key=stockKey(it.name);
+    const key=itemKey(it.name);
     if(!key)return;
     const qty=Math.max(0,Number(it.qty)||0);
     if(!qty)return;

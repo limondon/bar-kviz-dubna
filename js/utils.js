@@ -64,6 +64,24 @@ export function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;
 export function escAttr(s){return esc(s).replace(/"/g,'&quot;').replace(/'/g,'&#39;');}
 export function empty(icon,msg){return`<div class="empty"><div class="ei">${icon}</div><p>${msg}</p></div>`;}
 export function pl(n,a,b,c){return n%10===1&&n%100!==11?a:n%10>=2&&n%10<=4&&(n%100<10||n%100>=20)?b:c;}
+export const DEFAULT_ADDON_PRICE=50;
+export function baseItemName(name){
+  return String(name||'')
+    .replace(/\s+[—–-]\s+.+$/,'')
+    .replace(/\s+\+\s+.+$/,'')
+    .trim();
+}
+export function itemKey(name){return baseItemName(name).toLowerCase();}
+export function itemExtraPrice(name){
+  const s=String(name||'');
+  let extra=0;
+  const addons=s.match(/\s\+\s(.+?)(?:\s+[—–-]\s+|$)/);
+  if(addons)extra+=addons[1].split(',').map(x=>x.trim()).filter(Boolean).length*DEFAULT_ADDON_PRICE;
+  const option=s.match(/\s+[—–-]\s+(.+)$/);
+  const price=option?.[1]?.match(/(?:\+|=|:)\s*(\d+)\s*₽?$/);
+  if(price)extra+=Number(price[1])||0;
+  return extra;
+}
 
 // ─── DOM HELPERS ─────────────────────────────────────
 export function setBadge(id,val){

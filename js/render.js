@@ -1,16 +1,16 @@
 import{S}from'./state.js';
-import{esc,escAttr,fmt,empty,setBadge,setEl,todayStr,shiftDS,aggStatus}from'./utils.js';
+import{esc,escAttr,fmt,empty,setBadge,setEl,todayStr,shiftDS,aggStatus,itemKey}from'./utils.js';
 import{BUILTIN_MENU}from'./menu-data.js';
 import{renderTables,renderClosed,getTMeta,getItemPrice}from'./tables.js';
 
 // ─── INSTANT ITEMS (пиво/напитки/закуски) ────────────
 export function isInstantItem(name){
   const menu=S.BUILTIN_MENU_LIVE.length?S.BUILTIN_MENU_LIVE:BUILTIN_MENU;
-  const key=name.trim().toLowerCase();
+  const key=itemKey(name);
   for(const cat of menu){
     const c=(cat.cat||'').toLowerCase();
     if(c.includes('пиво')||c.includes('напитки')||c.includes('закуски')){
-      if((cat.items||[]).some(it=>it.name.trim().toLowerCase()===key))return true;
+      if((cat.items||[]).some(it=>itemKey(it.name)===key))return true;
     }
   }
   return false;

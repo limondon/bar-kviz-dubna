@@ -1,18 +1,19 @@
 import{S}from'./state.js';
 import{db,ref,runTransaction}from'./firebase.js';
 import{BUILTIN_MENU}from'./menu-data.js';
+import{itemKey}from'./utils.js';
 
 export async function applyStockDeltas(deltas){
   const menu=S.BUILTIN_MENU_LIVE.length?S.BUILTIN_MENU_LIVE:BUILTIN_MENU;
   const txs=[];
   for(const{name,delta}of deltas){
     if(!delta)continue;
-    const key=name.trim().toLowerCase();
+    const key=itemKey(name);
     for(let ci=0;ci<menu.length;ci++){
       const catItems=menu[ci].items||[];
       for(let ii=0;ii<catItems.length;ii++){
         const it=catItems[ii];
-        if(it.name.trim().toLowerCase()===key){
+        if(itemKey(it.name)===key){
           const s=it.stock===undefined||it.stock===null||it.stock===''?null:Math.max(0,parseInt(it.stock)||0);
           if(s!==null){
             txs.push({path:`menu2/${ci}/items/${ii}/stock`,item:it,delta,name:it.name});

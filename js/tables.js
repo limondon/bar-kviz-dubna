@@ -1,6 +1,6 @@
 import{S}from'./state.js';
 import{db,ref,update,fbUpdate,push}from'./firebase.js';
-import{todayStr,dateLbl,shiftDS,fmt,fmt2,esc,escAttr,pl,fl,showConfirm,lockScroll,unlockScroll}from'./utils.js';
+import{todayStr,dateLbl,shiftDS,fmt,fmt2,esc,escAttr,pl,fl,showConfirm,lockScroll,unlockScroll,itemKey,itemExtraPrice}from'./utils.js';
 import{BUILTIN_MENU}from'./menu-data.js';
 import{nextOrderNum}from'./counters.js';
 import{applyStockDeltas}from'./stock.js';
@@ -32,10 +32,10 @@ export function shortItemName(name){
 
 export function getItemPrice(name){
   const menu=S.BUILTIN_MENU_LIVE.length?S.BUILTIN_MENU_LIVE:BUILTIN_MENU;
-  const key=name.trim().toLowerCase();
+  const key=itemKey(name);
   for(const cat of menu){
     for(const item of(cat.items||[])){
-      if(item.name.trim().toLowerCase()===key)return item.price||0;
+      if(itemKey(item.name)===key)return(item.price||0)+itemExtraPrice(name);
     }
   }
   return 0;

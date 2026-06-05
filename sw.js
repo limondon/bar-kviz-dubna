@@ -1,4 +1,4 @@
-const CACHE_NAME = 'bar-v18';
+const CACHE_NAME = 'bar-v19';
 const ASSETS = [
   './',
   'index.html',

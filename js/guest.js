@@ -23,8 +23,25 @@ let activeCat=0;
 let openGroups=new Set();
 let guestCups=0;
 const G_TEA_ADDONS=['Чабрец','Лимон','Мята'];
+const G_ADDON_PRICE=50;
 function isLeafTeaCat(cat){return cat?.cat?.toLowerCase().includes('лист');}
 function isTeaCat(cat){return cat?.cat?.toLowerCase().includes('чай');}
+function baseItemName(name){return String(name||'').replace(/\s+[—–-]\s+.+$/,'').replace(/\s+\+\s+.+$/,'').trim();}
+function itemKey(name){return baseItemName(name).toLowerCase();}
+function parseOption(opt){
+  const text=String(opt||'').trim();
+  const m=text.match(/^(.+?)\s*(?:\+|=|:)\s*(\d+)\s*₽?$/);
+  return m?{label:m[1].trim(),price:Number(m[2])||0}:{label:text,price:0};
+}
+function addonPrice(item){
+  return Object.values(item.addons||{}).filter(Boolean).length*G_ADDON_PRICE;
+}
+function optionPrice(item){
+  return item.option?parseOption(item.option).price:0;
+}
+function unitPrice(item){
+  return(item.price||0)+addonPrice(item)+optionPrice(item);
+}
 let flashTmr=null;
 
 // ─── BOOT ───────────────────────────────────────────
@@ -114,11 +131,11 @@ function stockText(item){
 async function deductGuestStock(entries){
   const txs=[];
   for(const[,ci]of entries){
-    const oName=ci.name.trim().toLowerCase();
+    const oName=itemKey(ci.name);
     for(let ci2=0;ci2<menuData.length;ci2++){
       const catItems=menuData[ci2].items||[];
       for(let ii=0;ii<catItems.length;ii++){
-        if(catItems[ii].name.trim().toLowerCase()===oName&&getStock(catItems[ii])!==null){
+        if(itemKey(catItems[ii].name)===oName&&getStock(catItems[ii])!==null){
           txs.push({path:`menu2/${ci2}/items/${ii}/stock`,item:catItems[ii],qty:ci.qty,name:ci.name});
         }
       }
@@ -210,7 +227,7 @@ function renderItem(item,cat){
   const addons=cart[key]?.addons||{};
   const addonHtml=qty>0&&isLeafTeaCat(cat)?`<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;">${G_TEA_ADDONS.map(a=>{const sel=addons[a];return`<div data-action="toggleAddon" data-key="${escAttr(key)}" data-addon="${escAttr(a)}" style="padding:4px 10px;border-radius:16px;font-size:12px;cursor:pointer;background:${sel?'#f5a623':'rgba(255,255,255,.07)'};color:${sel?'#000':'#888'};border:1px solid ${sel?'#f5a623':'rgba(255,255,255,.15)'};">${esc(a)} <span style="font-size:11px;">+50₽</span></div>`;}).join('')}</div>`:'';
   const selOpt=cart[key]?.option||null;
-  const optHtml=qty>0&&item.options?.length?`<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;">${item.options.map(opt=>{const sel=selOpt===opt;return`<div data-action="selectOption" data-key="${escAttr(key)}" data-option="${escAttr(opt)}" style="padding:4px 10px;border-radius:16px;font-size:12px;cursor:pointer;background:${sel?'#4caf50':'rgba(255,255,255,.07)'};color:${sel?'#000':'#888'};border:1px solid ${sel?'#4caf50':'rgba(255,255,255,.15)'};">${esc(opt)}</div>`;}).join('')}</div>`:'';
+  const optHtml=qty>0&&item.options?.length?`<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;">${item.options.map(opt=>{const sel=selOpt===opt;const parsed=parseOption(opt);return`<div data-action="selectOption" data-key="${escAttr(key)}" data-option="${escAttr(opt)}" style="padding:4px 10px;border-radius:16px;font-size:12px;cursor:pointer;background:${sel?'#4caf50':'rgba(255,255,255,.07)'};color:${sel?'#000':'#888'};border:1px solid ${sel?'#4caf50':'rgba(255,255,255,.15)'};">${esc(parsed.label)}${parsed.price?` <span style="font-size:11px;">+${parsed.price}₽</span>`:''}</div>`;}).join('')}</div>`:'';
   return`<div class="menu-item${out?' unavail':''}">
     <div class="item-info">
       <div class="item-name">${esc(item.name)}</div>
@@ -312,7 +329,7 @@ function setCat(i){activeCat=i;renderTabs();renderMenu();document.getElementById
 
 function updateCartBar(){
   const entries=Object.values(cart).filter(x=>x.qty>0);
-  const total=entries.reduce((s,i)=>s+i.price*i.qty,0);
+  const total=entries.reduce((s,i)=>s+unitPrice(i)*i.qty,0);
   const count=entries.reduce((s,i)=>s+i.qty,0);
   document.getElementById('cartCount').textContent=count;
   document.getElementById('cartTotal').textContent=fmt(total);
@@ -334,7 +351,7 @@ function initStickyHeader(){
 // ─── CART SCREEN ────────────────────────────────────
 function renderCartScreen(){
   const entries=Object.entries(cart).filter(([k,v])=>v.qty>0);
-  const subtotal=entries.reduce((s,[k,v])=>s+v.price*v.qty,0);
+  const subtotal=entries.reduce((s,[k,v])=>s+unitPrice(v)*v.qty,0);
   document.getElementById('cartList').innerHTML=entries.map(([key,item])=>
     `<div class="cart-row">
       <div class="cart-row-name">${esc(item.name)}</div>
@@ -343,7 +360,7 @@ function renderCartScreen(){
         <div class="c-qty-num">${item.qty}</div>
         <div class="c-qty-btn" data-action="cQty" data-key="${escAttr(key)}" data-delta="1">+</div>
       </div>
-      <div class="cart-row-price">${fmt(item.price*item.qty)}</div>
+      <div class="cart-row-price">${fmt(unitPrice(item)*item.qty)}</div>
     </div>`
   ).join('');
   document.getElementById('cartSubtotal').textContent=fmt(subtotal);
@@ -396,7 +413,7 @@ async function placeOrder(){
     const numRes=await runTransaction(ref(db,'publicCounters/orderNum'),n=>(n||0)+1);
     const orderNum=numRes.snapshot.val();
     const note=document.getElementById('orderNote').value.trim();
-    const total=entries.reduce((s,[k,v])=>s+v.price*v.qty,0);
+    const total=entries.reduce((s,[k,v])=>s+unitPrice(v)*v.qty,0);
     const today=todayStr();
     // Build items obj
     const items={};
@@ -404,8 +421,8 @@ async function placeOrder(){
       const id=Date.now().toString(36)+'_'+i+'_'+Math.random().toString(36).slice(2,5);
       let name=ci.name;
       if(ci.addons){const sel=G_TEA_ADDONS.filter(a=>ci.addons[a]);if(sel.length)name+=` + ${sel.map(a=>a.toLowerCase()).join(', ')}`;}
-      if(ci.option)name+=` — ${ci.option}`;
-      items[id]={id,name,qty:ci.qty,status:'new'};
+      if(ci.option)name+=` — ${parseOption(ci.option).label}`;
+      items[id]={id,name,qty:ci.qty,price:unitPrice(ci),status:'new'};
     });
     if(guestCups>0){const cid=Date.now().toString(36)+'_cups';const pl=guestCups===1?'кружка':guestCups<5?'кружки':'кружек';items[cid]={id:cid,name:`${guestCups} ${pl}`,qty:1,status:'new'};};
     await deductGuestStock(entries);
