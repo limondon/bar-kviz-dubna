@@ -324,5 +324,17 @@
 <!-- QR Code library -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"></script>
 <script type="module" src="js/main.js"></script>
+<script>
+  setTimeout(() => {
+    const hasRole = document.getElementById('hRole')?.textContent?.trim();
+    const passwordOpen = !document.getElementById('passwordOverlay')?.classList.contains('hidden');
+    const roleOpen = !document.getElementById('roleOverlay')?.classList.contains('hidden');
+    if (hasRole || passwordOpen || roleOpen) return;
+    const err = document.getElementById('fErr');
+    if (!err) return;
+    err.textContent = 'Не удалось загрузить приложение. Проверь интернет и доступ к Firebase/CDN.';
+    err.classList.add('show');
+  }, 4500);
+</script>
 </body>
 </html>

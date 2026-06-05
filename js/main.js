@@ -227,13 +227,27 @@ async function startApp(){
 }
 window.startApp=startApp;
 
+function waitAuthUser(timeout=3000){
+  return new Promise(resolve=>{
+    let done=false;
+    const finish=user=>{
+      if(done)return;
+      done=true;
+      clearTimeout(timer);
+      unsub?.();
+      resolve(user);
+    };
+    const timer=setTimeout(()=>finish(null),timeout);
+    let unsub=null;
+    unsub=onAuthStateChanged(auth,finish,()=>finish(null));
+  });
+}
+
 (async()=>{
   registerSW();
 
   // Если роль и пароль уже известны — показываем UI сразу, без ожидания сети
-  const staffUser=await new Promise(resolve=>{
-    const unsub=onAuthStateChanged(auth,user=>{unsub();resolve(user);});
-  });
+  const staffUser=await waitAuthUser();
   if(!staffUser?.email){
     openPasswordModal();
     requestAnimationFrame(hideSplash);
