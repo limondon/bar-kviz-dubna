@@ -1,0 +1,10 @@
+{
+  "_description": "Синтетический пример, не экспорт рабочей базы",
+  "menu2": [{"cat":"Пиво","items":[{"name":"Corona","productId":"p1"},{"name":"Corona — Special","productId":"p2"}]}],
+  "orders": {
+    "good": {"id":"good","date":"2026-09-17","table":"1","sid":"s1","total":300,"items":{"i":{"id":"i","name":"Corona","productId":"p1","qty":1,"price":300,"status":"done"}}},
+    "legacy": {"id":"legacy","date":"2026-09-01","table":"2","items":"2 Corona","total":600},
+    "uncertain": {"id":"uncertain","date":"2026-09-01","table":"3","sid":"old","total":900,"items":{"i":{"id":"i","name":"Corona","qty":2,"status":"done"}}},
+    "mismatch": {"id":"mismatch","date":"2026-09-01","table":"4","sid":"old","total":500,"items":{"i":{"id":"i","name":"Corona","productId":"p1","qty":1,"price":300,"status":"done"}}}
+  }
+}

@@ -1,0 +1,83 @@
+{
+  "before": "350 ₽",
+  "after": "350 ₽",
+  "grand": "400 ₽",
+  "cart": "Corona Extra\n−\n1\n+\n400 ₽",
+  "failed": {
+    "stock": 4,
+    "writes": [
+      {
+        "op": "tx",
+        "p": "publicCounters/orderNum",
+        "val": 2
+      },
+      {
+        "op": "tx",
+        "p": "menu2/0/items/0/stock",
+        "val": 4
+      },
+      {
+        "op": "update",
+        "p": "orders/audit-1",
+        "v": {
+          "id": "audit-1",
+          "table": 1,
+          "items": {
+            "mtywj25x_0_yz7": {
+              "id": "mtywj25x_0_yz7",
+              "name": "Corona Extra — Добавка",
+              "qty": 1,
+              "price": 400,
+              "status": "new"
+            }
+          },
+          "note": "",
+          "priority": "normal",
+          "status": "new",
+          "createdAt": 1789248784822,
+          "num": 2,
+          "date": "2026-09-13",
+          "sid": "audit",
+          "source": "guest",
+          "total": 400
+        }
+      }
+    ]
+  },
+  "rects": [
+    {
+      "id": "cartList",
+      "rect": {
+        "x": 0,
+        "y": 151,
+        "width": 667,
+        "height": 12,
+        "top": 151,
+        "right": 667,
+        "bottom": 163,
+        "left": 0
+      }
+    },
+    {
+      "id": "placeBtn",
+      "rect": {
+        "x": 16,
+        "y": 359,
+        "width": 635,
+        "height": 53,
+        "top": 359,
+        "right": 651,
+        "bottom": 412,
+        "left": 16
+      }
+    }
+  ],
+  "errors": [],
+  "blocked": [
+    "https://fonts.googleapis.com/css2",
+    "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js",
+    "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js",
+    "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js",
+    "https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"
+  ]
+}

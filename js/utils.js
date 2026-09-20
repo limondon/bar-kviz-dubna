@@ -1,8 +1,5 @@
-// ─── DISABLE DOUBLE-TAP ZOOM (iOS Safari) ────────────
-;(()=>{let _lt=0,_lx=0,_ly=0;document.addEventListener('touchend',e=>{const t=Date.now();const tc=e.changedTouches[0];const tag=e.target.tagName.toLowerCase();const skip=tag==='button'||tag==='input'||tag==='select'||tag==='textarea'||e.target.hasAttribute('onclick')||e.target.closest('button,[onclick]');const dx=tc.clientX-_lx,dy=tc.clientY-_ly;if(!skip&&t-_lt<300&&Math.sqrt(dx*dx+dy*dy)<20)e.preventDefault();_lt=t;_lx=tc.clientX;_ly=tc.clientY;},{passive:false});})();
-
 // ─── DATE ────────────────────────────────────────────
-export function todayStr(){const d=new Date();return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate());}
+export function todayStr(){return new Intl.DateTimeFormat('en-CA',{timeZone:'Europe/Moscow',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());}
 export function pad(n){return String(n).padStart(2,'0');}
 export function dateLbl(s){
   const[y,m,d]=s.split('-');
@@ -13,7 +10,7 @@ export function dateLbl(s){
 export function shiftDS(s,n){const d=new Date(s);d.setDate(d.getDate()+n);return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate());}
 
 // ─── PARSE / STATUS ──────────────────────────────────
-export function parseItems(text){
+export function parseItems(text,{legacy=false}={}){
   return text.split('\n').map(l=>l.trim()).filter(Boolean).map((line,i)=>{
     let qty=1,name=line;
     const m1=line.match(/^(\d+)\s*[xXхХ]\s+(.+)/);
@@ -22,6 +19,7 @@ export function parseItems(text){
     if(m1){qty=parseInt(m1[1]);name=m1[2].trim();}
     else if(m2){qty=parseInt(m2[1]);name=m2[2].trim();}
     else if(m3){qty=parseInt(m3[2]);name=m3[1].trim();}
+    if(!Number.isSafeInteger(qty)||qty<1||(!legacy&&qty>99))throw new Error('Количество должно быть от 1 до 99');
     return{id:Date.now().toString(36)+'_'+i+'_'+Math.random().toString(36).slice(2,5),name,qty,status:'new'};
   });
 }
@@ -38,7 +36,7 @@ export function aggStatus(items){
 }
 export function normalizeOrder(o){
   if(typeof o.items==='string'){
-    o.items=parseItems(o.items);
+    o.items=parseItems(o.items,{legacy:true});
   } else if(o.items&&!Array.isArray(o.items)){
     o.items=Object.entries(o.items)
       .filter(([k,v])=>v&&typeof v==='object'&&v.name)

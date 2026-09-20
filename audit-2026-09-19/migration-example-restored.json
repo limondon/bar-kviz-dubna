@@ -1,0 +1,73 @@
+{
+  "menu2": [
+    {
+      "cat": "Пиво",
+      "items": [
+        {
+          "name": "Corona",
+          "price": 300,
+          "stock": 20,
+          "productId": "beer-1"
+        }
+      ]
+    }
+  ],
+  "orders": {
+    "current": {
+      "id": "current",
+      "num": 2,
+      "date": "2026-09-19",
+      "table": "1",
+      "sid": "current",
+      "status": "new",
+      "total": 300,
+      "items": {
+        "a": {
+          "id": "a",
+          "name": "Corona",
+          "qty": 1,
+          "price": 300,
+          "productId": "beer-1",
+          "status": "new"
+        }
+      }
+    },
+    "old": {
+      "id": "old",
+      "num": 1,
+      "date": "2026-07-01",
+      "table": "2",
+      "sid": "past",
+      "status": "done",
+      "total": 600,
+      "items": {
+        "a": {
+          "id": "a",
+          "name": "Corona",
+          "qty": 2,
+          "price": 300,
+          "productId": "beer-1",
+          "status": "done"
+        }
+      }
+    }
+  },
+  "tables": {
+    "2026-09-19_1": {
+      "date": "2026-09-19",
+      "tNum": "1",
+      "sid": "current",
+      "status": "open",
+      "token": "demo-only"
+    },
+    "2026-07-01_2": {
+      "date": "2026-07-01",
+      "tNum": "2",
+      "sid": "past",
+      "status": "closed"
+    }
+  },
+  "publicCounters": {
+    "orderNum": 2
+  }
+}

@@ -1,144 +1,114 @@
 import{S}from'./state.js';
-import{db,auth,ref,update,set,remove,onValue,runTransaction,onAuthStateChanged}from'./firebase.js';
-import{todayStr,normalizeOrder,fl,closeConfirmModal,confirmOk,setBadge}from'./utils.js';
-import{BUILTIN_MENU}from'./menu-data.js';
-import{registerSW,checkNewOrders,playBeep,notifMuted,swReg,updateNotifBtn}from'./notifications.js';
+import{initArchive}from'./archive.js';
+import{db,auth,ref,onValue,onAuthStateChanged,callService}from'./firebase.js';
+import{todayStr,normalizeOrder,fl,closeConfirmModal,confirmOk,setBadge,showConfirm}from'./utils.js';
+import{registerSW,checkNewOrders,playBeep,notifMuted,swReg,updateNotifBtn,hasRemotePush}from'./notifications.js';
 import{renderAll,startPoll}from'./render.js';
 import{renderTables,renderClosed}from'./tables.js';
-import{renderMenuPage}from'./menu.js';
+import{renderMenuPage,refreshMenuFromServer}from'./menu.js';
 import{renderStats}from'./render.js';
-import{renderCalls}from'./calls.js';
+import{renderCalls,isPendingCall}from'./calls.js';
 import{barItemAction,waiterDeliverItem,waiterDeliverAll,reopenOrder,delOrder,openEditModal,closeEditModal,saveEditOrder,addOrder,updateEditRow,removeEditRow,addEditItem}from'./orders.js';
 import{closeTable,reopenTable,renameTable,doRenameTable,deleteTable,logTable,unlogTable,showQR,closeQrModal,openQrPicker,closeQrPicker,closeRenameModal,confirmRename,shiftDate,jumpDate,shiftClosedDate,jumpClosedDate,toggleBill as _toggleBill,openCorkagePicker,closeCorkageModal,confirmCorkage,corkageAdj,toggleDatesExpanded,toggleClosedDatesExpanded,toggleQuickCorkage,_quickCorkagePick,editTableNote,openDeliveryLog,renderDeliveryLogSidebar}from'./tables.js';
 import{sw,setQF,pickTable,openRoleModal,closeRoleModal,pickRole,confirmRole,applyRole,checkPassword,openPasswordModal,checkAuth,changePassword,buildTabs,toggleSettingsMenu,toggleBill}from'./ui.js';
 import{openMenuPicker,closeMenuPicker,confirmMenuPicker,switchPickerCat,pickerToggleGroup,openMenuEditor,closeMenuEditor,updateMenuCatItem,removeMenuCatItem,addMenuCatItem,addMenuCategory,removeMenuCategory,moveMenuCat,renderMenuEditor,updateMenuItem,removeMenuItem,addNewMenuItem,buildMenuButtons,updateMenuCat,toggleMenuCatHidden,restructureLemonades,openItemEditor,closeItemEditor,saveItemEditor}from'./menu.js';
 import{prepareQuiz,finishQuiz}from'./quiz.js';
 import{checkInCall,clearCalls}from'./calls.js';
-import{applyStockDeltas,deductMenuStock}from'./stock.js';
 import{buildQuickTableBtns}from'./render.js';
 import{enableNotifications}from'./notifications.js';
 
 // Инициализируем даты в состоянии
 S.viewDate=todayStr();
 S.closedViewDate=todayStr();
+initArchive();
 
 // Делаем renderAll доступным глобально (нужен для deleteTable)
 window.renderAll=renderAll;
 
 // ─── FIREBASE LISTENERS ───────────────────────────────
 let _ordersLoaded=false,_tablesLoaded=false,_selfHealDone=false,_counterSeedDone=false,_counterConfigLoaded=false;
-function _seedOrderCounter(){
-  if(_counterSeedDone||!_ordersLoaded||!_counterConfigLoaded||!S.orders.length)return;
-  const orders=S.orderNumResetAt?S.orders.filter(o=>(o.createdAt||0)>=S.orderNumResetAt):S.orders;
-  if(!orders.length)return;
-  _counterSeedDone=true;
-  const maxNum=Math.max(...orders.map(o=>o.num||0),0);
-  runTransaction(ref(db,'publicCounters/orderNum'),n=>Math.max(n||0,maxNum)).catch(e=>console.error('order counter seed',e));
+function renderMaintenance(){
+  const banner=document.getElementById('maintenanceBanner'),text=document.getElementById('maintenanceText'),resume=document.getElementById('maintenanceResume');
+  if(!banner||!text||!resume)return;
+  const active=S.maintenance?.enabled===true;banner.hidden=!active;
+  text.textContent=active?(S.maintenance.reason||'Новые действия временно остановлены.'):'Новые действия временно остановлены.';
+  resume.hidden=!(active&&S.role==='admin');
 }
-function _maybeRunSelfHeal(){
-  if(_selfHealDone||!_ordersLoaded||!_tablesLoaded)return;
-  _selfHealDone=true;
-  const todayKey=(()=>{const d=new Date();return d.getFullYear()+'-'+(d.getMonth()+1).toString().padStart(2,'0')+'-'+d.getDate().toString().padStart(2,'0');})();
-  const orphanUpd={};const seenSession=new Set();
-  S.orders.forEach(o=>{
-    if(!o.date||!o.table)return;
-    const sid=o.sid||'default';const sessKey=`${o.date}_${o.table}_${sid}`;
-    if(seenSession.has(sessKey))return;seenSession.add(sessKey);
-    const tk=`${o.date}_${o.table}`;const meta=S.tablesMeta[tk];
-    const sidKnown=meta&&(meta.sid===sid||(meta.closedSessions||[]).some(s=>s.sid===sid));
-    if(!meta){
-      const sessOrders=S.orders.filter(x=>x.date===o.date&&String(x.table)===String(o.table)&&(x.sid||'default')===sid);
-      const openedAt=Math.min(...sessOrders.map(x=>x.createdAt||Date.now()));
-      const isToday=o.date===todayKey;
-      orphanUpd[`tables/${tk}`]={status:isToday?'open':'closed',openedAt,date:o.date,tNum:o.table,sid,token:Math.random().toString(36).slice(2,10)+Math.random().toString(36).slice(2,6),...(isToday?{}:{closedAt:Math.max(...sessOrders.map(x=>x.doneAt||x.createdAt||Date.now()))})};
-    } else if(!sidKnown){
-      const sessOrders=S.orders.filter(x=>x.date===o.date&&String(x.table)===String(o.table)&&(x.sid||'default')===sid);
-      const openedAt=Math.min(...sessOrders.map(x=>x.createdAt||Date.now()));
-      if(!meta.sid){
-        orphanUpd[`tables/${tk}/sid`]=sid;
-        orphanUpd[`tables/${tk}/openedAt`]=openedAt;
-        if(!meta.status)orphanUpd[`tables/${tk}/status`]='open';
-        if(!meta.date)orphanUpd[`tables/${tk}/date`]=o.date;
-        if(!meta.tNum)orphanUpd[`tables/${tk}/tNum`]=o.table;
-        if(!meta.token)orphanUpd[`tables/${tk}/token`]=Math.random().toString(36).slice(2,10)+Math.random().toString(36).slice(2,6);
-      } else {
-        const closedAt=Math.max(...sessOrders.map(x=>x.doneAt||x.createdAt||Date.now()));
-        const cs=[...(meta.closedSessions||[]),{sid,openedAt,closedAt}];
-        orphanUpd[`tables/${tk}/closedSessions`]=cs;
-      }
-    }
-  });
-  if(Object.keys(orphanUpd).length){update(ref(db),orphanUpd).catch(e=>console.error('orphan recover',e));console.log('🔧 Восстановлено сессий:',Object.keys(orphanUpd).length);}
+async function toggleMaintenanceMode(){
+  if(S.role!=='admin'){fl('fErr','Режим обслуживания доступен менеджеру');return;}
+  const current=S.maintenance?.enabled===true,enable=!current;
+  const ok=await showConfirm(enable?'НАЧАТЬ ОБСЛУЖИВАНИЕ?':'ВОЗОБНОВИТЬ РАБОТУ?',enable?'Новые заказы и изменения будут остановлены. Просмотр данных останется доступен.':'Сотрудники и гости снова смогут отправлять заказы и изменять данные.',enable?'ОСТАНОВИТЬ ОПЕРАЦИИ':'ВОЗОБНОВИТЬ');
+  if(!ok)return;
+  try{
+    const result=await callService('setMaintenanceMode',{requestId:crypto.randomUUID(),enabled:enable,expectedEnabled:current,reason:'Обновление системы'});
+    S.maintenance=result.maintenance||null;renderMaintenance();fl('fOk',enable?'Операции остановлены':'Работа возобновлена');
+  }catch(error){fl('fErr',error?.message||'Не удалось изменить режим обслуживания');}
 }
-
 async function loadAll(){
-  const cutoffDate=(()=>{const d=new Date();d.setDate(d.getDate()-30);return d.getFullYear()+'-'+(d.getMonth()+1).toString().padStart(2,'0')+'-'+d.getDate().toString().padStart(2,'0');})();
+
+  onValue(ref(db,'maintenance'),snap=>{S.maintenance=snap.val();renderMaintenance();});
 
   onValue(ref(db,'orders'),(snap)=>{
     const raw=snap.val();
-    if(raw){
-      const cleanupUpd={};
-      Object.entries(raw).forEach(([orderId,o])=>{
-        if(!o.table||o.table==='undefined'||o.table===''){cleanupUpd[`orders/${orderId}`]=null;return;}
-        if(o.items&&typeof o.items==='object'&&!Array.isArray(o.items)){
-          Object.entries(o.items).forEach(([k,v])=>{if(!v||typeof v!=='object'||!v.name)cleanupUpd[`orders/${orderId}/items/${k}`]=null;});
-        }
-      });
-      if(Object.keys(cleanupUpd).length>0)update(ref(db),cleanupUpd).catch(e=>console.error('cleanup',e));
-    }
-    S.orders=raw?Object.values(raw).filter(o=>!o.date||o.date>=cutoffDate).map(normalizeOrder):[];
-    _ordersLoaded=true;_seedOrderCounter();_maybeRunSelfHeal();
+    const unreadable=[];
+    S.orders=Object.entries(raw||{}).flatMap(([key,value])=>{
+      try{
+        if(!value||typeof value!=='object'||Array.isArray(value))throw new Error('invalid order');
+        return [normalizeOrder({...value,id:value.id||key})];
+      }catch{unreadable.push(key);return [];}
+    });
+    const warning=document.getElementById('orderDataWarning');
+    warning.hidden=!unreadable.length;
+    warning.textContent=unreadable.length?`Не удалось прочитать ${unreadable.length} записей заказов. Очередь и суммы могут быть неполными. Нужна проверка данных: ${unreadable.join(', ')}. Записи не удалены.`:'';
+    _ordersLoaded=true;
     checkNewOrders(S.orders);
     renderAll();
   },(e)=>console.error(e));
 
   onValue(ref(db,'tables'),(snap)=>{
     S.tablesMeta=snap.val()||{};
-    _tablesLoaded=true;_maybeRunSelfHeal();
+    S.tablesLoaded=true;
+    _tablesLoaded=true;
     if(S.activeTab==='tables')renderTables();
     renderAll();
   });
 
-  onValue(ref(db,'config/orderNumResetAt'),(snap)=>{S.orderNumResetAt=snap.val()||0;_counterConfigLoaded=true;_seedOrderCounter();});
+  onValue(ref(db,'config/orderNumResetAt'),(snap)=>{S.orderNumResetAt=snap.val()||0;_counterConfigLoaded=true;});
 
   onValue(ref(db,'config/deliveryLog'),(snap)=>{
     const raw=snap.val()||{};
     const cutoff=Date.now()-24*60*60*1000;
-    const cleanupUpd={};
-    Object.entries(raw).forEach(([k,v])=>{if(!v||(v.at||0)<cutoff)cleanupUpd[`config/deliveryLog/${k}`]=null;});
-    if(Object.keys(cleanupUpd).length)update(ref(db),cleanupUpd).catch(e=>console.error('deliveryLog cleanup',e));
     S.deliveryLog=Object.fromEntries(Object.entries(raw).filter(([k,v])=>v&&(v.at||0)>=cutoff));
     if(window.renderDeliveryLogSidebar)window.renderDeliveryLogSidebar();
   });
 
   onValue(ref(db,'menu2'),(snap)=>{
-    const raw=snap.val();
-    if(!raw){
-      set(ref(db,'menu2'),BUILTIN_MENU).catch(e=>console.error('menu seed',e));
-    } else {
-      const cats=Array.isArray(raw)?raw:Object.values(raw);
-      S.BUILTIN_MENU_LIVE=cats.map(cat=>({...cat,items:Array.isArray(cat.items)?cat.items:Object.values(cat.items||{})}));
-      if(S.activeTab==='menu')renderMenuPage();
-    }
+    const cats=Object.values(snap.val()||{}).filter(Boolean).map(cat=>({...cat,items:Object.values(cat.items||{}).filter(Boolean)}));
+    S.menuBaseline=structuredClone(cats);
+    S.BUILTIN_MENU_LIVE=cats.map((cat,ci)=>({...cat,items:cat.items.map((item,ii)=>({...item,_originPath:ci+'/'+ii}))}));
+    if(S.activeTab==='menu')refreshMenuFromServer();
   });
 
+  onValue(ref(db,'config/quizSession'),snap=>{S.quizSession=snap.val();});
   let knownWaiterCalls=new Set();
   onValue(ref(db,'waiterCalls'),(snap)=>{
     const raw=snap.val();
     S.waiterCallsData=raw||{};
     if(S.activeTab==='calls')renderCalls();
-    const pending=Object.values(S.waiterCallsData).filter(c=>c.status==='pending');
+    const pending=Object.values(S.waiterCallsData).filter(isPendingCall);
     setBadge('bC',pending.length);
     if(!raw)return;
     Object.entries(raw).forEach(([id,call])=>{
-      if(call.status==='pending'&&!knownWaiterCalls.has(id)){
+      if(isPendingCall(call)&&!knownWaiterCalls.has(id)){
         knownWaiterCalls.add(id);
         if((S.role==='waiter'||S.role==='admin')&&!notifMuted){
           if(navigator.vibrate)navigator.vibrate([200,100,200]);
           playBeep();
           const msg=`🔔 Стол ${call.table} зовёт официанта!`;
-          if(swReg&&Notification.permission==='granted')swReg.active?.postMessage({type:'NOTIFY_NEW_ORDER',table:call.table,count:'вызов'});
-          else if(Notification.permission==='granted')new Notification('🔔 Вызов официанта!',{body:`Стол ${call.table} зовёт официанта`,icon:'icon-192.png'});
+          if(!hasRemotePush()){
+            if(swReg&&Notification.permission==='granted')swReg.active?.postMessage({type:'NOTIFY_WAITER_CALL',table:call.table});
+            else if(Notification.permission==='granted')new Notification('🔔 Вызов официанта!',{body:`Стол ${call.table} зовёт официанта`,icon:'icons/icon-192.png'});
+          }
           fl('fOk',msg);
         }
       }
@@ -161,7 +131,7 @@ document.addEventListener('click',async e=>{
   if(action==='del'&&oid){await delOrder(oid);return;}
   if(action==='edit'&&oid){openEditModal(oid,btn.dataset.bill==='1');return;}
   if(action==='closeTable'&&date&&tnum&&sid){await closeTable(date,tnum,sid);return;}
-  if(action==='reopenTable'&&date&&tnum){await reopenTable(date,tnum);return;}
+  if(action==='reopenTable'&&date&&tnum&&sid){await reopenTable(date,tnum,sid);return;}
   if(action==='renameTable'&&date&&tnum&&sid){await renameTable(date,tnum,sid);return;}
   if(action==='deleteTable'&&date&&tnum&&sid){await deleteTable(date,tnum,sid);return;}
   if(action==='logTable'&&date&&tnum){await logTable(date,tnum);return;}
@@ -186,8 +156,7 @@ async function resetOrderCounter(){
     d.querySelector('#_rcNo').onclick=()=>{document.body.removeChild(d);resolve(false);};
   });
   if(!ok)return;
-  await set(ref(db,'config/orderNumResetAt'),Date.now());
-  await set(ref(db,'publicCounters/orderNum'),0);
+  await callService('resetStaffCounter',{requestId:crypto.randomUUID()});
   fl('fOk','✅ Счётчик сброшен — следующий заказ будет #1');
 }
 window.resetOrderCounter=resetOrderCounter;
@@ -213,6 +182,7 @@ Object.assign(window,{
   addEditItem,removeEditRow,updateEditRow,
   toggleSettingsMenu,restructureLemonades,
   buildQuickTableBtns,
+  toggleMaintenanceMode,renderMaintenance,
 });
 
 // ─── BOOT ─────────────────────────────────────────────

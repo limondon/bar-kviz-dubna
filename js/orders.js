@@ -1,193 +1,102 @@
 import{S}from'./state.js';
-import{db,ref,push,update,set,remove}from'./firebase.js';
+import{callService}from'./firebase.js';
 
-function logDelivery(o,it){
-  const key=push(ref(db,'config/deliveryLog')).key;
-  const entry={at:Date.now(),table:o.table,orderNum:o.num,name:it.name,qty:it.qty};
-  update(ref(db,'config/deliveryLog/'+key),entry).catch(e=>console.error('logDelivery',e));
-}
-import{parseItems,aggStatus,esc,escAttr,fl,safeDb,showConfirm,todayStr,lockScroll,unlockScroll,itemKey}from'./utils.js';
-import{applyStockDeltas,deductMenuStock}from'./stock.js';
-import{getTMeta}from'./tables.js';
+import{parseItems,todayStr,esc,escAttr,fl,showConfirm,lockScroll,unlockScroll}from'./utils.js';
 import{buildQuickTableBtns,isInstantItem}from'./render.js';
-import{nextOrderNum}from'./counters.js';
 
 // ─── ADD ORDER ────────────────────────────────────────
-export async function addOrder(){
-  const btn=document.querySelector('.btn-add');
-  if(btn&&btn.disabled)return;
-  if(btn){btn.disabled=true;btn.style.opacity='.5';}
-  try{
-    const tableRaw=document.getElementById('inpTable').value.trim().toUpperCase();
-    const rawItems=document.getElementById('inpItems').value.trim();
-    const note=document.getElementById('inpNote').value.trim();
-    const prio=document.getElementById('inpPriority').value;
-    if(!tableRaw){fl('fInfo','Укажите номер стола!');}
-    else if(!rawItems){fl('fInfo','Введите позиции!');}
-    else{
-      const tNum=tableRaw;const items=parseItems(rawItems);
-      if(!items.length){fl('fInfo','Не удалось распознать позиции!');}
-      else{
-        const num=await nextOrderNum();
-        const date=todayStr();
-        const existingMeta=getTMeta(date,tNum);
-        if(existingMeta.status==='closed'){
-          const newSid=Date.now().toString(36);
-          existingMeta.sessions=existingMeta.sessions||[];
-          existingMeta.sessions.push({sid:existingMeta.sid,closedAt:existingMeta.closedAt,openedAt:existingMeta.openedAt});
-          existingMeta.sid=newSid;existingMeta.status='open';existingMeta.openedAt=Date.now();
-          delete existingMeta.closedAt;
-        }
-        const sid=existingMeta.sid||(existingMeta.sid=Date.now().toString(36));
-        const newRef=push(ref(db,'orders'));
-        const itemsObj={};items.forEach(it=>itemsObj[it.id]=it);
-        const newOrder={id:newRef.key,table:tNum,items:itemsObj,note,priority:prio,status:'new',createdAt:Date.now(),num,date,sid};
-        await deductMenuStock(items);
-        const ok=await safeDb(update(ref(db,'orders/'+newRef.key),newOrder),'❌ Не удалось создать заказ — проверь интернет');
-        if(!ok){await applyStockDeltas(items.map(it=>({name:it.name,delta:-it.qty})));return;}
-        await safeDb(update(ref(db,'tables/'+date+'_'+tNum),existingMeta));
-        fl('fOk','✅ Заказ #'+num+' — Стол '+tNum+' ('+items.length+' поз.)');
-        ['inpTable','inpItems','inpNote'].forEach(id=>document.getElementById(id).value='');
-        document.getElementById('inpPriority').value='normal';
-        buildQuickTableBtns();
-        if(S.role==='waiter')window.sw('queue');
-      }
-    }
-  }catch(e){
-    console.error('addOrder',e);
-    fl('fErr',e?.message||'Ошибка создания заказа');
-  }finally{if(btn){btn.disabled=false;btn.style.opacity='';}}
+let pendingCreate=null;
+function syncPendingForm(){
+  const locked=!!pendingCreate;S.pendingStaffOrder=locked;
+  document.getElementById('staffOrderFields').inert=locked;
+  for(const id of ['inpTable','inpItems','inpNote','inpPriority'])document.getElementById(id).disabled=locked;
+  document.querySelector('.btn-add').textContent=locked?'ПРОВЕРИТЬ ОТПРАВКУ':'ДОБАВИТЬ ЗАКАЗ';
+  document.getElementById('staffOrderStatus').textContent=locked?'Предыдущая отправка ещё не подтверждена. Нажмите «Проверить отправку»: повтор не создаст второй заказ.':'';
 }
+function restorePendingForm(){
+  if(!pendingCreate)return;
+  document.getElementById('inpTable').value=pendingCreate.table;
+  document.getElementById('inpItems').value=pendingCreate.items.map(i=>`${i.qty} x ${i.name}`).join('\n');
+  document.getElementById('inpNote').value=pendingCreate.note;
+  document.getElementById('inpPriority').value=pendingCreate.priority;
+}
+export async function addOrder(){
+  const btn=document.querySelector('.btn-add');if(btn?.disabled)return;
+  if(btn)btn.disabled=true;
+  try{
+    restorePendingForm();
+    if(!pendingCreate){
+      const table=document.getElementById('inpTable').value.trim().toUpperCase();
+      const items=parseItems(document.getElementById('inpItems').value.trim());
+      if(!table||!items.length)throw new Error('Укажите стол и позиции');
+      if(!S.tablesLoaded)throw new Error('Дождитесь загрузки столов перед отправкой заказа.');
+      const date=todayStr(),meta=S.tablesMeta[date+'_'+table];
+      const expectedSession=meta?{sid:meta.sid||'default',status:meta.status==='closed'?'closed':'open'}:null;
+      pendingCreate={requestId:crypto.randomUUID(),table,date,expectedSession,items,note:document.getElementById('inpNote').value.trim(),priority:document.getElementById('inpPriority').value};
+      try{sessionStorage.setItem('bar_pending_staff_order',JSON.stringify(pendingCreate));}
+      catch{pendingCreate=null;throw new Error('Браузер не сохраняет состояние отправки. Разрешите хранилище для сайта и повторите.');}
+    }
+    syncPendingForm();
+    const result=await callService('createStaffOrder',pendingCreate);
+    pendingCreate=null;try{sessionStorage.removeItem('bar_pending_staff_order');}catch{}
+    fl('fOk','✅ Заказ #'+result.num+' создан');
+    ['inpTable','inpItems','inpNote'].forEach(id=>document.getElementById(id).value='');
+    document.getElementById('inpPriority').value='normal';buildQuickTableBtns();
+    if(S.role==='waiter')window.sw('queue');
+  }catch(e){
+    if(['functions/invalid-argument','functions/failed-precondition','functions/permission-denied','functions/aborted'].includes(e.code)){pendingCreate=null;try{sessionStorage.removeItem('bar_pending_staff_order');}catch{}}
+    const maintenance=e.code==='functions/unavailable'&&/режим обслуживания/i.test(e.message||'');
+    fl('fErr',pendingCreate?(maintenance?e.message+' После возобновления работы нажмите ещё раз.':'Не удалось подтвердить заказ. Нажмите ещё раз для проверки отправки.'):e.message);
+  }finally{syncPendingForm();if(btn)btn.disabled=false;}
+}
+try{
+  const saved=JSON.parse(sessionStorage.getItem('bar_pending_staff_order')||'null');
+  if(saved&&typeof saved.table==='string'&&typeof saved.requestId==='string'&&Array.isArray(saved.items)&&saved.items.length&&saved.items.every(i=>i&&typeof i.name==='string'&&Number.isInteger(i.qty)))pendingCreate=saved;
+}catch{}
+restorePendingForm();syncPendingForm();
 
 // ─── ITEM ACTIONS ─────────────────────────────────────
+const updating=new Set();
+async function updateItems(o,changes){
+  if(updating.has(o.id)||!changes.length)return false;
+  updating.add(o.id);
+  try{await callService('updateStaffItems',{requestId:crypto.randomUUID(),orderId:o.id,changes});return true;}
+  catch(e){fl('fErr',e.message||'Не удалось подтвердить статус');return false;}
+  finally{updating.delete(o.id);}
+}
 export async function barItemAction(orderId,itemFbKey,newStatus){
-  const o=S.orders.find(x=>x.id===orderId);if(!o)return;
-  const it=o.items.find(x=>(x._fbKey||x.id)===itemFbKey);if(!it)return;
-  it.status=newStatus;
-  if(newStatus==='making')it.makingAt=Date.now();
-  if(newStatus==='ready')it.readyAt=Date.now();
-  if(newStatus==='new'){delete it.makingAt;delete it.readyAt;}
-  const prev=o.status;o.status=aggStatus(o.items);
-  if(o.status==='ready'&&prev!=='ready')fl('fOk','🟢 Стол '+o.table+' — всё готово! Официант, забирай!');
-  const fbKey=it._fbKey||it.id;const upd={};
-  upd[`orders/${orderId}/items/${fbKey}/status`]=newStatus;
-  if(newStatus==='making')upd[`orders/${orderId}/items/${fbKey}/makingAt`]=it.makingAt;
-  if(newStatus==='ready')upd[`orders/${orderId}/items/${fbKey}/readyAt`]=it.readyAt;
-  if(newStatus==='new'){upd[`orders/${orderId}/items/${fbKey}/makingAt`]=null;upd[`orders/${orderId}/items/${fbKey}/readyAt`]=null;}
-  await safeDb(update(ref(db),upd),'❌ Не удалось обновить статус');
+  const o=S.orders.find(x=>x.id===orderId),it=o?.items.find(x=>(x._fbKey||x.id)===itemFbKey);if(!it)return;
+  await updateItems(o,[{id:it.id,from:it.status,to:newStatus}]);
 }
-
 export async function waiterDeliverItem(orderId,itemFbKey){
-  const o=S.orders.find(x=>x.id===orderId);if(!o)return;
-  const it=o.items.find(x=>(x._fbKey||x.id)===itemFbKey);if(!it)return;
-  if(it.status==='done')return;
-  if(it.status!=='ready'&&!isInstantItem(it.name))return;
-  it.status='done';it.doneAt=Date.now();
-  o.status=aggStatus(o.items);
-  const fbKey=it._fbKey||it.id;
-  const upd={[`orders/${orderId}/items/${fbKey}/status`]:'done',[`orders/${orderId}/items/${fbKey}/doneAt`]:it.doneAt};
-  if(o.status==='done'){o.doneAt=Date.now();upd[`orders/${orderId}/doneAt`]=o.doneAt;}
-  await safeDb(update(ref(db),upd),'❌ Не удалось отметить доставку');
-  logDelivery(o,it);
-  fl('fOk','✅ '+it.qty+'× '+it.name+' → Стол '+o.table);
+  const o=S.orders.find(x=>x.id===orderId),it=o?.items.find(x=>(x._fbKey||x.id)===itemFbKey);if(!it||it.status==='done')return;
+  if(await updateItems(o,[{id:it.id,from:it.status,to:'done'}]))fl('fOk','Выдача подтверждена — стол '+o.table);
 }
-
 export async function waiterDeliverAll(orderId){
   const o=S.orders.find(x=>x.id===orderId);if(!o)return;
-  let count=0;const upd={};const delivered=[];
-  o.items.forEach(it=>{
-    if(it.status==='done')return;
-    if(it.status==='ready'||isInstantItem(it.name)){
-      it.status='done';it.doneAt=Date.now();count++;delivered.push(it);
-      const fbKey=it._fbKey||it.id;
-      upd[`orders/${orderId}/items/${fbKey}/status`]='done';
-      upd[`orders/${orderId}/items/${fbKey}/doneAt`]=it.doneAt;
-    }
-  });
-  o.status=aggStatus(o.items);
-  if(o.status==='done'){o.doneAt=Date.now();upd[`orders/${orderId}/doneAt`]=o.doneAt;}
-  await safeDb(update(ref(db),upd),'❌ Не удалось отметить доставку');
-  delivered.forEach(it=>logDelivery(o,it));
-  fl('fOk','✅ '+count+' позиц. доставлены — Стол '+o.table);
+  const items=o.items.filter(it=>it.status!=='done'&&(it.status==='ready'||isInstantItem(it.name)));
+  if(await updateItems(o,items.map(it=>({id:it.id,from:it.status,to:'done'}))))fl('fOk',`Выдано ${items.length} поз. — стол ${o.table}`);
 }
 
 export async function reopenOrder(id){
   const o=S.orders.find(x=>x.id===id);if(!o)return;
-  const upd={[`orders/${id}/status`]:'new',[`orders/${id}/doneAt`]:null};
-  o.items.forEach(it=>{
-    it.status='new';delete it.makingAt;delete it.readyAt;delete it.doneAt;
-    const fbKey=it._fbKey||it.id;
-    upd[`orders/${id}/items/${fbKey}/status`]='new';
-    upd[`orders/${id}/items/${fbKey}/makingAt`]=null;
-    upd[`orders/${id}/items/${fbKey}/readyAt`]=null;
-    upd[`orders/${id}/items/${fbKey}/doneAt`]=null;
-  });
-  o.status='new';delete o.doneAt;
-  await update(ref(db),upd);
+  await updateItems(o,o.items.filter(it=>it.status!=='new').map(it=>({id:it.id,from:it.status,to:'new'})));
 }
 
+const deleting=new Set();
 export async function delOrder(id){
+  if(deleting.has(id))return;
   const o=S.orders.find(x=>x.id===id);
-  const ok=await showConfirm('🗑 Удалить заказ?',`Заказ #${o?.num||'?'} будет удалён безвозвратно.`);
+  const ok=await showConfirm('Удалить заказ?',`Заказ #${o?.num||'?'} будет удалён. На склад вернутся только позиции, которые ещё не начали готовить.`);
   if(!ok)return;
-  let stockReturned=false;
-  try{
-    if(o&&Array.isArray(o.items)){
-      await applyStockDeltas(o.items.map(it=>({name:it.name,delta:-it.qty})));
-      stockReturned=true;
-    }
-    await remove(ref(db,'orders/'+id));
-  }catch(e){
-    if(stockReturned&&o&&Array.isArray(o.items)){
-      await applyStockDeltas(o.items.map(it=>({name:it.name,delta:it.qty}))).catch(err=>console.error('stock rollback failed:',err));
-    }
-    console.error('delOrder error:',e);
-    fl('fInfo','❌ Ошибка удаления: '+(e?.message||e));
-  }
+  deleting.add(id);
+  try{await callService('deleteStaffOrder',{requestId:'delete_'+id,orderId:id});}
+  catch(e){fl('fErr',e.message||'Не удалось удалить заказ');}
+  finally{deleting.delete(id);}
 }
 
 // ─── EDIT ORDER MODAL ─────────────────────────────────
-let _editItems=[];
-
-function buildStockDeltas(beforeItems,afterItems){
-  const map=new Map();
-  const add=(it,sign)=>{
-    const key=itemKey(it.name);
-    if(!key)return;
-    const qty=Math.max(0,Number(it.qty)||0);
-    if(!qty)return;
-    const row=map.get(key)||{name:it.name,delta:0};
-    row.delta+=sign*qty;
-    map.set(key,row);
-  };
-  (beforeItems||[]).forEach(it=>add(it,-1));
-  (afterItems||[]).forEach(it=>add(it,1));
-  return [...map.values()].filter(it=>it.delta!==0);
-}
-function itemsToDbObject(items){
-  const itemsObj={};
-  items.forEach(it=>{
-    const k=it._fbKey||it.id;
-    const{_fbKey,...clean}=it;
-    itemsObj[k]=clean;
-  });
-  return itemsObj;
-}
-function orderSnapshot(o){
-  return {
-    items:Object.fromEntries(o.items.map(it=>{
-      const{_fbKey,...clean}=it;
-      return[it._fbKey||it.id,clean];
-    })),
-    note:o.note||'',
-    priority:o.priority||'normal',
-    editedAt:Date.now(),
-    editedBy:S.role||'unknown'
-  };
-}
-async function rollbackStockDeltas(stockDeltas){
-  if(stockDeltas.length)await applyStockDeltas(stockDeltas.map(it=>({name:it.name,delta:-it.delta})));
-}
+let _editItems=[],_editOriginal=[],_editVersion=0,_savingEdit=false,_editRequest=null;
 
 export function openEditModal(orderId,billMode=false){
   const o=S.orders.find(x=>x.id===orderId);if(!o)return;
@@ -200,14 +109,15 @@ export function openEditModal(orderId,billMode=false){
   const sub=document.getElementById('editSub');
   let itemsToEdit;
   if(billMode){
-    sub.innerHTML=`Заказ #${esc(o.num)} · Стол ${esc(o.table)}<br><span class="edit-sub-accent">📋 Правка чека — позиции сохранятся как доставленные</span>`;
+    sub.innerHTML=`Заказ #${esc(o.num)} · Стол ${esc(o.table)}<br><span class="edit-sub-accent">📋 Цены и статусы сохранятся. Начатые позиции доступны только для просмотра.</span>`;
     itemsToEdit=(o.items||[]);
   } else {
     itemsToEdit=activeItems;
     if(doneItems.length)sub.innerHTML=`Заказ #${esc(o.num)} · Стол ${esc(o.table)}<br><span class="edit-sub-muted">✅ Доставлено: ${doneItems.map(it=>esc(it.qty)+'× '+esc(it.name)).join(', ')}</span>`;
     else sub.textContent='Заказ #'+o.num+' · Стол '+o.table;
   }
-  renderEditItemsList(itemsToEdit.map(it=>({qty:it.qty,name:it.name})));
+  _editOriginal=structuredClone(o.items);_editVersion=o.version||0;_editRequest=null;
+  renderEditItemsList(itemsToEdit.map(it=>({...it})));
   document.getElementById('editOverlay').classList.remove('hidden');
   lockScroll();
 }
@@ -216,9 +126,9 @@ function renderEditItemsList(items){
   const el=document.getElementById('editItemsList');if(!el)return;
   el.innerHTML=items.map((it,i)=>`
     <div class="edit-items-row" id="edit-row-${i}">
-      <input class="edit-qty-input" type="number" value="${escAttr(it.qty)}" min="1" max="99" onchange="updateEditRow(${i},'qty',+this.value)">
-      <input class="edit-name-input" type="text" value="${escAttr(it.name)}" onchange="updateEditRow(${i},'name',this.value)">
-      <button class="edit-remove-row" onclick="removeEditRow(${i})">✕</button>
+      <input class="edit-qty-input" type="number" value="${escAttr(it.qty)}" min="1" max="99" ${it.status&&it.status!=='new'||it.stockConsumed?'readonly':''} aria-label="Количество" onchange="updateEditRow(${i},'qty',+this.value)">
+      <input class="edit-name-input" type="text" value="${escAttr(it.name)}" ${it.status&&it.status!=='new'||it.stockConsumed?'readonly':''} aria-label="Название" onchange="updateEditRow(${i},'name',this.value)">
+      <button class="edit-remove-row" ${it.status&&it.status!=='new'||it.stockConsumed?'disabled':''} aria-label="Удалить позицию" onclick="removeEditRow(${i})">✕</button>
     </div>`).join('');
   syncEditItemsToTextarea(items);
 }
@@ -242,37 +152,20 @@ export function closeEditModal(){
 }
 
 export async function saveEditOrder(){
-  if(!S.editOrderId){fl('fInfo','❌ ID заказа не найден');return;}
-  const o=S.orders.find(x=>x.id===S.editOrderId);
-  if(!o){fl('fInfo','❌ Заказ не найден');return;}
-  const rawItems=document.getElementById('editItems').value.trim();
-  const note=document.getElementById('editNote').value.trim();
-  const prio=document.getElementById('editPriority').value;
-  if(!rawItems){fl('fInfo','Введите позиции!');return;}
-  const originalItems=Array.isArray(o.items)?o.items:[];
-  let mergedItems,stockDeltas;
-  if(S.editBillMode){
-    const parsed=parseItems(rawItems);
-    mergedItems=parsed.map(it=>({...it,status:'done',doneAt:Date.now()}));
-    stockDeltas=buildStockDeltas(originalItems,mergedItems);
-  } else {
-    const doneItems=originalItems.filter(it=>it.status==='done');
-    const newParsed=parseItems(rawItems);
-    mergedItems=[...doneItems,...newParsed];
-    stockDeltas=buildStockDeltas(originalItems.filter(it=>it.status!=='done'),newParsed);
-  }
-  const itemsObj=itemsToDbObject(mergedItems);
-  let stockApplied=false;
+  if(_savingEdit||!S.editOrderId)return;
+  const o=S.orders.find(x=>x.id===S.editOrderId);if(!o)return;
+  _savingEdit=true;
   try{
-    if(stockDeltas.length){await applyStockDeltas(stockDeltas);stockApplied=true;}
-    const snapshot=orderSnapshot(o);
-    await set(ref(db,'orders/'+S.editOrderId+'/history/'+Date.now()),snapshot);
-    await set(ref(db,'orders/'+S.editOrderId+'/items'),itemsObj);
-    await update(ref(db,'orders/'+S.editOrderId),{note,priority:prio});
+    if(!_editRequest){
+      const rows=_editItems.filter(i=>i.name.trim());
+      if(!rows.length)throw new Error('Введите позиции');
+      const done=S.editBillMode?[]:_editOriginal.filter(i=>i.status==='done');
+      _editRequest={requestId:crypto.randomUUID(),orderId:o.id,expectedVersion:_editVersion,expectedItems:_editOriginal,items:[...done,...rows],note:document.getElementById('editNote').value.trim(),priority:document.getElementById('editPriority').value};
+    }
+    await callService('editStaffOrder',_editRequest);
     closeEditModal();fl('fOk','✅ Заказ #'+o.num+' обновлён');
   }catch(e){
-    if(stockApplied)await rollbackStockDeltas(stockDeltas).catch(err=>console.error('stock rollback failed:',err));
-    console.error('saveEditOrder error:',e);
-    fl('fInfo','❌ Ошибка: '+e.message);
-  }
+    if(['functions/invalid-argument','functions/failed-precondition','functions/aborted','functions/not-found','functions/permission-denied'].includes(e.code))_editRequest=null;
+    fl('fErr',e.message||'Не удалось подтвердить изменение. Повторите сохранение.');
+  }finally{_savingEdit=false;}
 }

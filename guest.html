@@ -2,7 +2,7 @@
 <html lang="ru">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Кальянная 1708 — Меню</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -67,11 +67,11 @@
       <div class="cart-meta">СТОЛ <span id="cartTableLbl">—</span> · <span id="cartBarLbl">КАЛЬЯННАЯ 1708</span></div>
     </div>
     <div class="cart-list" id="cartList"></div>
-    <div id="conflictBox"></div>
+    <div id="conflictBox" role="alert" aria-live="polite"></div>
     <div class="gold-rule" style="margin:0 20px;"></div>
     <div class="cart-notes">
-      <div class="notes-lbl">Примечания к заказу</div>
-      <textarea class="notes-inp" id="orderNote" placeholder="Аллергии, пожелания, особые запросы…"></textarea>
+      <label class="notes-lbl" for="orderNote">Примечания к заказу</label>
+      <textarea class="notes-inp" id="orderNote" maxlength="1000" placeholder="Аллергии, пожелания, особые запросы…"></textarea>
     </div>
     <div class="totals">
       <div class="total-row"><div class="total-lbl">Сумма</div><div class="total-val" id="cartSubtotal">0 ₽</div></div>
@@ -96,7 +96,7 @@
 
 </div>
 
-<div class="flash" id="flash"></div>
+<div class="flash" id="flash" role="status" aria-live="polite"></div>
 
 <script type="module" src="js/guest.js"></script>
 </body>

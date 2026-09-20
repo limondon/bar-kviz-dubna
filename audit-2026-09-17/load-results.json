@@ -1,0 +1,89 @@
+{
+  "at": "2026-09-17T20:16:33.156Z",
+  "runtime": "v22.23.2",
+  "environment": "local Firebase Emulator; synthetic history; not production capacity",
+  "profiles": [
+    {
+      "historyOrders": 0,
+      "seedBytes": 291,
+      "concurrentRequests": 14,
+      "elapsedMs": 20070,
+      "p50Ms": 18756,
+      "p95Ms": 20064,
+      "errors": [],
+      "integrity": "passed: orders, unique numbers, stock, double cancellation, edit, unchanged history"
+    },
+    {
+      "historyOrders": 1000,
+      "seedBytes": 667023,
+      "concurrentRequests": 14,
+      "elapsedMs": 24005,
+      "p50Ms": 16251,
+      "p95Ms": 24004,
+      "errors": [],
+      "integrity": "passed: orders, unique numbers, stock, double cancellation, edit, unchanged history"
+    },
+    {
+      "historyOrders": 5000,
+      "seedBytes": 3387237,
+      "concurrentRequests": 14,
+      "elapsedMs": 30273,
+      "p50Ms": 30268,
+      "p95Ms": 30273,
+      "errors": [
+        {
+          "request": 0,
+          "status": "HTTP_500_MISSING_RESULT"
+        },
+        {
+          "request": 1,
+          "status": "HTTP_500_MISSING_RESULT"
+        },
+        {
+          "request": 2,
+          "status": "HTTP_500_MISSING_RESULT"
+        },
+        {
+          "request": 3,
+          "status": "HTTP_500_MISSING_RESULT"
+        },
+        {
+          "request": 4,
+          "status": "HTTP_500_MISSING_RESULT"
+        },
+        {
+          "request": 5,
+          "status": "HTTP_500_MISSING_RESULT"
+        },
+        {
+          "request": 7,
+          "status": "HTTP_500_MISSING_RESULT"
+        },
+        {
+          "request": 8,
+          "status": "HTTP_500_MISSING_RESULT"
+        },
+        {
+          "request": 9,
+          "status": "HTTP_500_MISSING_RESULT"
+        },
+        {
+          "request": 10,
+          "status": "HTTP_500_MISSING_RESULT"
+        },
+        {
+          "request": 11,
+          "status": "HTTP_500_MISSING_RESULT"
+        },
+        {
+          "request": 12,
+          "status": "HTTP_500_MISSING_RESULT"
+        },
+        {
+          "request": 13,
+          "status": "HTTP_500_MISSING_RESULT"
+        }
+      ]
+    }
+  ]
+}

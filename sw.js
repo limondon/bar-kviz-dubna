@@ -1,4 +1,4 @@
-const CACHE_NAME = 'bar-v21';
+const CACHE_NAME = 'bar-v35';
 const ASSETS = [
   './',
   'index.html',
@@ -7,9 +7,11 @@ const ASSETS = [
   'style.css',
   'manifest.json',
   'js/main.js',
+  'js/archive.js',
   'js/state.js',
   'js/firebase.js',
   'js/guest.js',
+  'js/guest-api.js',
   'js/counters.js',
   'js/utils.js',
   'js/render.js',
@@ -31,7 +33,7 @@ self.addEventListener('install', e => {
   e.waitUntil(
     caches.open(CACHE_NAME).then(cache => cache.addAll(ASSETS))
   );
-  self.skipWaiting();
+  // Activate on the next clean visit; do not replace code under an active order.
 });
 
 // ═══════════════════════════
@@ -40,7 +42,7 @@ self.addEventListener('install', e => {
 self.addEventListener('activate', e => {
   e.waitUntil(
     caches.keys().then(keys =>
-      Promise.all(keys.filter(k => k !== CACHE_NAME).map(k => caches.delete(k)))
+      Promise.all(keys.filter(k => /^bar-v\d+$/.test(k) && k !== CACHE_NAME).map(k => caches.delete(k)))
     )
   );
   self.clients.claim();
@@ -50,29 +52,38 @@ self.addEventListener('activate', e => {
 //  FETCH — сначала сеть, потом кэш
 // ═══════════════════════════
 self.addEventListener('fetch', e => {
-  // Не кэшируем Firebase запросы
-  if (e.request.url.includes('firebase') || e.request.url.includes('gstatic')) return;
-  e.respondWith(
-    fetch(e.request).catch(() => caches.match(e.request))
-  );
+  const url = new URL(e.request.url);
+  const scope = new URL(self.registration.scope);
+  // Only our static GET resources belong in the application cache.
+  if (e.request.method !== 'GET' || url.origin !== scope.origin) return;
+  const relative = url.pathname.startsWith(scope.pathname) ? url.pathname.slice(scope.pathname.length) : null;
+  if (relative === null || !ASSETS.includes(relative || './')) return;
+  const key = new URL(relative || './', scope).href;
+  e.respondWith(fetch(e.request).catch(async () => {
+    const cache = await caches.open(CACHE_NAME);
+    return await cache.match(key) || new Response('Нет соединения. Подключитесь к сети и обновите страницу.', {
+      status: 503, headers: {'Content-Type': 'text/plain; charset=utf-8'}
+    });
+  }));
 });
 
 // ═══════════════════════════
 //  PUSH NOTIFICATIONS
 // ═══════════════════════════
 self.addEventListener('push', e => {
-  const data = e.data ? e.data.json() : {};
+  let data={};
+  try{data=e.data?e.data.json():{};}catch{data={};}
   const title = data.title || '🍺 Новый заказ!';
   const options = {
     body: data.body || 'Новый заказ в очереди',
     icon: 'icons/icon-192.png',
     badge: 'icons/icon-192.png',
     vibrate: [150, 80, 150, 80, 150],
-    tag: 'new-order',           // заменяет предыдущее уведомление того же типа
+    tag: data.tag || 'new-order',
     renotify: true,             // вибрирует даже если уведомление уже есть
     requireInteraction: false,
     silent: false,
-    data: { url: './' }
+    data: { url: data.url || './' }
   };
   e.waitUntil(self.registration.showNotification(title, options));
 });
@@ -91,7 +102,7 @@ self.addEventListener('notificationclick', e => {
         }
       }
       // Иначе открываем новое окно
-      return clients.openWindow('./');
+      return clients.openWindow(e.notification.data?.url||'./');
     })
   );
 });
@@ -110,6 +121,10 @@ self.addEventListener('message', e => {
       tag: 'new-order',
       renotify: true,
       silent: false,
+    });
+  } else if(e.data&&e.data.type==='NOTIFY_WAITER_CALL'){
+    self.registration.showNotification('🔔 Вызов официанта!',{
+      body:`Стол ${e.data.table} зовёт официанта`,icon:'icons/icon-192.png',badge:'icons/icon-192.png',tag:'waiter-call',renotify:true,silent:false,data:{url:'./?push=calls'}
     });
   }
 });

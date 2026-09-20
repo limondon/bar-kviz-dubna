@@ -1,50 +1,96 @@
 {
   "rules": {
-    "menu2": {
-      ".read": "auth != null",
-      ".write": "auth != null && auth.token.email === 'manager@1708.local'",
-      "$catId": {
-        "items": {
-          "$itemId": {
-            "stock": {
-              ".write": "auth != null && (auth.token.email === 'manager@1708.local' || (data.isNumber() && newData.isNumber() && newData.val() >= 0 && newData.val() <= data.val()))"
-            }
+    ".read": false,
+    ".write": false,
+    "live": {
+      "menu2": {
+        ".read": "auth != null",
+        ".write": false
+      },
+      "config": {
+        ".read": "auth != null && (auth.token.role === 'admin' || auth.token.email === 'manager@1708.local')",
+        ".write": false,
+        "deliveryLog": {
+          ".read": "auth != null && (auth.token.role === 'admin' || auth.token.role === 'waiter' || auth.token.role === 'barman' || auth.token.email === 'manager@1708.local')"
+        },
+        "orderNumResetAt": {
+          ".read": "auth != null && (auth.token.role === 'admin' || auth.token.role === 'waiter' || auth.token.role === 'barman' || auth.token.email === 'manager@1708.local')"
+        },
+        "quizSession": {
+          ".read": "auth != null && (auth.token.role === 'admin' || auth.token.role === 'waiter' || auth.token.role === 'barman' || auth.token.email === 'manager@1708.local')"
+        }
+      },
+      "tables": {
+        ".read": "auth != null && (auth.token.role === 'admin' || auth.token.role === 'waiter' || auth.token.role === 'barman' || auth.token.email === 'manager@1708.local')",
+        ".write": false,
+        "$tableId": {
+          "note": {
+            ".write": false,
+            ".validate": "newData.isString() && newData.val().length <= 1000"
+          },
+          "loggedAt": {
+            ".write": false,
+            ".validate": "newData.isNumber()"
           }
         }
+      },
+      "orders": {
+        ".read": "auth != null && (auth.token.role === 'admin' || auth.token.role === 'waiter' || auth.token.role === 'barman' || auth.token.email === 'manager@1708.local')",
+        ".write": false
+      },
+      "waiterCalls": {
+        ".read": "auth != null && (auth.token.role === 'admin' || auth.token.role === 'waiter' || auth.token.role === 'barman' || auth.token.email === 'manager@1708.local')",
+        ".write": false,
+        "$callId": {
+          "status": {
+            ".write": false,
+            ".validate": "newData.val() === 'done'"
+          }
+        }
+      },
+      "quiz_tokens": {
+        ".read": "auth != null && (auth.token.role === 'admin' || auth.token.role === 'waiter' || auth.token.role === 'barman' || auth.token.email === 'manager@1708.local')",
+        ".write": false
+      },
+      "publicCounters": {
+        "orderNum": {
+          ".read": "auth != null && (auth.token.role === 'admin' || auth.token.role === 'waiter' || auth.token.role === 'barman' || auth.token.email === 'manager@1708.local')",
+          ".write": false,
+          ".validate": "newData.isNumber() && newData.val() >= 0"
+        }
+      },
+      "guestOperations": {
+        ".read": false,
+        ".write": false
+      },
+      "guestRateLimits": {
+        ".read": false,
+        ".write": false
+      },
+      "staffOperations": {
+        ".read": false,
+        ".write": false
+      },
+      "maintenance": {
+        ".read": "auth != null && (auth.token.role === 'admin' || auth.token.role === 'waiter' || auth.token.role === 'barman' || auth.token.email === 'manager@1708.local')",
+        ".write": false
+      },
+      "pushSubscriptions": {
+        ".read": false,
+        ".write": false
+      },
+      "pushOutbox": {
+        ".read": false,
+        ".write": false
       }
     },
-    "config": {
-      ".read": "auth != null && auth.token.email === 'manager@1708.local'",
-      ".write": "auth != null && auth.token.email === 'manager@1708.local'"
+    "archive": {
+      ".read": false,
+      ".write": false
     },
-    "tables": {
-      ".read": "auth != null",
-      "$tableId": {
-        ".write": "auth != null && (auth.token.email === 'manager@1708.local' || (!data.exists() && newData.child('autoOpened').val() === true && newData.child('status').val() === 'open'))"
-      }
-    },
-    "orders": {
-      ".read": "auth != null && auth.token.email === 'manager@1708.local'",
-      "$orderId": {
-        ".write": "auth != null && (auth.token.email === 'manager@1708.local' || (!data.exists() && newData.child('source').val() === 'guest' && newData.child('status').val() === 'new'))"
-      }
-    },
-    "waiterCalls": {
-      ".read": "auth != null && auth.token.email === 'manager@1708.local'",
-      "$callId": {
-        ".write": "auth != null && (auth.token.email === 'manager@1708.local' || (!data.exists() && newData.child('status').val() === 'pending'))"
-      }
-    },
-    "quiz_tokens": {
-      ".read": "auth != null",
-      ".write": "auth != null && auth.token.email === 'manager@1708.local'"
-    },
-    "publicCounters": {
-      "orderNum": {
-        ".read": "auth != null",
-        ".write": "auth != null && (auth.token.email === 'manager@1708.local' || (!data.exists() && newData.val() === 1) || (data.exists() && newData.val() === data.val() + 1))",
-        ".validate": "newData.isNumber() && newData.val() >= 0"
-      }
+    "archiveOperations": {
+      ".read": false,
+      ".write": false
     }
   }
 }

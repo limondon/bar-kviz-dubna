@@ -1,4 +1,5 @@
 import{S}from'./state.js';
+import{callService}from'./firebase.js';
 import{fl}from'./utils.js';
 
 let audioCtx=null;
@@ -6,12 +7,60 @@ let audioUnlocked=false;
 export let swReg=null;
 export let notifMuted=localStorage.getItem('bar_notif_muted')==='1';
 export const knownOrderIds=new Set();
+let remotePushActive=localStorage.getItem('bar_push_active')==='1';
+const isIos=()=>/iphone|ipad|ipod/i.test(navigator.userAgent)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);
+const isStandalone=()=>matchMedia('(display-mode: standalone)').matches||navigator.standalone===true;
+const pushSupported=()=>!!(swReg&&'PushManager'in window&&swReg.pushManager);
+const applicationKey=value=>{
+  const padded=value+'='.repeat((4-value.length%4)%4),raw=atob(padded.replaceAll('-','+').replaceAll('_','/'));
+  return Uint8Array.from(raw,c=>c.charCodeAt(0));
+};
+const plainSubscription=sub=>sub?.toJSON?sub.toJSON():{endpoint:sub.endpoint,keys:sub.keys};
+async function readyRegistration(){
+  let timer;
+  try{return await Promise.race([navigator.serviceWorker.ready,new Promise((_,reject)=>{timer=setTimeout(()=>reject(new Error('Service Worker не готов')),8000);})]);}
+  finally{clearTimeout(timer);}
+}
 
 export async function registerSW(){
   if(!('serviceWorker' in navigator))return;
-  try{swReg=await navigator.serviceWorker.register('./sw.js',{scope:'./'});}
+  try{
+    swReg=await navigator.serviceWorker.register('./sw.js',{scope:'./'});
+    updateNotifBtn();
+    if(remotePushActive)syncPushRole();
+  }
   catch(e){console.warn('SW registration failed',e);}
 }
+
+async function subscribeRemotePush(){
+  if(!swReg&&navigator.serviceWorker)swReg=await navigator.serviceWorker.register('./sw.js',{scope:'./'});
+  if(!pushSupported())return false;
+  if(!swReg.active)swReg=await readyRegistration();
+  const {publicKey}=await callService('getPushPublicKey',{});
+  let subscription=await swReg.pushManager.getSubscription();
+  if(!subscription)subscription=await swReg.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:applicationKey(publicKey)});
+  await callService('registerPushSubscription',{subscription:plainSubscription(subscription),role:S.role});
+  remotePushActive=true;localStorage.setItem('bar_push_active','1');updateNotifBtn();return true;
+}
+
+async function unsubscribeRemotePush(){
+  if(!pushSupported())return;
+  const subscription=await swReg.pushManager.getSubscription();
+  if(!subscription){remotePushActive=false;localStorage.removeItem('bar_push_active');return;}
+  try{await callService('unregisterPushSubscription',{subscription:plainSubscription(subscription)});}catch(e){console.warn('Push unregister failed',e);}
+  await subscription.unsubscribe();remotePushActive=false;localStorage.removeItem('bar_push_active');updateNotifBtn();
+}
+
+export async function syncPushRole(){
+  if(!remotePushActive||notifMuted||!S.role||typeof Notification==='undefined'||Notification.permission!=='granted')return;
+  try{
+    if(!swReg&&navigator.serviceWorker)swReg=await navigator.serviceWorker.register('./sw.js',{scope:'./'});
+    if(!pushSupported())return;
+    const subscription=await swReg.pushManager.getSubscription();
+    if(subscription){await callService('registerPushSubscription',{subscription:plainSubscription(subscription),role:S.role});remotePushActive=true;updateNotifBtn();}
+  }catch(e){console.warn('Push role sync failed',e);}
+}
+export const hasRemotePush=()=>remotePushActive;
 
 export function unlockAudio(){
   if(audioUnlocked)return;
@@ -25,10 +74,11 @@ export function unlockAudio(){
 }
 document.addEventListener('touchstart',unlockAudio,{once:true,passive:true});
 document.addEventListener('click',unlockAudio,{once:true,passive:true});
+window.addEventListener('pagehide',()=>{try{audioCtx?.close();}catch{}audioCtx=null;audioUnlocked=false;});
 
 export function updateNotifBtn(){
   const btns=document.querySelectorAll('.notif-btn');
-  if(!('Notification' in window)&&!('vibrate' in navigator)){btns.forEach(b=>b.style.display='none');return;}
+  if(!('Notification' in window)&&!isIos()&&!('vibrate' in navigator)){btns.forEach(b=>b.style.display='none');return;}
   const perm=typeof Notification!=='undefined'?Notification.permission:'granted';
   btns.forEach(b=>{
     b.style.pointerEvents='auto';b.style.opacity='1';
@@ -38,7 +88,7 @@ export function updateNotifBtn(){
     } else if(notifMuted){
       b.textContent='🔕 Ув. выкл.';b.style.color='var(--muted)';
     } else if(perm==='granted'){
-      b.textContent='🔔 Ув. вкл.';b.style.color='var(--green)';
+      b.textContent=remotePushActive?'🔔 Фон вкл.':'🔔 Ув. вкл.';b.style.color='var(--green)';
     } else {
       b.textContent='🔔 Ув. вкл.';b.style.color='var(--accent)';
     }
@@ -55,19 +105,29 @@ async function requestNotificationPermission(){
 }
 
 export async function enableNotifications(){
+  if(isIos()&&!isStandalone()){
+    fl('fInfo','На iPhone сначала: Поделиться → На экран «Домой», затем откройте приложение с иконки.');return;
+  }
   const perm=typeof Notification!=='undefined'?Notification.permission:'default';
   if(perm==='denied')return;
   if(notifMuted){
+    const granted=perm==='granted'||await requestNotificationPermission();if(!granted)return;
     notifMuted=false;localStorage.setItem('bar_notif_muted','0');
-    updateNotifBtn();fl('fOk','🔔 Уведомления включены');return;
+    try{const background=await subscribeRemotePush();fl(background?'fOk':'fInfo',background?'🔔 Фоновые уведомления включены':'Уведомления включены, фоновая доставка недоступна');}
+    catch(e){console.warn('Push subscribe failed',e);fl('fInfo','Уведомления включены, фоновая доставка пока недоступна');}
+    updateNotifBtn();return;
   }
   if(perm==='granted'){
+    await unsubscribeRemotePush();
     notifMuted=true;localStorage.setItem('bar_notif_muted','1');
     updateNotifBtn();fl('fInfo','🔕 Уведомления выключены');return;
   }
   unlockAudio();
-  await requestNotificationPermission();
+  const granted=await requestNotificationPermission();
+  if(!granted)return;
   notifMuted=false;localStorage.setItem('bar_notif_muted','0');
+  try{const background=await subscribeRemotePush();fl(background?'fOk':'fInfo',background?'🔔 Фоновые уведомления включены':'Уведомления включены, фоновая доставка недоступна');}
+  catch(e){console.warn('Push subscribe failed',e);fl('fInfo','Уведомления включены, фоновая доставка пока недоступна');}
   updateNotifBtn();
 }
 
@@ -97,6 +157,7 @@ export function notifyNewOrder(order){
   if(notifMuted)return;
   if(navigator.vibrate)navigator.vibrate([150,80,150,80,150]);
   playBeep();
+  if(remotePushActive)return;
   const table=order?.table||'?';
   const count=order?.items?Object.keys(order.items).length:'';
   if(swReg&&Notification.permission==='granted'){

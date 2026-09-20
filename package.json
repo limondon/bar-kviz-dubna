@@ -4,7 +4,23 @@
   "description": "Real-time система управления заказами бара 1708.",
   "main": "sw.js",
   "scripts": {
-    "test": "playwright test"
+    "test": "node --test tests/server.test.cjs tests/rules.test.cjs tests/sw.test.cjs tests/push.test.cjs tests/legacy-audit.test.cjs tests/archive.test.cjs tests/release.test.cjs && playwright test",
+    "test:server": "node --test tests/server.test.cjs tests/rules.test.cjs tests/sw.test.cjs tests/push.test.cjs tests/legacy-audit.test.cjs tests/archive.test.cjs tests/release.test.cjs",
+    "audit:data": "node scripts/audit-legacy.cjs",
+    "test:integration": "node scripts/run-integration.cjs",
+    "test:rehearsal": "node scripts/run-integration.cjs --rehearse",
+    "test:load": "node scripts/run-integration.cjs --load",
+    "test:load:live": "node scripts/run-integration.cjs --load --live-history",
+    "emulators": "node scripts/run-integration.cjs --start",
+    "prepare:storage": "node scripts/prepare-storage-v2.cjs",
+    "verify:storage": "node scripts/verify-storage-v2.cjs",
+    "verify:rollback": "node scripts/verify-rollback.cjs",
+    "build": "node scripts/build-public.cjs",
+    "preflight:release": "node scripts/release-preflight.cjs",
+    "verify:release": "node scripts/verify-release-preflight.cjs",
+    "test:hosting": "npm run build && node scripts/run-hosting-test.cjs",
+    "test:mobile": "playwright test --config playwright.mobile.config.cjs",
+    "prepare:push": "node scripts/generate-web-push-keys.cjs"
   },
   "repository": {
     "type": "git",

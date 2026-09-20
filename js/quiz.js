@@ -1,27 +1,33 @@
-import{db,ref,update,remove}from'./firebase.js';
+import{S}from'./state.js';
+import{callService}from'./firebase.js';
 import{fl,showConfirm}from'./utils.js';
-import{genToken}from'./tables.js';
-
-const QUIZ_TABLES=[1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,'PS1','PS2'];
-
+let quizBusy=false,pendingQuiz=null;
+try{const saved=JSON.parse(sessionStorage.getItem('bar_pending_quiz')||'null');if(typeof saved?.requestId==='string')pendingQuiz=saved;}catch{}
 export async function prepareQuiz(){
-  const ok=await showConfirm('🎯 Подготовить квиз?','Будут сгенерированы QR-коды для всех столов.','ПОДГОТОВИТЬ');
-  if(!ok)return;
-  const win=window.open('','_blank');
-  if(!win){fl('fInfo','Разрешите всплывающие окна для печати');return;}
-  const base=location.href.substring(0,location.href.lastIndexOf('/')+1);
-  const upd={};const tokens={};
-  QUIZ_TABLES.forEach(t=>{const tok=genToken();tokens[t]=tok;upd['quiz_tokens/'+tok]={table:String(t),createdAt:Date.now()};});
-  await update(ref(db),upd);
-  printQuizQR(win,tokens,base);
-  fl('fOk','✅ Квиз подготовлен — QR открываются для печати');
+  if(quizBusy)return;
+  if(!await showConfirm('🎯 Подготовить квиз?','Столы квиза будут открыты, старые QR квиза заменены. Новые коды действуют 18 часов или до завершения квиза.','ПОДГОТОВИТЬ'))return;
+  if(quizBusy)return;
+  const win=window.open('','_blank');if(!win){fl('fInfo','Разрешите всплывающие окна для печати');return;}
+  quizBusy=true;
+  try{
+    if(!pendingQuiz){pendingQuiz={requestId:crypto.randomUUID()};try{sessionStorage.setItem('bar_pending_quiz',JSON.stringify(pendingQuiz));}catch{pendingQuiz=null;throw new Error('Не удалось сохранить состояние подготовки квиза');}}
+    const result=await callService('prepareStaffQuiz',pendingQuiz);
+    pendingQuiz=null;try{sessionStorage.removeItem('bar_pending_quiz');}catch{}
+    const base=location.href.substring(0,location.href.lastIndexOf('/')+1);
+    printQuizQR(win,result.tokens,base);fl('fOk','✅ Квиз подготовлен — QR открываются для печати');
+  }catch(e){
+    if(['functions/invalid-argument','functions/permission-denied','functions/failed-precondition'].includes(e.code)){pendingQuiz=null;try{sessionStorage.removeItem('bar_pending_quiz');}catch{}}
+    win.close();fl('fErr',pendingQuiz?'Не удалось подтвердить подготовку. Повторите: будет проверен тот же запрос.':e.message);
+  }finally{quizBusy=false;}
 }
-
 export async function finishQuiz(){
-  const ok=await showConfirm('🏁 Завершить квиз?','Все QR-коды квиза станут недействительными.','ЗАВЕРШИТЬ');
-  if(!ok)return;
-  await remove(ref(db,'quiz_tokens'));
-  fl('fOk','✅ Квиз завершён — все QR деактивированы');
+  if(quizBusy)return;
+  const quizId=S.quizSession?.id??null;
+  if(!await showConfirm('🏁 Завершить квиз?','Все QR-коды текущего квиза станут недействительными.','ЗАВЕРШИТЬ'))return;
+  if(quizBusy)return;quizBusy=true;
+  try{await callService('finishStaffQuiz',{requestId:crypto.randomUUID(),quizId});fl('fOk','✅ Квиз завершён — все QR деактивированы');}
+  catch(e){fl('fErr',e.message||'Не удалось подтвердить завершение квиза');}
+  finally{quizBusy=false;}
 }
 
 function printQuizQR(win,tokens,base){
@@ -41,5 +47,5 @@ function printQuizQR(win,tokens,base){
   <body><div class="grid">${tables.map(([t,tok])=>`<div class="card"><h2>Стол ${t}</h2><div id="qr_${t}"></div></div>`).join('')}</div>
   <script>const _tok=${JSON.stringify(Object.fromEntries(tables))};document.querySelectorAll('[id^="qr_"]').forEach(el=>{const t=el.id.replace('qr_','');const tok=_tok[t];if(tok)new QRCode(el,{text:'${base}guest.html?table='+encodeURIComponent(t)+'&token='+tok,width:150,height:150});});<\/script></body></html>`;
   win.document.write(html);win.document.close();
-  setTimeout(()=>win.print(),1000);
+  win.addEventListener('load',()=>{if(win.document.querySelectorAll('canvas').length===tables.length)win.print();else fl('fErr','Не все QR загрузились. Повторите подготовку при стабильном интернете.');},{once:true});
 }

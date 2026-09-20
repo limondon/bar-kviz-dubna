@@ -1,7 +1,7 @@
 import{S}from'./state.js';
 import{auth,signInWithEmailAndPassword}from'./firebase.js';
 import{fl,lockScroll,unlockScroll}from'./utils.js';
-import{updateNotifBtn,enableNotifications}from'./notifications.js';
+import{updateNotifBtn,enableNotifications,syncPushRole}from'./notifications.js';
 import{renderAll,buildQuickTableBtns,renderStats}from'./render.js';
 import{renderTables,renderClosed,showQR,openQrPicker}from'./tables.js';
 import{renderMenuPage}from'./menu.js';
@@ -22,7 +22,7 @@ export function sw(tab){
   if(tab==='calls')renderCalls();
 }
 export function setQF(f){S.qf=f;renderAll();}
-export function pickTable(val){const inp=document.getElementById('inpTable');if(inp)inp.value=val;buildQuickTableBtns();}
+export function pickTable(val){if(S.pendingStaffOrder)return;const inp=document.getElementById('inpTable');if(inp)inp.value=val;buildQuickTableBtns();}
 
 // ─── DEVICE / TABS ────────────────────────────────────
 function getDevice(){const w=window.innerWidth;if(w>=1024)return'desktop';if(w>=768)return'tablet';return'phone';}
@@ -54,6 +54,7 @@ function getExtraTabItems(){
 function getActionItems(){
   const a=[{ico:'📜',label:'Лог доставок',fn:'openDeliveryLog'},{ico:'⚙️',label:'Сменить роль',fn:'openRoleModal'}];
   if(S.role==='admin'){
+    a.push({ico:'🛠',label:'Режим обслуживания',fn:'toggleMaintenanceMode'});
     a.push({ico:'🔐',label:'Сменить пароль',fn:'changePassword'});
     a.push({ico:'🔢',label:'Сбросить счётчик заказов',fn:'resetOrderCounter'});
   }
@@ -130,6 +131,7 @@ export function confirmRole(){
   if(!S.pendingRole){fl('fInfo','Выберите роль!');return;}
   S.role=S.pendingRole;localStorage.setItem('bar_role',S.role);
   closeRoleModal();applyRole();
+  syncPushRole();
   fl('fOk','Роль: '+{waiter:'Официант',barman:'Бармен',admin:'Менеджер'}[S.role]);
 }
 export function applyRole(){
@@ -139,8 +141,8 @@ export function applyRole(){
   buildTabs();renderAll();buildQuickTableBtns();
   let hnotif=document.getElementById('hNotif');
   if(!hnotif){hnotif=document.createElement('span');hnotif.id='hNotif';hnotif.className='notif-btn';hnotif.style.cssText='font-size:11px;cursor:pointer;padding:4px 8px;border-radius:12px;border:1px solid;white-space:nowrap;display:none;';hnotif.onclick=enableNotifications;document.querySelector('.hright').insertBefore(hnotif,document.querySelector('.dot'));}
-  hnotif.style.display=(S.role==='barman'||S.role==='admin')?'flex':'none';
-  if(S.role==='barman'||S.role==='admin')updateNotifBtn();
+  hnotif.style.display='flex';updateNotifBtn();
+  window.renderMaintenance?.();
   let hQR=document.getElementById('hQR');
   if(!hQR){hQR=document.createElement('span');hQR.id='hQR';hQR.onclick=()=>{if(!S.qf||S.qf==='all')openQrPicker();else showQR(S.qf);};hQR.style.cssText='font-size:20px;cursor:pointer;padding:4px 6px;min-height:44px;display:none;align-items:center;';hQR.title='Показать QR гостям';hQR.textContent='📱';document.querySelector('.hright').insertBefore(hQR,document.querySelector('.dot'));}
   hQR.style.display=(S.role==='waiter'||S.role==='admin')?'flex':'none';

@@ -2,7 +2,7 @@
 <html lang="ru">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>1708</title>
 
 <!-- PWA -->
@@ -152,6 +152,7 @@
       <div class="item-editor-label">Опции гостя <small>(через запятую, необязательно)</small></div>
       <input id="ieOptionsInp" class="item-editor-input green" type="text" placeholder="с лаймом, без лайма">
     </div>
+    <p id="ieError" role="alert" style="color:var(--red);white-space:normal"></p>
     <button class="item-editor-save" onclick="saveItemEditor()">СОХРАНИТЬ</button>
     <span class="modal-close" onclick="closeItemEditor()">Отмена</span>
   </div>
@@ -209,6 +210,11 @@
   </div>
 </header>
 
+<div id="maintenanceBanner" class="maintenance-banner" role="status" hidden>
+  <div><strong>🛠 Режим обслуживания</strong><span id="maintenanceText">Новые действия временно остановлены.</span></div>
+  <button id="maintenanceResume" type="button" onclick="toggleMaintenanceMode()" hidden>Возобновить работу</button>
+</div>
+
 <div class="tabs" id="tabsBar"></div>
 
 <!-- BOTTOM NAV (mobile only, shown via CSS) -->
@@ -226,10 +232,12 @@
   <!-- MAIN CONTENT -->
   <div id="mainContent">
 <main>
+  <p id="orderDataWarning" role="alert" style="color:var(--red);padding:0 16px" hidden></p>
   <!-- NEW ORDER -->
   <div class="section-page" id="page-new">
     <div class="add-form">
       <h2>📋 Новый заказ</h2>
+      <div id="staffOrderFields">
       <div class="row">
         <div class="field">
           <label>Стол №</label>
@@ -258,6 +266,8 @@
         <label>Примечание</label>
         <input type="text" id="inpNote" placeholder="Без льда, аллергия...">
       </div>
+      </div>
+      <p id="staffOrderStatus" role="status" aria-live="polite"></p>
       <button class="btn-add" onclick="addOrder()">ДОБАВИТЬ ЗАКАЗ</button>
     </div>
   </div>
@@ -280,7 +290,13 @@
   </div>
 
   <!-- CLOSED TABLES -->
-  <div class="section-page" id="page-done">
+    <div class="section-page" id="page-done">
+      <details class="archive-panel">
+        <summary>Архив закрытых чеков</summary>
+        <div class="archive-controls"><label for="archiveDate">Дата чеков</label><input id="archiveDate" type="date"><button id="archiveLoad" class="btn-sm bu" type="button">Показать чеки</button></div>
+        <p id="archiveMessage" role="status"></p><div id="archiveResults"></div>
+        <button id="archiveMore" class="btn-sm bu" type="button" hidden>Показать ещё</button>
+      </details>
     <div class="date-nav" style="margin-bottom:12px;">
       <button onclick="shiftClosedDate(-1)">◀</button>
       <div class="date-label" id="closedDateLabel"></div>

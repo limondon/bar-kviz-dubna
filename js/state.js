@@ -2,6 +2,7 @@
 export const S = {
   orders: [],
   tablesMeta: {},
+  tablesLoaded: false,
   menuItems: [],
   BUILTIN_MENU_LIVE: [],
   waiterCallsData: {},
@@ -17,4 +18,7 @@ export const S = {
   appPassword: null,
   orderNumResetAt: 0,
   deliveryLog: {},
+  closedArchive: {date:null,orders:[],tables:{},loading:false,error:null,loadedAt:0},
+  stats: {data:null,loading:false,error:null,loadedAt:0},
+  maintenance: null,
 };

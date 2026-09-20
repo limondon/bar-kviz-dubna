@@ -1,0 +1,43 @@
+{
+  "at": "2026-09-19T16:05:23.776Z",
+  "runtime": "v22.23.2",
+  "environment": "local Firebase Emulator; synthetic history; not production capacity",
+  "profiles": [
+    {
+      "historyOrders": 0,
+      "seedBytes": 291,
+      "liveBytes": 326,
+      "archivedOrders": 0,
+      "concurrentRequests": 14,
+      "elapsedMs": 18416,
+      "p50Ms": 16971,
+      "p95Ms": 18408,
+      "errors": [],
+      "integrity": "passed: orders, unique numbers, stock, double cancellation, edit, unchanged history"
+    },
+    {
+      "historyOrders": 1000,
+      "seedBytes": 687842,
+      "liveBytes": 329,
+      "archivedOrders": 1000,
+      "concurrentRequests": 14,
+      "elapsedMs": 900,
+      "p50Ms": 466,
+      "p95Ms": 898,
+      "errors": [],
+      "integrity": "passed: orders, unique numbers, stock, double cancellation, edit, unchanged history"
+    },
+    {
+      "historyOrders": 5000,
+      "seedBytes": 3488056,
+      "liveBytes": 330,
+      "archivedOrders": 5000,
+      "concurrentRequests": 14,
+      "elapsedMs": 817,
+      "p50Ms": 547,
+      "p95Ms": 814,
+      "errors": [],
+      "integrity": "passed: orders, unique numbers, stock, double cancellation, edit, unchanged history"
+    }
+  ]
+}

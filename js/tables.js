@@ -1,26 +1,42 @@
 import{S}from'./state.js';
-import{db,ref,update,fbUpdate,push}from'./firebase.js';
-import{todayStr,dateLbl,shiftDS,fmt,fmt2,esc,escAttr,pl,fl,showConfirm,lockScroll,unlockScroll,itemKey,itemExtraPrice}from'./utils.js';
+import{callService}from'./firebase.js';
+import{todayStr,dateLbl,shiftDS,fmt,fmt2,esc,escAttr,pl,fl,showConfirm,lockScroll,unlockScroll,itemKey,itemExtraPrice,normalizeOrder}from'./utils.js';
 import{BUILTIN_MENU}from'./menu-data.js';
-import{nextOrderNum}from'./counters.js';
-import{applyStockDeltas}from'./stock.js';
 
 // ─── DATE NAV STATE ──────────────────────────────────
 let _datesExpanded=false;
 let _closedDatesExpanded=false;
 let _quickCorkageOpen=false;
+let _closedLoadToken=0;
+async function loadClosedArchive(date){
+  const token=++_closedLoadToken;
+  S.closedArchive={date,orders:[],tables:{},loading:true,error:null,loadedAt:0};
+  renderClosed();
+  try{
+    let after=null,pages=0;const orders=[],tables={};
+    do{
+      const page=await callService('getStaffArchive',{date,after});
+      if(token!==_closedLoadToken)return;
+      for(const row of page.rows||[])orders.push(normalizeOrder({...row.order,id:row.order?.id||row.key}));
+      Object.assign(tables,page.tables||{});after=page.next||null;pages++;
+      if(pages>100)throw new Error('Слишком много страниц чеков');
+    }while(after);
+    S.closedArchive={date,orders,tables,loading:false,error:null,loadedAt:Date.now()};
+  }catch(e){if(token!==_closedLoadToken)return;S.closedArchive={date,orders:[],tables:{},loading:false,error:e?.message||'Не удалось загрузить чеки',loadedAt:Date.now()};}
+  if(S.closedViewDate===date)renderClosed();
+}
+function ensureClosedArchive(date){if(S.closedArchive.date!==date||!S.closedArchive.loading&&Date.now()-(S.closedArchive.loadedAt||0)>30000)loadClosedArchive(date);}
+function invalidateClosedArchive(){_closedLoadToken++;S.closedArchive={date:null,orders:[],tables:{},loading:false,error:null,loadedAt:0};S.stats.loadedAt=0;if(S.activeTab==='done')renderClosed();}
 export function toggleDatesExpanded(){_datesExpanded=!_datesExpanded;renderTables();}
 export function toggleClosedDatesExpanded(){_closedDatesExpanded=!_closedDatesExpanded;renderClosed();}
 export function toggleQuickCorkage(){_quickCorkageOpen=!_quickCorkageOpen;renderTables();}
 
 // ─── TABLE META ───────────────────────────────────────
 export function tKey(date,tNum){return date+'_'+tNum;}
-export function genToken(){return Math.random().toString(36).slice(2,10)+Math.random().toString(36).slice(2,6);}
+export function genToken(){return crypto.randomUUID().replace(/-/g,'');}
 export function getTMeta(date,tNum){
   const k=tKey(date,tNum);
-  if(!S.tablesMeta[k])S.tablesMeta[k]={status:'open',openedAt:Date.now(),date,tNum,token:genToken()};
-  if(!S.tablesMeta[k].token)S.tablesMeta[k].token=genToken();
-  return S.tablesMeta[k];
+  return S.tablesMeta[k]||{status:'open',date,tNum};
 }
 
 export function shortItemName(name){
@@ -31,7 +47,7 @@ export function shortItemName(name){
 }
 
 export function getItemPrice(name){
-  const menu=S.BUILTIN_MENU_LIVE.length?S.BUILTIN_MENU_LIVE:BUILTIN_MENU;
+  const menu=S.menuBaseline!==undefined?S.BUILTIN_MENU_LIVE:BUILTIN_MENU;
   const key=itemKey(name);
   for(const cat of menu){
     for(const item of(cat.items||[])){
@@ -43,23 +59,20 @@ export function getItemPrice(name){
 
 // ─── TABLE ACTIONS ────────────────────────────────────
 export async function closeTable(date,tNum,sid){
-  const ok=await showConfirm(`💳 Закрыть стол ${tNum}?`,'Отметить как оплачен.','ЗАКРЫТЬ / ОПЛАЧЕН');
-  if(!ok)return;
-  const m=getTMeta(date,tNum);
-  m.status='closed';m.closedAt=Date.now();
-  if(!m.closedSessions)m.closedSessions=[];
-  m.closedSessions.push({sid:sid||m.sid||'default',closedAt:m.closedAt,openedAt:m.openedAt});
-  await fbUpdate('tables',S.tablesMeta);
-  renderTables();renderClosed();fl('fOk','✅ Стол '+tNum+' закрыт');
+  sid=sid||getTMeta(date,tNum).sid||'default';
+  if(!await showConfirm(`Закрыть стол ${tNum}?`,'Все позиции должны быть выданы или отменены. Стол будет отмечен как оплаченный.','ЗАКРЫТЬ / ОПЛАЧЕН'))return;
+  try{await callService('closeStaffTable',{requestId:crypto.randomUUID(),date,table:String(tNum),sid});invalidateClosedArchive();fl('fOk','Стол закрыт');}
+  catch(e){fl('fErr',e.message);}
 }
-
-export async function reopenTable(date,tNum){
-  const m=getTMeta(date,tNum);
-  m.status='open';delete m.closedAt;
-  m.token=genToken();
-  if(m.closedSessions&&m.closedSessions.length)m.closedSessions.pop();
-  await fbUpdate('tables',S.tablesMeta);
-  renderTables();renderClosed();fl('fOk','↩ Стол '+tNum+' переоткрыт — новый QR готов');
+const pendingReopens=new Map(),reopening=new Set();
+export async function reopenTable(date,tNum,sid){
+  if(!sid){fl('fErr','Обновите список и выберите чек для переоткрытия.');return;}
+  const key=JSON.stringify([date,String(tNum),sid]);if(reopening.has(key))return;
+  reopening.add(key);
+  if(!pendingReopens.has(key))pendingReopens.set(key,crypto.randomUUID());
+  try{await callService('reopenStaffTable',{requestId:pendingReopens.get(key),date,table:String(tNum),sid});pendingReopens.delete(key);invalidateClosedArchive();fl('fOk','Стол переоткрыт — новый QR готов');}
+  catch(e){if(['functions/aborted','functions/failed-precondition','functions/invalid-argument','functions/not-found','functions/permission-denied'].includes(e.code))pendingReopens.delete(key);fl('fErr',e.message);}
+  finally{reopening.delete(key);}
 }
 
 let _renameCb=null;
@@ -95,60 +108,37 @@ export async function renameTable(date,oldTNum,sid){
 }
 export async function doRenameTable(date,oldTNum,sid,newTNum){
   if(!newTNum||newTNum===String(oldTNum))return;
-  const upd={};
-  S.orders.forEach(o=>{
-    const oSid=o.sid||'default';
-    if(o.date===date&&String(o.table)===String(oldTNum)&&oSid===sid){upd[`orders/${o.id}/table`]=newTNum;o.table=newTNum;}
-  });
-  const oldKey=tKey(date,oldTNum),newKey=tKey(date,newTNum);
-  if(S.tablesMeta[oldKey]){
-    S.tablesMeta[newKey]={...S.tablesMeta[oldKey],tNum:newTNum};
-    delete S.tablesMeta[oldKey];
-    upd[`tables/${oldKey}`]=null;upd[`tables/${newKey}`]=S.tablesMeta[newKey];
-  }
-  await update(ref(db),upd);
-  renderTables();renderClosed();fl('fOk',`✅ Стол ${oldTNum} → ${newTNum}`);
+  try{await callService('renameStaffTable',{requestId:crypto.randomUUID(),date,table:String(oldTNum),newTable:newTNum,sid});fl('fOk','Стол переименован — покажите гостям новый QR');}
+  catch(e){fl('fErr',e.message);}
 }
 export async function deleteTable(date,tNum,sid){
-  const tOrders=S.orders.filter(o=>o.date===date&&String(o.table)===String(tNum)&&(o.sid||'default')===sid);
-  const ok=await showConfirm(`🗑 Удалить стол ${tNum}?`,`Будет удалено ${tOrders.length} ${pl(tOrders.length,'заказ','заказа','заказов')}.`);
-  if(!ok)return;
-  const stockDeltas=[];
-  tOrders.forEach(o=>(o.items||[]).forEach(it=>stockDeltas.push({name:it.name,delta:-it.qty})));
-  if(stockDeltas.length)await applyStockDeltas(stockDeltas);
-  const upd={};
-  tOrders.forEach(o=>{upd[`orders/${o.id}`]=null;});
-  const k=tKey(date,tNum);upd[`tables/${k}`]=null;delete S.tablesMeta[k];
-  await update(ref(db),upd);
-  S.orders=S.orders.filter(o=>!(o.date===date&&String(o.table)===String(tNum)&&(o.sid||'default')===sid));
-  renderTables();renderClosed();
-  if(window.renderAll)window.renderAll();
-  fl('fOk',`🗑 Стол ${tNum} удалён`);
+  if(!await showConfirm(`Удалить стол ${tNum}?`,'Все заказы текущей сессии будут удалены. На склад вернутся только ещё не начатые позиции.'))return;
+  try{await callService('deleteStaffTable',{requestId:crypto.randomUUID(),date,table:String(tNum),sid});fl('fOk','Стол удалён');}
+  catch(e){fl('fErr',e.message);}
 }
 
-export async function logTable(date,tNum){
-  const m=getTMeta(date,tNum);m.loggedAt=Date.now();
-  await fbUpdate('tables',S.tablesMeta);
-  renderTables();fl('fOk','📋 Стол '+tNum+' — внесено в систему в '+fmt2(m.loggedAt));
+async function setTableLogged(date,tNum,logged){
+  const meta=getTMeta(date,tNum);
+  try{
+    const result=await callService('updateStaffTableDetails',{requestId:crypto.randomUUID(),date,table:String(tNum),sid:meta.sid||'default',field:'loggedAt',expected:meta.loggedAt??null,value:logged});
+    renderTables();fl('fOk',logged?'📋 Внесено в систему в '+fmt2(result.value):'Отметка снята');
+  }catch(e){fl('fErr',e.message||'Не удалось подтвердить отметку');}
 }
-export async function unlogTable(date,tNum){
-  const m=getTMeta(date,tNum);delete m.loggedAt;m.loggedAt=null;
-  await fbUpdate('tables',S.tablesMeta);
-  renderTables();fl('fInfo','↩ Отметка "вбили в систему" снята');
-}
+export async function logTable(date,tNum){await setTableLogged(date,tNum,true);}
+export async function unlogTable(date,tNum){await setTableLogged(date,tNum,false);}
 
 export function toggleBill(cardId){
   const b=document.getElementById('body-'+cardId);
   const c=document.getElementById('chev-'+cardId);
   if(!b)return;
   const open=b.classList.contains('open');
-  b.classList.toggle('open',!open);c.classList.toggle('open',!open);
+  b.classList.toggle('open',!open);c?.classList.toggle('open',!open);
 }
 
-// ─── QR CODE ─────────────────────────────────────────
 export async function showQR(tNum){
-  const date=todayStr();const meta=getTMeta(date,tNum);
-  await fbUpdate('tables/'+date+'_'+tNum,meta);
+  const date=todayStr();let meta;
+  try{({meta}=await callService('openStaffTable',{requestId:crypto.randomUUID(),table:String(tNum)}));}
+  catch(e){fl('fErr',e.message);return;}
   const token=meta.token;
   const base=location.href.substring(0,location.href.lastIndexOf('/')+1);
   const guestUrl=`${base}guest.html?table=${encodeURIComponent(tNum)}&token=${token}`;
@@ -161,7 +151,7 @@ export async function showQR(tNum){
     const size=220,cells=qr.getModuleCount();
     const cellSize=Math.floor((size-16)/cells);const offset=Math.floor((size-cells*cellSize)/2);
     ctx.fillStyle='#ffffff';ctx.fillRect(0,0,size,size);ctx.fillStyle='#1a1825';
-    for(let r=0;r<cells;r++)for(let c=0;c<cells;c++)if(qr.isDark(r,c))ctx.fillRect(offset+c*cellSize,offset+r*cellSize,cellSize-1,cellSize-1);
+    for(let r=0;r<cells;r++)for(let c=0;c<cells;c++)if(qr.isDark(r,c))ctx.fillRect(offset+c*cellSize,offset+r*cellSize,cellSize,cellSize);
   }catch(e){ctx.fillStyle='#fff';ctx.fillRect(0,0,220,220);ctx.fillStyle='#333';ctx.font='11px monospace';ctx.textAlign='center';ctx.fillText('QR недоступен',110,110);}
   document.getElementById('qrOverlay').classList.remove('hidden');
   lockScroll();
@@ -193,7 +183,7 @@ const CORKAGE_TYPES=[
   {emoji:'🍷',label:'Вино / Шампанское',price:700},
   {emoji:'🥃',label:'Крепкий алкоголь',price:1000},
 ];
-let _corkageTable=null;
+let _corkageTable=null,_corkageDate=null,_corkageSid=null;
 let _corkageQtys=[0,0,0];
 let _corkageInitial=[0,0,0];
 
@@ -247,6 +237,7 @@ export function openCorkagePicker(tNum){
   const date=todayStr();
   const meta=getTMeta(date,tNum);
   const sid=meta.sid||'default';
+  _corkageDate=date;_corkageSid=S.tablesMeta[tKey(date,tNum)]?sid:null;
   _corkageInitial=[0,0,0];
   S.orders.forEach(o=>{
     if(o.date!==date||String(o.table)!==String(tNum)||(o.sid||'default')!==sid)return;
@@ -267,58 +258,13 @@ export function closeCorkageModal(){
   document.getElementById('corkageOverlay').classList.add('hidden');
   unlockScroll();_corkageTable=null;
 }
+let corkageBusy=false;
 export async function confirmCorkage(){
-  if(!_corkageTable)return;
-  const tNum=_corkageTable;
-  const deltas=CORKAGE_TYPES.map((t,i)=>_corkageQtys[i]-_corkageInitial[i]);
-  if(deltas.every(d=>d===0)){closeCorkageModal();return;}
-  closeCorkageModal();
-  const date=todayStr();const meta=getTMeta(date,tNum);
-  const sid=meta.sid||(meta.sid=Date.now().toString(36));
-  await fbUpdate('tables/'+date+'_'+tNum,meta);
-  const upd={};
-  let totalChange=0;
-
-  // 1) Уменьшение — урезаем/удаляем существующие позиции пробки
-  for(let i=0;i<CORKAGE_TYPES.length;i++){
-    let toRemove=-deltas[i];if(toRemove<=0)continue;
-    const t=CORKAGE_TYPES[i];const targetName=`Пробковый сбор — ${t.label}`;
-    const matches=[];
-    S.orders.forEach(o=>{
-      if(o.date!==date||String(o.table)!==String(tNum)||(o.sid||'default')!==sid)return;
-      (o.items||[]).forEach(it=>{if(it.name===targetName)matches.push({order:o,item:it});});
-    });
-    matches.sort((a,b)=>(b.order.createdAt||0)-(a.order.createdAt||0));
-    for(const{order,item}of matches){
-      if(toRemove<=0)break;
-      const cur=item.qty||0;
-      if(cur<=toRemove){
-        upd[`orders/${order.id}`]=null;
-        toRemove-=cur;totalChange-=cur*t.price;
-      } else {
-        const newQty=cur-toRemove;
-        const itemKey=item._fbKey||item.id;
-        upd[`orders/${order.id}/items/${itemKey}/qty`]=newQty;
-        upd[`orders/${order.id}/note`]=`${newQty*t.price}₽`;
-        totalChange-=toRemove*t.price;toRemove=0;
-      }
-    }
-  }
-  if(Object.keys(upd).length)await update(ref(db),upd);
-
-  // 2) Увеличение — создаём новые заказы на дельту
-  for(let i=0;i<CORKAGE_TYPES.length;i++){
-    const q=deltas[i];if(q<=0)continue;
-    const t=CORKAGE_TYPES[i];
-    const num=await nextOrderNum();
-    const newRef=push(ref(db,'orders'));
-    const itemId=Date.now().toString(36)+'_cork'+i;
-    const newOrder={id:newRef.key,table:tNum,items:{[itemId]:{id:itemId,name:`Пробковый сбор — ${t.label}`,qty:q,price:t.price,status:'done',doneAt:Date.now()}},note:`${t.price*q}₽`,priority:'normal',status:'done',doneAt:Date.now(),createdAt:Date.now(),num,date,sid};
-    await update(ref(db,'orders/'+newRef.key),newOrder);
-    totalChange+=t.price*q;
-  }
-  const sign=totalChange>=0?'+':'';
-  fl('fOk',`✅ Пробковый сбор ${sign}${totalChange}₽ — Стол ${tNum}`);
+  if(!_corkageTable||corkageBusy)return;
+  corkageBusy=true;
+  try{await callService('corkageStaffTable',{requestId:crypto.randomUUID(),table:String(_corkageTable),date:_corkageDate,sid:_corkageSid,expected:_corkageInitial,quantities:_corkageQtys});closeCorkageModal();fl('fOk','Пробковый сбор сохранён');}
+  catch(e){fl('fErr',e.message);}
+  finally{corkageBusy=false;}
 }
 
 // ─── DELIVERY LOG ─────────────────────────────────────
@@ -355,43 +301,30 @@ export function openDeliveryLog(){
 
 // ─── TABLE NOTE ───────────────────────────────────────
 export async function editTableNote(date,tNum){
-  const meta=getTMeta(date,tNum);
-  const current=meta.note||'';
-  const result=await new Promise(resolve=>{
-    const d=document.createElement('div');
-    d.className='app-modal-overlay';
-    d.innerHTML=`<div class="app-modal-panel">
-      <div class="app-modal-title">📝 ЗАМЕТКА К СТОЛУ ${esc(String(tNum))}</div>
-      <div class="app-modal-hint">Видна всем — бармен/официант/менеджер</div>
-      <textarea id="_tnInp" class="app-modal-textarea" placeholder="ДР, столик у окна, аллергия, особые пожелания...">${esc(current)}</textarea>
-      <div class="app-modal-actions split">
-        ${current?`<button id="_tnDel" class="app-modal-btn danger">🗑 Удалить</button>`:'<span></span>'}
-        <div class="app-modal-action-group">
-          <button id="_tnNo" class="app-modal-btn">Отмена</button>
-          <button id="_tnOk" class="app-modal-btn primary">СОХРАНИТЬ</button>
-        </div>
-      </div>
-    </div>`;
-    document.body.appendChild(d);
-    const ta=d.querySelector('#_tnInp');setTimeout(()=>ta.focus(),50);
-    d.querySelector('#_tnOk').onclick=()=>{const v=ta.value.trim();document.body.removeChild(d);resolve(v);};
-    d.querySelector('#_tnNo').onclick=()=>{document.body.removeChild(d);resolve(null);};
-    const del=d.querySelector('#_tnDel');
-    if(del)del.onclick=()=>{document.body.removeChild(d);resolve('');};
-  });
-  if(result===null)return;
-  const k=tKey(date,tNum);
-  // Гарантируем что у meta есть sid — иначе после перезагрузки стол выпадет из фильтра
-  if(!meta.sid){
-    const o=S.orders.find(x=>x.date===date&&String(x.table)===String(tNum));
-    meta.sid=(o&&o.sid)||Date.now().toString(36);
-  }
-  if(result)meta.note=result;else delete meta.note;
-  // Сохраняем всю мету целиком (а не только поле note) чтобы не создать «огрызок» без sid/status
-  const payload={...meta,note:result||null};
-  await update(ref(db,'tables/'+k),payload);
-  renderTables();
-  fl('fOk',result?'📝 Заметка сохранена':'🗑 Заметка удалена');
+  const meta=getTMeta(date,tNum),current=meta.note||'',sid=meta.sid||'default',expected=meta.note??null;
+  const d=document.createElement('div');d.className='app-modal-overlay';
+  d.innerHTML=`<div class="app-modal-panel">
+    <div class="app-modal-title">📝 ЗАМЕТКА К СТОЛУ ${esc(String(tNum))}</div>
+    <div class="app-modal-hint">Видна всем — бармен/официант/менеджер</div>
+    <textarea id="_tnInp" class="app-modal-textarea" maxlength="1000" aria-label="Заметка к столу" placeholder="Особые пожелания...">${esc(current)}</textarea>
+    <p id="_tnError" role="alert" style="color:var(--red)"></p>
+    <div class="app-modal-actions split">
+      ${current?'<button id="_tnDel" class="app-modal-btn danger">Удалить</button>':'<span></span>'}
+      <div class="app-modal-action-group"><button id="_tnNo" class="app-modal-btn">Отмена</button><button id="_tnOk" class="app-modal-btn primary">СОХРАНИТЬ</button></div>
+    </div></div>`;
+  document.body.appendChild(d);const ta=d.querySelector('#_tnInp');ta.focus();let busy=false,pending=null;
+  const save=async value=>{
+    if(busy)return;busy=true;d.querySelectorAll('button,textarea').forEach(el=>el.disabled=true);
+    try{
+      if(!pending||pending.value!==value)pending={requestId:crypto.randomUUID(),date,table:String(tNum),sid,field:'note',expected,value};
+      await callService('updateStaffTableDetails',pending);
+      d.remove();renderTables();fl('fOk',value?'Заметка сохранена':'Заметка удалена');
+    }catch(e){d.querySelector('#_tnError').textContent=e.message||'Не удалось подтвердить сохранение';}
+    finally{busy=false;d.querySelectorAll('button,textarea').forEach(el=>el.disabled=false);}
+  };
+  d.querySelector('#_tnOk').onclick=()=>save(ta.value.trim());
+  d.querySelector('#_tnNo').onclick=()=>{if(!busy)d.remove();};
+  const del=d.querySelector('#_tnDel');if(del)del.onclick=()=>save('');
 }
 
 // ─── RENDER TABLES ────────────────────────────────────
@@ -411,7 +344,7 @@ export function renderTables(){
     if(S.role==='admin'||S.role==='waiter'){
       const tNums=['1','2','3','4','5','6','7','8','9','10','11','12','13','14','15','16','17','PS1','PS2'];
       const tableGrid=_quickCorkageOpen?`<div class="quick-corkage-grid">${tNums.map(t=>`<button onclick="_quickCorkagePick('${escAttr(t)}')" class="quick-corkage-table">${esc(t)}</button>`).join('')}</div>`:'';
-      qcEl.innerHTML=`<div class="quick-corkage"><button onclick="toggleQuickCorkage()" class="quick-corkage-toggle${_quickCorkageOpen?' open':''}">🍾 Быстрая пробка <span>${_quickCorkageOpen?'▲':'▼'}</span></button>${tableGrid}</div>`;
+      qcEl.innerHTML=`<div class="quick-corkage"><button onclick="toggleQuickCorkage()" class="quick-corkage-toggle${_quickCorkageOpen?' open':''}">🍾 Пробковый сбор <span>${_quickCorkageOpen?'▲':'▼'}</span></button>${tableGrid}</div>`;
     } else {
       qcEl.innerHTML='';
     }
@@ -424,12 +357,17 @@ export function renderTables(){
     if(!sessionMap[k])sessionMap[k]={tNum:o.table,sid,orders:[],meta};
     sessionMap[k].orders.push(o);
   });
+  Object.values(S.tablesMeta).forEach(meta=>{
+    if(meta.date!==S.viewDate||meta.status!=='open'||meta.tNum==null)return;
+    const sid=meta.sid||'default',k=meta.tNum+'_'+sid;
+    if(!sessionMap[k])sessionMap[k]={tNum:meta.tNum,sid,orders:[],meta};
+  });
   const sessions=Object.values(sessionMap).filter(({sid,meta})=>{
     const isCurrent=meta.sid===sid||(!meta.sid&&sid==='default');
     return isCurrent&&meta.status!=='closed';
   }).sort((a,b)=>{
     if(a.tNum!==b.tNum){const an=parseInt(a.tNum),bn=parseInt(b.tNum);const aIsNum=!isNaN(an),bIsNum=!isNaN(bn);if(aIsNum&&bIsNum)return an-bn;if(aIsNum)return-1;if(bIsNum)return 1;return String(a.tNum).localeCompare(String(b.tNum));}
-    return(a.orders[0]?.createdAt||0)-(b.orders[0]?.createdAt||0);
+    return(a.orders[0]?.createdAt||a.meta.openedAt||0)-(b.orders[0]?.createdAt||b.meta.openedAt||0);
   });
   if(!sessions.length){document.getElementById('tablesBillList').innerHTML=`<div class="empty"><div class="ei">🗓️</div><p>Нет заказов за ${dateLbl(S.viewDate)}</p></div>`;return;}
   document.getElementById('tablesBillList').innerHTML=sessions.map(({tNum,sid,orders:tOrdersRaw,meta})=>{
@@ -437,7 +375,7 @@ export function renderTables(){
     const isCurrentSession=meta.sid===sid||(!meta.sid&&sid==='default');
     const isOpen=isCurrentSession&&meta.status!=='closed';
     const sumMap={};
-    tOrders.forEach(o=>(o.items||[]).forEach(it=>{const k=it.name.trim().toLowerCase();if(!sumMap[k])sumMap[k]={name:it.name,qty:0,price:it.price??getItemPrice(it.name)};sumMap[k].qty+=it.qty;}));
+    tOrders.forEach(o=>(o.items||[]).forEach(it=>{const k=JSON.stringify([it.name.trim().toLowerCase(),it.price??getItemPrice(it.name)]);if(!sumMap[k])sumMap[k]={name:it.name,qty:0,price:it.price??getItemPrice(it.name)};sumMap[k].qty+=it.qty;}));
     const sumItems=Object.values(sumMap).sort((a,b)=>a.name.localeCompare(b.name));
     const totalSum=sumItems.reduce((s,x)=>s+(x.price*x.qty),0);
     const sumLines=sumItems.map(x=>`<div class="sum-line"><span class="sum-item">${esc(shortItemName(x.name))}</span><span class="sum-qty">${x.qty} шт.</span><span class="sum-tot">${x.price?x.price*x.qty+'₽':'—'}</span></div>`).join('')+(totalSum?`<div class="sum-line sum-total"><span class="sum-item">ИТОГО</span><span class="sum-qty"></span><span class="sum-tot">${totalSum}₽</span></div>`:'');
@@ -462,28 +400,31 @@ export function renderTables(){
     const cardId='tb-'+String(tNum).replace(/[^\w-]/g,'_')+'_'+String(sid).replace(/[^\w-]/g,'_');
     const actions=isOpen
       ?`<div class="tb-top-actions"><button class="btn-pay" data-action="closeTable" data-date="${safeDate}" data-tnum="${safeT}" data-sid="${safeSid}">💳 ЗАКРЫТЬ / ОПЛАЧЕН</button>${(S.role==='waiter'||S.role==='admin')?`<button onclick="showQR('${safeT}')" class="btn-sm btn-qr">📱 QR</button>`:''}</div>`
-      :`<button class="btn-reopen" data-action="reopenTable" data-date="${safeDate}" data-tnum="${safeT}">↩ Переоткрыть</button>`;
+      :`<button class="btn-reopen" data-action="reopenTable" data-date="${safeDate}" data-tnum="${safeT}" data-sid="${safeSid}">↩ Переоткрыть</button>`;
     const mgmtBtns=`<button class="btn-sm bu" data-action="renameTable" data-date="${safeDate}" data-tnum="${safeT}" data-sid="${safeSid}">✏️ Переименовать</button><button class="btn-sm bx" data-action="deleteTable" data-date="${safeDate}" data-tnum="${safeT}" data-sid="${safeSid}">🗑 Удалить стол</button>`;
     const loggedBtn=(S.role==='admin'||S.role==='waiter')&&isOpen?loggedAt?`<div class="tb-logged-actions"><button class="btn-sm bu" data-action="logTable" data-date="${safeDate}" data-tnum="${safeT}">📋 Вбили дозаказ</button><button class="btn-sm tb-unlog-btn" data-action="unlogTable" data-date="${safeDate}" data-tnum="${safeT}">✅ Вбито ${fmt2(loggedAt)} — отменить</button></div>`:`<button class="btn-sm bu" data-action="logTable" data-date="${safeDate}" data-tnum="${safeT}">📋 Вбили в систему</button>`:'';
-    const corkageBtn=(S.role==='admin'||S.role==='waiter')&&isOpen?`<button class="btn-sm btn-corkage" onclick="openCorkagePicker('${safeT}')">🍾 Пробка</button>`:'';
+    const corkageBtn=(S.role==='admin'||S.role==='waiter')&&isOpen?`<button class="btn-sm btn-corkage" onclick="openCorkagePicker('${safeT}')">🍾 Пробковый сбор</button>`:'';
     const noteBtn=isOpen?`<button class="btn-sm btn-note${meta.note?' active':''}" onclick="editTableNote('${safeDate}','${safeT}')">📝 ${meta.note?'Заметка ✓':'Заметка'}</button>`:'';
     const tableNoteHtml=meta.note?`<div class="table-note">📝 ${esc(meta.note)}</div>`:'';
     const headerNoteHint=meta.note?`<span class="tb-note-hint">📝</span>`:'';
-    return`<div class="table-bill ${isOpen?'':'closed'}" id="${escAttr(cardId)}"><div class="tb-header" onclick="toggleBill('${escAttr(cardId)}')"><div class="tb-left"><div class="tb-num"><small>СТОЛ</small>${esc(tNum)}${headerNoteHint}</div><div class="tb-meta"><b>${tOrders.length} ${pl(tOrders.length,'заказ','заказа','заказов')} · ${totalItems} позиц.</b> с ${fmt(tOrders[0]?.createdAt)}${closedLbl}</div></div><div class="tb-state-wrap"><span class="tb-st ${isOpen?'tb-open':'tb-closed'}">${isOpen?'🟢 Открыт':'✅ Оплачен'}</span><span class="tb-chev" id="chev-${escAttr(cardId)}">▼</span></div></div><div class="tb-body" id="body-${escAttr(cardId)}">${tableNoteHtml}${ordersHtml}<div class="tb-summary"><h4>📋 ИТОГО</h4>${sumLines||'<div class="tb-summary-empty">Нет позиций</div>'}</div><div class="tb-actions">${actions}${loggedBtn}${corkageBtn}${noteBtn}${mgmtBtns}</div></div></div>`;
+    return`<div class="table-bill ${isOpen?'':'closed'}" id="${escAttr(cardId)}"><div class="tb-header" onclick="toggleBill('${escAttr(cardId)}')"><div class="tb-left"><div class="tb-num"><small>СТОЛ</small>${esc(tNum)}${headerNoteHint}</div><div class="tb-meta"><b>${tOrders.length} ${pl(tOrders.length,'заказ','заказа','заказов')} · ${totalItems} позиц.</b> с ${fmt(tOrders[0]?.createdAt||meta.openedAt)}${closedLbl}</div></div><div class="tb-state-wrap"><span class="tb-st ${isOpen?'tb-open':'tb-closed'}">${isOpen?'🟢 Открыт':'✅ Оплачен'}</span><span class="tb-chev" id="chev-${escAttr(cardId)}">▼</span></div></div><div class="tb-body" id="body-${escAttr(cardId)}">${tableNoteHtml}${ordersHtml}<div class="tb-summary"><h4>📋 ИТОГО</h4>${sumLines||'<div class="tb-summary-empty">Нет позиций</div>'}</div><div class="tb-actions">${actions}${loggedBtn}${corkageBtn}${noteBtn}${mgmtBtns}</div></div></div>`;
   }).join('');
 }
 
 export function renderClosed(){
+  ensureClosedArchive(S.closedViewDate);
   const lbl=document.getElementById('closedDateLabel');
   if(lbl)lbl.textContent=dateLbl(S.closedViewDate);
-  const allDates=[...new Set(S.orders.map(o=>o.date).filter(Boolean))].sort((a,b)=>b.localeCompare(a));
+  const allDates=[...new Set([...S.orders.map(o=>o.date),S.closedArchive.date].filter(Boolean))].sort((a,b)=>b.localeCompare(a));
   const qnEl=document.getElementById('closedDateQuickNav');
   if(qnEl)qnEl.innerHTML=allDates.map(d=>`<button onclick="jumpClosedDate('${escAttr(d)}')" class="date-chip${d===S.closedViewDate?' active':''}">${dateLbl(d)}</button>`).join('');
   const listEl=document.getElementById('closedTablesList');if(!listEl)return;
-  const dayOrders=S.orders.filter(o=>o.date===S.closedViewDate);
+  const archiveOrders=S.closedArchive.date===S.closedViewDate?S.closedArchive.orders:[];
+  const merged=new Map(archiveOrders.map(o=>[o.id,o]));for(const o of S.orders)if(o.date===S.closedViewDate)merged.set(o.id,o);
+  const dayOrders=[...merged.values()];
   const sessionMap={};
   dayOrders.forEach(o=>{
-    const meta=getTMeta(S.closedViewDate,o.table);const sid=o.sid||'default';const k=o.table+'_'+sid;
+    const meta=S.tablesMeta[tKey(S.closedViewDate,o.table)]||S.closedArchive.tables?.[tKey(S.closedViewDate,o.table)]||getTMeta(S.closedViewDate,o.table);const sid=o.sid||'default';const k=o.table+'_'+sid;
     if(!sessionMap[k])sessionMap[k]={tNum:o.table,sid,orders:[],meta};sessionMap[k].orders.push(o);
   });
   const closedSessions=Object.values(sessionMap).filter(({tNum,sid,meta})=>{
@@ -494,21 +435,24 @@ export function renderClosed(){
     const getCA=(s)=>{if(s.meta.sid===s.sid&&s.meta.closedAt)return s.meta.closedAt;const h=(s.meta.closedSessions||[]).find(x=>x.sid===s.sid);return h?.closedAt||0;};
     return getCA(b)-getCA(a);
   });
-  if(!closedSessions.length){listEl.innerHTML=`<div class="empty"><div class="ei">🗓️</div><p>Нет закрытых столов за ${dateLbl(S.closedViewDate)}</p></div>`;return;}
+  if(!closedSessions.length){const msg=S.closedArchive.loading?'Загружаем закрытые счета…':S.closedArchive.error?'Не удалось загрузить закрытые счета. Откройте дату ещё раз.':`Нет закрытых столов за ${dateLbl(S.closedViewDate)}`;listEl.innerHTML=`<div class="empty"><div class="ei">🗓️</div><p>${esc(msg)}</p></div>`;return;}
   listEl.innerHTML=closedSessions.map(({tNum,sid,orders:tOrdersRaw,meta})=>{
     const tOrders=tOrdersRaw.sort((a,b)=>a.createdAt-b.createdAt);
     const isCurrent=meta.sid===sid||(!meta.sid&&sid==='default');
     const closedSessionHist=(meta.closedSessions||[]).find(s=>s.sid===sid);
     const closedAt=isCurrent?meta.closedAt:closedSessionHist?.closedAt;
     const sumMap={},pendingMap={};
-    tOrders.forEach(o=>(o.items||[]).forEach(it=>{const k=it.name.trim().toLowerCase();if(it.status==='done'){if(!sumMap[k])sumMap[k]={name:it.name,qty:0,price:it.price??getItemPrice(it.name)};sumMap[k].qty+=it.qty;}else{if(!pendingMap[k])pendingMap[k]={name:it.name,qty:0};pendingMap[k].qty+=it.qty;}}));
+    tOrders.forEach(o=>(o.items||[]).forEach(it=>{const k=JSON.stringify([it.name.trim().toLowerCase(),it.price??getItemPrice(it.name)]);if(it.status==='done'){if(!sumMap[k])sumMap[k]={name:it.name,qty:0,price:it.price??getItemPrice(it.name)};sumMap[k].qty+=it.qty;}else{if(!pendingMap[k])pendingMap[k]={name:it.name,qty:0};pendingMap[k].qty+=it.qty;}}));
     const doneItems=Object.values(sumMap).sort((a,b)=>a.name.localeCompare(b.name));
     const totalSum=doneItems.reduce((s,x)=>s+(x.price*x.qty),0);
     const sumLines=[...doneItems.map(x=>`<div class="sum-line"><span class="sum-item">${esc(shortItemName(x.name))}</span><span class="sum-qty">${x.qty} шт.</span><span class="sum-tot">${x.price?x.price*x.qty+'₽':'—'}</span></div>`),...Object.values(pendingMap).sort((a,b)=>a.name.localeCompare(b.name)).map(x=>`<div class="sum-line muted"><span class="sum-item strike">${esc(shortItemName(x.name))}</span><span class="sum-qty">${x.qty}</span><span class="sum-tot">не отдано</span></div>`),totalSum?`<div class="sum-line sum-total"><span class="sum-item">ИТОГО</span><span class="sum-qty"></span><span class="sum-tot">${totalSum}₽</span></div>`:''].join('');
-    const ordersHtml=tOrders.map(o=>{const sico={new:'🕐',making:'🍹',ready:'🟢',done:'✅'}[o.status]||'';const note=o.note?`<div class="tbo-note">💬 ${esc(o.note)}</div>`:'';const lines=(o.items||[]).map(it=>`<div class="tbo-line${it.status==='done'?' tl-done':''}"><span class="tl-name">${esc(shortItemName(it.name))}</span><span class="tl-qty">${it.qty} шт.</span></div>`).join('');return`<div class="tbo-item"><div class="tbo-hdr"><span class="tbo-num">#${esc(o.num)} ${sico}</span><span class="tbo-time">${fmt(o.createdAt)}</span><button class="btn-edit tbo-edit-btn" data-action="edit" data-oid="${escAttr(o.id)}" data-bill="1">✏️</button></div><div class="tbo-lines">${lines}</div>${note}</div>`;}).join('');
+    const archivedIds=new Set(archiveOrders.map(o=>o.id)),isArchived=tOrders.some(o=>archivedIds.has(o.id));
+    const ordersHtml=tOrders.map(o=>{const sico={new:'🕐',making:'🍹',ready:'🟢',done:'✅'}[o.status]||'';const note=o.note?`<div class="tbo-note">💬 ${esc(o.note)}</div>`:'';const lines=(o.items||[]).map(it=>`<div class="tbo-line${it.status==='done'?' tl-done':''}"><span class="tl-name">${esc(shortItemName(it.name))}</span><span class="tl-qty">${it.qty} шт.</span></div>`).join('');return`<div class="tbo-item"><div class="tbo-hdr"><span class="tbo-num">#${esc(o.num)} ${sico}</span><span class="tbo-time">${fmt(o.createdAt)}</span>${isArchived?'':`<button class="btn-edit tbo-edit-btn" data-action="edit" data-oid="${escAttr(o.id)}" data-bill="1">✏️</button>`}</div><div class="tbo-lines">${lines}</div>${note}</div>`;}).join('');
     const totalItems=tOrders.reduce((s,o)=>s+(o.items?o.items.reduce((a,i)=>a+i.qty,0):0),0);
     const safeDate=escAttr(S.closedViewDate),safeT=escAttr(tNum),safeSid=escAttr(sid);
     const cardId='cl-'+String(tNum).replace(/[^\w-]/g,'_')+'_'+String(sid).replace(/[^\w-]/g,'_');
-    return`<div class="table-bill closed" id="${escAttr(cardId)}"><div class="tb-header" onclick="toggleBill('${escAttr(cardId)}')"><div class="tb-left"><div class="tb-num"><small>СТОЛ</small>${esc(tNum)}</div><div class="tb-meta"><b>${tOrders.length} ${pl(tOrders.length,'заказ','заказа','заказов')} · ${totalItems} позиц.</b> с ${fmt(tOrders[0]?.createdAt)}${closedAt?`<span class="tb-paid-time">✅ Закрыт в ${fmt(closedAt)}</span>`:''}</div></div><div class="tb-state-wrap"><span class="tb-st tb-closed">✅ Оплачен</span><span class="tb-chev" id="chev-${escAttr(cardId)}">▼</span></div></div><div class="tb-body" id="body-${escAttr(cardId)}">${ordersHtml}<div class="tb-summary"><h4>📋 ИТОГО</h4>${sumLines||'<div class="tb-summary-empty">Нет позиций</div>'}</div><div class="tb-actions"><button class="btn-reopen" data-action="reopenTable" data-date="${safeDate}" data-tnum="${safeT}">↩ Переоткрыть</button><button class="btn-sm bu" data-action="renameTable" data-date="${safeDate}" data-tnum="${safeT}" data-sid="${safeSid}">✏️ Переименовать</button><button class="btn-sm bx" data-action="deleteTable" data-date="${safeDate}" data-tnum="${safeT}" data-sid="${safeSid}">🗑 Удалить стол</button></div></div></div>`;
+    const archivedHint=isArchived?'<span class="tb-paid-time">Для исправлений сначала переоткройте</span>':'';
+    const management=isArchived?'':`<button class="btn-sm bu" data-action="renameTable" data-date="${safeDate}" data-tnum="${safeT}" data-sid="${safeSid}">✏️ Переименовать</button><button class="btn-sm bx" data-action="deleteTable" data-date="${safeDate}" data-tnum="${safeT}" data-sid="${safeSid}">🗑 Удалить стол</button>`;
+    return`<div class="table-bill closed" id="${escAttr(cardId)}"><div class="tb-header" onclick="toggleBill('${escAttr(cardId)}')"><div class="tb-left"><div class="tb-num"><small>СТОЛ</small>${esc(tNum)}</div><div class="tb-meta"><b>${tOrders.length} ${pl(tOrders.length,'заказ','заказа','заказов')} · ${totalItems} позиц.</b> с ${fmt(tOrders[0]?.createdAt||meta.openedAt)}${closedAt?`<span class="tb-paid-time">✅ Закрыт в ${fmt(closedAt)}</span>`:''}${archivedHint}</div></div><div class="tb-state-wrap"><span class="tb-st tb-closed">✅ Оплачен</span><span class="tb-chev" id="chev-${escAttr(cardId)}">▼</span></div></div><div class="tb-body" id="body-${escAttr(cardId)}">${ordersHtml}<div class="tb-summary"><h4>📋 ИТОГО</h4>${sumLines||'<div class="tb-summary-empty">Нет позиций</div>'}</div><div class="tb-actions"><button class="btn-reopen" data-action="reopenTable" data-date="${safeDate}" data-tnum="${safeT}" data-sid="${safeSid}">↩ Переоткрыть</button>${management}</div></div></div>`;
   }).join('');
 }

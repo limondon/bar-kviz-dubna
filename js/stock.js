@@ -4,7 +4,7 @@ import{BUILTIN_MENU}from'./menu-data.js';
 import{itemKey}from'./utils.js';
 
 export async function applyStockDeltas(deltas){
-  const menu=S.BUILTIN_MENU_LIVE.length?S.BUILTIN_MENU_LIVE:BUILTIN_MENU;
+  const menu=S.menuBaseline!==undefined?S.BUILTIN_MENU_LIVE:BUILTIN_MENU;
   const txs=[];
   for(const{name,delta}of deltas){
     if(!delta)continue;

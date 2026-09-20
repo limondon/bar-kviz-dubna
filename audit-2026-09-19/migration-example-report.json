@@ -1,0 +1,21 @@
+{
+  "version": 2,
+  "at": "2026-09-19T16:13:50.188Z",
+  "sourceSha256": "4740faa80fc7430f836557273cd28bcecabc119e670dec64e1c048d876e0f7f3",
+  "outputSha256": "222397ecaebd038950c2cc3c1de370448178f142b59b07cd7395e8d6bc2272c2",
+  "archivedOrders": 1,
+  "remainingOrders": 1,
+  "batches": 1,
+  "audit": {
+    "readOnly": true,
+    "summary": {
+      "orders": 2,
+      "structuredOrders": 2,
+      "legacyTextOrders": 0,
+      "ordersWithIssues": 0,
+      "issues": 0
+    },
+    "counts": {},
+    "issues": []
+  }
+}

@@ -1,0 +1,44 @@
+{
+  "at": "2026-09-19T21:56:56.984Z",
+  "runtime": "v22.23.2",
+  "environment": "local Firebase Emulator; synthetic history; not production capacity",
+  "historyPlacement": "current-day closed orders compacted during preparation",
+  "profiles": [
+    {
+      "historyOrders": 0,
+      "seedBytes": 291,
+      "liveBytes": 326,
+      "archivedOrders": 0,
+      "concurrentRequests": 14,
+      "elapsedMs": 19568,
+      "p50Ms": 18060,
+      "p95Ms": 19558,
+      "errors": [],
+      "integrity": "passed: orders, unique numbers, stock, double cancellation, edit, unchanged history"
+    },
+    {
+      "historyOrders": 1000,
+      "seedBytes": 687799,
+      "liveBytes": 21047,
+      "archivedOrders": 1000,
+      "concurrentRequests": 14,
+      "elapsedMs": 3173,
+      "p50Ms": 1937,
+      "p95Ms": 3171,
+      "errors": [],
+      "integrity": "passed: orders, unique numbers, stock, double cancellation, edit, unchanged history"
+    },
+    {
+      "historyOrders": 2000,
+      "seedBytes": 1387915,
+      "liveBytes": 41047,
+      "archivedOrders": 2000,
+      "concurrentRequests": 14,
+      "elapsedMs": 2806,
+      "p50Ms": 2001,
+      "p95Ms": 2804,
+      "errors": [],
+      "integrity": "passed: orders, unique numbers, stock, double cancellation, edit, unchanged history"
+    }
+  ]
+}

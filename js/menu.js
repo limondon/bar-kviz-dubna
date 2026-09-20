@@ -1,20 +1,27 @@
 import{S}from'./state.js';
-import{db,ref,set,update}from'./firebase.js';
+import{callService}from'./firebase.js';
 import{BUILTIN_MENU}from'./menu-data.js';
-import{esc,escAttr,fl,showConfirm,parseItems,lockScroll,unlockScroll,pl}from'./utils.js';
+import{esc,escAttr,fl,showConfirm,parseItems,lockScroll,unlockScroll,pl,baseItemName}from'./utils.js';
 
 // ─── PICKER STATE ─────────────────────────────────────
 let pickerState={};
 let pickerCat=0;
 let pickerOpenGroups=new Set();
-let pickerCups=0;
+let pickerCups=0,pickerPreserved=[];
 
 export function openMenuPicker(){
-  pickerState={};pickerCat=0;pickerOpenGroups=new Set();pickerCups=0;
-  const menu=S.BUILTIN_MENU_LIVE.length?S.BUILTIN_MENU_LIVE:BUILTIN_MENU;
+  if(S.pendingStaffOrder){fl('fInfo','Сначала проверьте предыдущую отправку');return;}
+  pickerState={};pickerCat=0;pickerOpenGroups=new Set();pickerCups=0;pickerPreserved=[];
+  const menu=S.menuBaseline!==undefined?S.BUILTIN_MENU_LIVE:BUILTIN_MENU;
   const ta=document.getElementById('inpItems');
   if(ta&&ta.value.trim()){
-    parseItems(ta.value).forEach(it=>{pickerState[it.name]={qty:it.qty,note:'',addons:{},option:null};});
+    try{parseItems(ta.value).forEach(it=>{
+      if(/^круж(?:ка|ки|ек)$/i.test(it.name)){pickerCups+=it.qty;return;}
+      const base=baseItemName(it.name);
+      if(pickerState[base]||!menu.some(c=>(c.items||[]).some(i=>i.name===base))){pickerPreserved.push(`${it.qty} ${it.name}`);return;}
+      const selected=it.name.match(/\s\+\s(.+?)(?:\s+[—–-]\s+|$)/)?.[1]?.split(',').map(a=>a.trim().toLowerCase())||[];
+      pickerState[base]={qty:it.qty,note:'',addons:Object.fromEntries(['Чабрец','Лимон','Мята'].map(a=>[a,selected.includes(a.toLowerCase())])),option:it.name.match(/\s+[—–-]\s+(.+)$/)?.[1]||null};
+    });}catch(e){fl('fErr',e.message);return;}
   }
   renderPickerTabs();renderPickerList();updatePickerBtn();
   document.getElementById('menuPickerOverlay').classList.remove('hidden');
@@ -27,7 +34,7 @@ export function closeMenuPicker(){
 
 export function renderPickerTabs(){
   const el=document.getElementById('menuPickerTabs');if(!el)return;
-  const menu=(S.BUILTIN_MENU_LIVE.length?S.BUILTIN_MENU_LIVE:BUILTIN_MENU).filter(c=>!c.hidden);
+  const menu=(S.menuBaseline!==undefined?S.BUILTIN_MENU_LIVE:BUILTIN_MENU).filter(c=>!c.hidden);
   el.innerHTML=menu.map((cat,i)=>`
     <button class="menu-picker-tab${i===pickerCat?' active':''}" data-picker-cat="${i}" type="button">${esc(cat.cat)}</button>
   `).join('');
@@ -46,7 +53,7 @@ export function pickerToggleGroup(group){
 const TEA_ADDONS=['Чабрец','Лимон','Мята'];
 export function renderPickerList(){
   const el=document.getElementById('menuPickerList');if(!el)return;
-  const menu=(S.BUILTIN_MENU_LIVE.length?S.BUILTIN_MENU_LIVE:BUILTIN_MENU).filter(c=>!c.hidden);
+  const menu=(S.menuBaseline!==undefined?S.BUILTIN_MENU_LIVE:BUILTIN_MENU).filter(c=>!c.hidden);
   const cat=menu[pickerCat];if(!cat)return;
   const isLeafTea=cat.cat.toLowerCase().includes('лист');
   const isTea=cat.cat.toLowerCase().includes('чай');
@@ -94,8 +101,8 @@ export function updatePickerBtn(){
 }
 
 export function confirmMenuPicker(){
-  const lines=[];
-  const menu=S.BUILTIN_MENU_LIVE.length?S.BUILTIN_MENU_LIVE:BUILTIN_MENU;
+  const lines=[...pickerPreserved];
+  const menu=S.menuBaseline!==undefined?S.BUILTIN_MENU_LIVE:BUILTIN_MENU;
   menu.forEach(cat=>{
     const isLeafTea=cat.cat.toLowerCase().includes('лист');
     cat.items.forEach(item=>{
@@ -123,7 +130,7 @@ function _handlePickerAction(btn){
   if(action==='plus'){
     const limitStr=btn.dataset.stockLimit;const limit=limitStr!==undefined&&limitStr!==''?parseInt(limitStr):null;
     if(limit!==null&&pickerState[itemName].qty>=limit)return;
-    pickerState[itemName].qty++;const _menu=S.BUILTIN_MENU_LIVE.length?S.BUILTIN_MENU_LIVE:BUILTIN_MENU;const _isTea=_menu[pickerCat]?.cat?.toLowerCase().includes('чай');if(pickerCups===0&&_isTea){pickerCups++;triggerCupsBar=true;}
+    pickerState[itemName].qty++;const _menu=S.menuBaseline!==undefined?S.BUILTIN_MENU_LIVE:BUILTIN_MENU;const _isTea=_menu[pickerCat]?.cat?.toLowerCase().includes('чай');if(pickerCups===0&&_isTea){pickerCups++;triggerCupsBar=true;}
   }
   if(action==='minus'){pickerState[itemName].qty=Math.max(0,pickerState[itemName].qty-1);if(pickerState[itemName].qty===0){pickerState[itemName].addons={};pickerState[itemName].option=null;}}
   const pill=[...document.querySelectorAll('.picker-pill')].find(p=>p.dataset.pill===itemName);
@@ -172,84 +179,86 @@ document.addEventListener('click',e=>{
 // ─── MENU EDITOR ──────────────────────────────────────
 export function buildMenuButtons(){const el=document.getElementById('menuBtns');if(el)el.innerHTML='';}
 
-export async function saveMenuToFirebase(){
-  const menu=S.BUILTIN_MENU_LIVE.length?S.BUILTIN_MENU_LIVE:BUILTIN_MENU;
-  await set(ref(db,'menu2'),menu);
+let menuView=null,menuSaving=false,menuMessage='';
+const menuSnapshot=()=>({menu:structuredClone(S.menuBaseline!==undefined?S.BUILTIN_MENU_LIVE:BUILTIN_MENU),expected:structuredClone(S.menuBaseline||[])});
+function editorSnapshot(){return structuredClone(menuView||menuSnapshot());}
+export function refreshMenuFromServer(){
+  if(menuSaving||_ieCi!==null||dragMenuItemSource||dragMenuCategorySource||document.activeElement?.closest('#menuPageContent input'))return;
+  renderMenuPage();
+}
+async function changeMenu(edit,snapshot=editorSnapshot()){
+  if(menuSaving){fl('fInfo','Дождитесь сохранения меню');return false;}
+  menuSaving=true;menuMessage='';
+  document.getElementById('menuEditorList')?.setAttribute('aria-busy','true');
+  try{
+    if(edit(snapshot.menu)===false)return false;
+    await callService('saveStaffMenu',{requestId:crypto.randomUUID(),expected:snapshot.expected,menu:snapshot.menu});
+    return true;
+  }catch(e){
+    menuMessage='Изменение не подтверждено. '+(e.message||'Проверьте соединение и обновите меню.');
+    return false;
+  }finally{
+    menuSaving=false;renderMenuEditor();
+  }
 }
 export async function updateMenuCatItem(ci,ii,field,val){
-  const menu=S.BUILTIN_MENU_LIVE.length?S.BUILTIN_MENU_LIVE:BUILTIN_MENU;
-  if(!menu[ci]||!menu[ci].items[ii])return;
-  menu[ci].items[ii][field]=val;await saveMenuToFirebase();
+  await changeMenu(menu=>{if(!menu[ci]?.items[ii])return false;menu[ci].items[ii][field]=val;});
 }
 export async function removeMenuCatItem(ci,ii){
-  const menu=S.BUILTIN_MENU_LIVE.length?S.BUILTIN_MENU_LIVE:BUILTIN_MENU;
-  if(!menu[ci])return;menu[ci].items.splice(ii,1);
-  await saveMenuToFirebase();renderMenuEditor();fl('fOk','Позиция удалена');
+  if(await changeMenu(menu=>{if(!menu[ci]?.items[ii])return false;menu[ci].items.splice(ii,1);}))fl('fOk','Позиция удалена');
 }
 export async function addMenuCatItem(ci){
-  const menu=S.BUILTIN_MENU_LIVE.length?S.BUILTIN_MENU_LIVE:BUILTIN_MENU;
-  if(!menu[ci])return;
-  const inp=document.getElementById('newItem_'+ci);
-  const name=(inp?.value||'').trim();if(!name){fl('fInfo','Введите название');return;}
-  menu[ci].items.push({name,price:0});await saveMenuToFirebase();
-  if(inp)inp.value='';renderMenuEditor();fl('fOk','✅ '+name+' добавлено');
+  const inp=document.getElementById('newItem_'+ci),name=(inp?.value||'').trim();
+  if(!name){fl('fInfo','Введите название');return;}
+  if(await changeMenu(menu=>{if(!menu[ci])return false;menu[ci].items.push({name,price:0});}))fl('fOk','✅ '+name+' добавлено');
+  else {const retry=document.getElementById('newItem_'+ci);if(retry)retry.value=name;}
 }
 export async function moveMenuCat(ci,dir){
-  const menu=S.BUILTIN_MENU_LIVE.length?S.BUILTIN_MENU_LIVE:BUILTIN_MENU;
-  const ni=ci+dir;if(ni<0||ni>=menu.length)return;
-  [menu[ci],menu[ni]]=[menu[ni],menu[ci]];
-  await saveMenuToFirebase();renderMenuPage();
+  await changeMenu(menu=>{const ni=ci+dir;if(ni<0||ni>=menu.length||!menu[ci])return false;[menu[ci],menu[ni]]=[menu[ni],menu[ci]];});
 }
-function reorderMenuItem(ci,fromIndex,toIndex){
-  const menu=S.BUILTIN_MENU_LIVE.length?S.BUILTIN_MENU_LIVE:BUILTIN_MENU;
-  if(!menu[ci]||!menu[ci].items)return;const items=menu[ci].items;if(fromIndex===toIndex)return;
-  const item=items.splice(fromIndex,1)[0];const insertIndex=toIndex>fromIndex?toIndex-1:toIndex;items.splice(insertIndex,0,item);
+function reorderMenuItem(menu,ci,fromIndex,toIndex){
+  if(!menu[ci]?.items[fromIndex]||fromIndex===toIndex)return false;
+  const items=menu[ci].items,item=items.splice(fromIndex,1)[0];items.splice(toIndex>fromIndex?toIndex-1:toIndex,0,item);
 }
-function reorderMenuCategory(fromIndex,toIndex){
-  const menu=S.BUILTIN_MENU_LIVE.length?S.BUILTIN_MENU_LIVE:BUILTIN_MENU;
-  if(!menu||fromIndex===toIndex)return;const category=menu.splice(fromIndex,1)[0];const insertIndex=toIndex>fromIndex?toIndex-1:toIndex;menu.splice(insertIndex,0,category);
+function reorderMenuCategory(menu,fromIndex,toIndex){
+  if(!menu[fromIndex]||fromIndex===toIndex)return false;
+  const category=menu.splice(fromIndex,1)[0];menu.splice(toIndex>fromIndex?toIndex-1:toIndex,0,category);
 }
 export async function addMenuCategory(){
-  const emoji=(document.getElementById('newCatEmoji')?.value||'').trim();
-  const name=(document.getElementById('newCatName')?.value||'').trim();
+  const emoji=(document.getElementById('newCatEmoji')?.value||'').trim(),name=(document.getElementById('newCatName')?.value||'').trim();
   if(!name){fl('fInfo','Введите название категории');return;}
   const cat=emoji?`${emoji} ${name}`:name;
-  const menu=S.BUILTIN_MENU_LIVE.length?[...S.BUILTIN_MENU_LIVE]:[...BUILTIN_MENU];
-  menu.push({cat,items:[]});S.BUILTIN_MENU_LIVE.length=0;menu.forEach(c=>S.BUILTIN_MENU_LIVE.push(c));
-  await saveMenuToFirebase();
-  document.getElementById('newCatEmoji').value='';document.getElementById('newCatName').value='';
-  renderMenuPage();fl('fOk','✅ Категория "'+cat+'" создана');
+  if(await changeMenu(menu=>{menu.push({cat,items:[]});})){
+    document.getElementById('newCatEmoji').value='';document.getElementById('newCatName').value='';fl('fOk','✅ Категория "'+cat+'" создана');
+  }
 }
 export async function updateMenuCat(ci,field,val){
-  const menu=S.BUILTIN_MENU_LIVE.length?S.BUILTIN_MENU_LIVE:BUILTIN_MENU;
-  if(!menu[ci])return;
-  if(field==='emoji'||field==='catname'){
-    const spaceIdx=menu[ci].cat.indexOf(' ');
-    const curEmoji=spaceIdx>0?menu[ci].cat.substring(0,spaceIdx):'';
-    const curName=spaceIdx>0?menu[ci].cat.substring(spaceIdx+1):menu[ci].cat;
-    menu[ci].cat=field==='emoji'?(val.trim()+' '+curName).trim():(curEmoji?(curEmoji+' '+val.trim()):val.trim());
-  } else {
-    menu[ci][field]=val;
-  }
-  await saveMenuToFirebase();
+  await changeMenu(menu=>{
+    if(!menu[ci])return false;
+    if(field==='emoji'||field==='catname'){
+      const spaceIdx=menu[ci].cat.indexOf(' '),curEmoji=spaceIdx>0?menu[ci].cat.substring(0,spaceIdx):'',curName=spaceIdx>0?menu[ci].cat.substring(spaceIdx+1):menu[ci].cat;
+      menu[ci].cat=field==='emoji'?(val.trim()+' '+curName).trim():(curEmoji?(curEmoji+' '+val.trim()):val.trim());
+    }else menu[ci][field]=val;
+  });
 }
 export async function toggleMenuCatHidden(ci){
-  const menu=S.BUILTIN_MENU_LIVE.length?S.BUILTIN_MENU_LIVE:BUILTIN_MENU;
-  if(!menu[ci])return;
-  menu[ci].hidden=!menu[ci].hidden;
-  await saveMenuToFirebase();renderMenuEditor();
+  await changeMenu(menu=>{if(!menu[ci])return false;menu[ci].hidden=!menu[ci].hidden;});
 }
 export async function removeMenuCategory(ci){
-  const menu=S.BUILTIN_MENU_LIVE.length?S.BUILTIN_MENU_LIVE:BUILTIN_MENU;
-  const ok=await showConfirm(`Удалить категорию "${menu[ci]?.cat}"?`,'Все позиции в ней тоже удалятся.');
-  if(!ok)return;menu.splice(ci,1);await saveMenuToFirebase();renderMenuPage();fl('fOk','Категория удалена');
+  const snapshot=editorSnapshot();
+  if(!snapshot.menu[ci])return;
+  const ok=await showConfirm(`Удалить категорию "${snapshot.menu[ci].cat}"?`,'Все позиции в ней тоже удалятся.');
+  if(ok&&await changeMenu(menu=>{menu.splice(ci,1);},snapshot))fl('fOk','Категория удалена');
 }
 
 // ─── ITEM EDITOR SHEET ───────────────────────────────
-let _ieCi=null,_ieIi=null;
+let _ieCi=null,_ieIi=null,_ieMenu=null,_ieExpected=null,_ieSaving=false;
 export function openItemEditor(ci,ii){
+  if(_ieSaving||menuSaving)return;
   _ieCi=ci;_ieIi=ii;
-  const menu=S.BUILTIN_MENU_LIVE.length?S.BUILTIN_MENU_LIVE:BUILTIN_MENU;
+  const snapshot=editorSnapshot(),menu=snapshot.menu;
+  _ieMenu=menu;_ieExpected=snapshot.expected;
+  document.getElementById('ieError').textContent='';
   const item=menu[ci].items[ii];
   document.getElementById('ieNameInp').value=item.name||'';
   document.getElementById('iePriceInp').value=item.price||0;
@@ -262,6 +271,7 @@ export function openItemEditor(ci,ii){
   _startSheetVP();
 }
 export function closeItemEditor(){
+  if(_ieSaving)return;
   document.getElementById('itemEditorOverlay').classList.add('hidden');
   unlockScroll();_ieCi=null;_ieIi=null;
   _stopSheetVP();
@@ -286,7 +296,7 @@ function _stopSheetVP(){
   }
 }
 export async function saveItemEditor(){
-  if(_ieCi===null||_ieIi===null)return;
+  if(_ieCi===null||_ieIi===null||_ieSaving)return;
   const name=document.getElementById('ieNameInp').value.trim();
   if(!name){fl('fInfo','Введите название');return;}
   const price=+document.getElementById('iePriceInp').value||0;
@@ -295,18 +305,25 @@ export async function saveItemEditor(){
   const group=document.getElementById('ieGroupInp').value.trim()||null;
   const optRaw=document.getElementById('ieOptionsInp').value.trim();
   const options=optRaw?optRaw.split(',').map(s=>s.trim()).filter(Boolean):null;
-  const menu=S.BUILTIN_MENU_LIVE.length?S.BUILTIN_MENU_LIVE:BUILTIN_MENU;
+  const menu=structuredClone(_ieMenu);
   const item=menu[_ieCi].items[_ieIi];
   item.name=name;item.price=price;item.stock=stock;item.group=group;item.options=options||undefined;
-  await saveMenuToFirebase();renderMenuEditor();closeItemEditor();
-  fl('fOk','✅ Сохранено');
+  const btn=document.querySelector('.item-editor-save');
+  _ieSaving=true;btn.disabled=true;document.getElementById('ieError').textContent='';
+  try{
+    await callService('saveStaffMenu',{requestId:crypto.randomUUID(),expected:_ieExpected,menu});
+    _ieSaving=false;renderMenuEditor();closeItemEditor();fl('fOk','✅ Сохранено');
+  }catch(e){
+    document.getElementById('ieError').textContent=e.message||'Не удалось подтвердить сохранение. Проверьте соединение и повторите.';
+  }finally{_ieSaving=false;btn.disabled=false;}
 }
 
 export function renderMenuEditor(){
   const el=document.getElementById('menuEditorList');if(!el)return;
-  const menu=S.BUILTIN_MENU_LIVE.length?S.BUILTIN_MENU_LIVE:BUILTIN_MENU;
-  if(!menu.length){el.innerHTML=`<div class="menu-editor-empty">Меню пусто</div>`;return;}
-  el.innerHTML=menu.map((cat,ci)=>{
+  menuView=menuSnapshot();const menu=menuView.menu;
+  el.removeAttribute('aria-busy');
+  if(!menu.length){el.innerHTML=`<p id="menuSaveError" role="alert" style="color:var(--red)">${esc(menuMessage)}</p><div class="menu-editor-empty">Меню пусто</div>`;return;}
+  el.innerHTML=`<p id="menuSaveError" role="alert" style="color:var(--red)">${esc(menuMessage)}</p>`+menu.map((cat,ci)=>{
     const spaceIdx=cat.cat.indexOf(' ');
     const catEmoji=spaceIdx>0?cat.cat.substring(0,spaceIdx):'';
     const catName=spaceIdx>0?cat.cat.substring(spaceIdx+1):cat.cat;
@@ -363,6 +380,7 @@ export function renderMenuEditor(){
 // Drag & drop
 let dragMenuItemSource=null,dragMenuCategorySource=null;
 document.addEventListener('dragstart',e=>{
+  if(menuSaving){e.preventDefault();return;}
   const row=e.target.closest('.menu-editor-item');
   if(row){const ci=Number(row.dataset.menuCat),ii=Number(row.dataset.menuItem);dragMenuItemSource={ci,ii};e.dataTransfer.effectAllowed='move';e.dataTransfer.setData('text/plain',JSON.stringify(dragMenuItemSource));row.classList.add('dragging');return;}
   const cat=e.target.closest('.menu-editor-category');
@@ -383,26 +401,23 @@ document.addEventListener('dragover',e=>{
 document.addEventListener('dragleave',e=>{e.target.closest('.menu-editor-item')?.classList.remove('drag-over');e.target.closest('.menu-editor-category')?.classList.remove('drag-over');});
 document.addEventListener('drop',async e=>{
   const row=e.target.closest('.menu-editor-item');
-  if(row&&dragMenuItemSource){const ci=Number(row.dataset.menuCat),toIndex=Number(row.dataset.menuItem);if(ci!==dragMenuItemSource.ci)return;e.preventDefault();const fromIndex=dragMenuItemSource.ii;row.classList.remove('drag-over');dragMenuItemSource=null;if(fromIndex===toIndex)return;reorderMenuItem(ci,fromIndex,toIndex);await saveMenuToFirebase();renderMenuEditor();return;}
+  if(row&&dragMenuItemSource){const ci=Number(row.dataset.menuCat),toIndex=Number(row.dataset.menuItem);if(ci!==dragMenuItemSource.ci)return;e.preventDefault();const fromIndex=dragMenuItemSource.ii;row.classList.remove('drag-over');dragMenuItemSource=null;if(fromIndex===toIndex)return;await changeMenu(menu=>reorderMenuItem(menu,ci,fromIndex,toIndex));return;}
   const cat=e.target.closest('.menu-editor-category');
-  if(cat&&dragMenuCategorySource){const toIndex=Number(cat.dataset.menuCat),fromIndex=dragMenuCategorySource.ci;e.preventDefault();cat.classList.remove('drag-over');dragMenuCategorySource=null;if(fromIndex===toIndex)return;reorderMenuCategory(fromIndex,toIndex);await saveMenuToFirebase();renderMenuEditor();}
+  if(cat&&dragMenuCategorySource){const toIndex=Number(cat.dataset.menuCat),fromIndex=dragMenuCategorySource.ci;e.preventDefault();cat.classList.remove('drag-over');dragMenuCategorySource=null;if(fromIndex===toIndex)return;await changeMenu(menu=>reorderMenuCategory(menu,fromIndex,toIndex));}
 });
 
 export async function restructureLemonades(){
-  const menu=S.BUILTIN_MENU_LIVE.length?S.BUILTIN_MENU_LIVE:BUILTIN_MENU;
-  const ci=menu.findIndex(c=>c.cat.toLowerCase().includes('лимонад'));
-  if(ci===-1){fl('fInfo','Категория лимонадов не найдена');return;}
-  const origItems=menu[ci].items;
-  const newItems=[];
-  origItems.forEach(item=>{
-    const baseName=item.name.replace(/\s*\d[\.,]\d\s*л?\.?$/i,'').trim();
-    newItems.push({name:baseName+' 0.5л',price:400,group:baseName});
-    newItems.push({name:baseName+' 1.0л',price:700,group:baseName});
+  let count=0;
+  const saved=await changeMenu(menu=>{
+    const ci=menu.findIndex(c=>c.cat.toLowerCase().includes('лимонад'));
+    if(ci===-1){fl('fInfo','Категория лимонадов не найдена');return false;}
+    const origItems=menu[ci].items;count=origItems.length;
+    menu[ci].items=origItems.flatMap(item=>{
+      const baseName=item.name.replace(/\s*\d[\.,]\d\s*л?\.?$/i,'').trim();
+      return[{name:baseName+' 0.5л',price:400,group:baseName},{name:baseName+' 1.0л',price:700,group:baseName}];
+    });
   });
-  menu[ci].items=newItems;
-  await saveMenuToFirebase();
-  renderMenuPage();
-  fl('fOk','✅ Лимонады обновлены — '+origItems.length+' вкусов × 2 размера');
+  if(saved)fl('fOk','✅ Лимонады обновлены — '+count+' вкусов × 2 размера');
 }
 export function openMenuEditor(){const overlay=document.getElementById('menuEditorOverlay');if(!overlay)return;renderMenuEditor();overlay.classList.remove('hidden');lockScroll();}
 export function closeMenuEditor(){document.getElementById('menuEditorOverlay')?.classList.add('hidden');unlockScroll();}

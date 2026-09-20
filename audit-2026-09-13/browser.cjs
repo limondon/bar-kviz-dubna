@@ -1,0 +1,33 @@
+const fs=require('fs'),path=require('path'),http=require('http');
+const {chromium}=require('C:/Users/Андрей/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright');
+const root=path.resolve(__dirname,'..');
+const mock=`
+export const initializeApp=()=>({}),getDatabase=()=>({});
+export const getAuth=()=>({currentUser:{email:'audit@example.invalid'}});
+export const signInAnonymously=async()=>({}),signInWithEmailAndPassword=async()=>({});
+export const onAuthStateChanged=(a,cb)=>{setTimeout(()=>cb(a.currentUser),0);return()=>{}};
+export const ref=(d,p='')=>p,serverTimestamp=()=>Date.now();
+const read=p=>p.split('/').filter(Boolean).reduce((a,k)=>a?.[k],window.fixture);
+const snap=p=>({val:()=>structuredClone(read(p)??null)});
+export const get=async p=>snap(p);
+export const onValue=(p,cb)=>{setTimeout(()=>cb(snap(p)),0);return()=>{}};
+export const push=p=>({key:'audit-'+(++window.seq)});
+export const update=async(p,v)=>{window.writes.push({op:'update',p,v});if(window.failOrders&&p.startsWith('orders/'))throw Error('injected order failure')};
+export const set=async(p,v)=>{window.writes.push({op:'set',p,v})};
+export const remove=async p=>{window.writes.push({op:'remove',p})};
+export const runTransaction=async(p,fn)=>{let cur=read(p);let val=fn(cur??null);if(val===undefined)return{committed:false,snapshot:snap(p)};let ks=p.split('/'),k=ks.pop(),o=window.fixture;for(const x of ks)o=o[x]??={};o[k]=val;window.writes.push({op:'tx',p,val});return{committed:true,snapshot:snap(p)}};
+`;
+(async()=>{const server=http.createServer((req,res)=>{const p=path.join(root,decodeURIComponent(new URL(req.url,'http://localhost').pathname));try{const file=fs.statSync(p).isDirectory()?path.join(p,'index.html'):p;res.setHeader('Content-Type',file.endsWith('.js')?'application/javascript':file.endsWith('.css')?'text/css':'text/html');res.end(fs.readFileSync(file))}catch{res.writeHead(404).end()}}).listen(0,'127.0.0.1');await new Promise(r=>server.once('listening',r));
+const browser=await chromium.launch({headless:true,executablePath:'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe'});const ctx=await browser.newContext({serviceWorkers:'block'});let blocked=[];
+await ctx.route('**/*',async route=>{const u=route.request().url();if(u.startsWith('http://127.0.0.1:'))return route.continue();blocked.push(u.split('?')[0]);if(u.includes('/firebasejs/'))return route.fulfill({contentType:'application/javascript',body:mock});return route.abort()});
+await ctx.addInitScript(()=>{const date=new Date().toLocaleDateString('en-CA');window.seq=0;window.writes=[];window.fixture={menu2:[{cat:'Пиво',items:[{name:'Corona Extra',price:350,stock:5,options:['С лаймом','Добавка +50']},{name:'Очень длинное название напитка с необычным вкусом и дополнительным описанием',price:450,stock:2}]},{cat:'Листовой чай',items:[{name:'Сенча',price:300,stock:5}]},{cat:'Скрытая категория',hidden:true,items:[{name:'Служебный товар',price:10}]}],tables:{[date+'_1']:{date,tNum:'1',sid:'audit',status:'open',token:'test'}},orders:{a:{id:'a',table:'1',date,sid:'audit',num:1,createdAt:Date.now(),items:{i:{id:'i',name:'Corona Extra',qty:2,price:350,status:'new'}}}},config:{},publicCounters:{orderNum:1}};localStorage.setItem('bar_role','admin')});
+const page=await ctx.newPage();const errors=[];page.on('pageerror',e=>errors.push(e.message));const url='http://127.0.0.1:'+server.address().port;
+await page.setViewportSize({width:375,height:812});await page.goto(url+'/guest.html?table=1&token=test');await page.waitForSelector('.menu-item');await page.screenshot({path:__dirname+'/guest-375.png'});
+await page.locator('[data-action=addItem]').first().click();const before=await page.locator('#cartTotal').innerText();await page.locator('[data-option="Добавка +50"]').click();const after=await page.locator('#cartTotal').innerText();await page.locator('#cartBar').click();await page.waitForTimeout(450);await page.screenshot({path:__dirname+'/cart-375.png'});const cart=await page.locator('#cartList').innerText();const grand=await page.locator('#cartGrand').innerText();
+await page.evaluate(()=>window.failOrders=true);await page.locator('#placeBtn').click();await page.waitForTimeout(100);const failed=await page.evaluate(()=>({stock:fixture.menu2[0].items[0].stock,writes}));
+await page.setViewportSize({width:667,height:375});await page.screenshot({path:__dirname+'/cart-landscape.png'});const rects=await page.locator('#cartList,#placeBtn').evaluateAll(es=>es.map(e=>({id:e.id,rect:e.getBoundingClientRect().toJSON()})));
+await page.goto(url+'/');await page.waitForTimeout(800);await page.setViewportSize({width:375,height:812});await page.screenshot({path:__dirname+'/staff-375.png'});await page.evaluate(()=>sw('queue'));await page.waitForTimeout(450);await page.screenshot({path:__dirname+'/queue-375.png'});await page.setViewportSize({width:1440,height:900});await page.waitForTimeout(180);await page.screenshot({path:__dirname+'/queue-desktop.png'});await page.evaluate(()=>sw('tables'));await page.waitForTimeout(450);await page.screenshot({path:__dirname+'/tables-desktop.png'});
+for(const role of ['waiter','barman']){await page.evaluate(r=>{pickRole(r);confirmRole();sw('queue')},role);await page.setViewportSize({width:375,height:812});await page.waitForTimeout(450);await page.screenshot({path:__dirname+'/'+role+'-375.png'})}
+await page.evaluate(()=>{pickRole('admin');confirmRole();sw('menu');openMenuEditor()});await page.setViewportSize({width:768,height:1024});await page.waitForTimeout(450);await page.screenshot({path:__dirname+'/menu-editor-768.png'});
+await page.goto(url+'/guest.html?table=1&token=test');await page.setViewportSize({width:320,height:568});await page.waitForSelector('.menu-item');await page.screenshot({path:__dirname+'/guest-320.png'});await page.locator('[data-action=addItem]').first().click();await page.locator('#cartBar').click();await page.waitForTimeout(450);await page.screenshot({path:__dirname+'/cart-320.png'});await page.locator('#placeBtn').click();await page.waitForTimeout(450);await page.screenshot({path:__dirname+'/confirm-320.png'});
+fs.writeFileSync(__dirname+'/browser-results.json',JSON.stringify({before,after,grand,cart,failed,rects,errors,blocked:[...new Set(blocked)]},null,2));await browser.close();server.close();console.log(JSON.stringify({before,after,grand,cart,failed,rects,errors}));})().catch(e=>{console.error(e);process.exit(1)});

@@ -1,0 +1,26 @@
+{
+  "at": "2026-09-17T20:13:20.835Z",
+  "runtime": "v22.23.2",
+  "environment": "local Firebase Emulator; synthetic history; not production capacity",
+  "profiles": [
+    {
+      "historyOrders": 0,
+      "seedBytes": 291,
+      "concurrentRequests": 14,
+      "elapsedMs": 19611,
+      "p50Ms": 18212,
+      "p95Ms": 19610,
+      "errors": [],
+      "integrity": "passed: orders, unique numbers, stock, double cancellation, edit, unchanged history"
+    },
+    {
+      "historyOrders": 1000,
+      "seedBytes": 667023,
+      "concurrentRequests": 14,
+      "elapsedMs": 30055,
+      "p50Ms": 21029,
+      "p95Ms": 30052,
+      "errors": []
+    }
+  ]
+}

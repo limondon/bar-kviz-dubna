@@ -3,6 +3,7 @@
   "short_name": "1708",
   "description": "Система управления заказами бара",
   "start_url": "./",
+  "id": "./",
   "scope": "./",
   "display": "standalone",
   "orientation": "portrait",

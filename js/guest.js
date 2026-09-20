@@ -1,21 +1,41 @@
-import{initializeApp}from'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
-import{getDatabase,ref,onValue,push,update,get,runTransaction}from'https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js';
-import{getAuth,signInAnonymously}from'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js';
-
+import{db,auth,ref,onValue,get,signInAnonymously,callService as api}from'./firebase.js';
 const BAR_NAME='Кальянная 1708';
-const fbApp=initializeApp({
-  apiKey:'AIzaSyAdPAuuu7TRsJfI9jxyYkdscPvPObm-6h8',
-  authDomain:'project-3061022303410047846.firebaseapp.com',
-  databaseURL:'https://project-3061022303410047846-default-rtdb.firebaseio.com',
-  projectId:'project-3061022303410047846',
-  storageBucket:'project-3061022303410047846.firebasestorage.app',
-  messagingSenderId:'21905205682',
-  appId:'1:21905205682:web:c2d6935c9b9848a7291cab'
-});
-const db=getDatabase(fbApp);
-const auth=getAuth(fbApp);
+let confirmedOrder=null,pendingOrder=null,pendingCall=null,callPending=false,callCooldown=0,orderBusy=false,menuSubscribed=false;
+const draftKey=()=>`bar_guest:${tableNum}:${token}`;
+function saveDraft(){try{sessionStorage.setItem(draftKey(),JSON.stringify({cart,guestCups,pendingOrder,pendingCall,confirmedOrder,note:document.getElementById('orderNote').value}));return true;}catch{return false;}}
+function restoreDraft(){
+  let raw;try{raw=sessionStorage.getItem(draftKey());}catch{return true;}
+  if(!raw)return true;
+  const record=v=>v&&typeof v==='object'&&!Array.isArray(v);
+  const text=v=>typeof v==='string';
+  const request=v=>record(v)&&/^[-\w]{1,80}$/.test(v.requestId||'')&&v.table===tableNum&&v.token===token;
+  try{
+    const d=JSON.parse(raw);if(!record(d))return false;
+    // Never silently discard an uncertain submission or receipt: it may already be accepted.
+    if(d.pendingOrder!=null&&(!request(d.pendingOrder)||!Array.isArray(d.pendingOrder.items)||!d.pendingOrder.items.length||!Number.isFinite(d.pendingOrder.expectedTotal)))return false;
+    if(d.pendingCall!=null&&!request(d.pendingCall))return false;
+    if(d.confirmedOrder!=null&&(!record(d.confirmedOrder)||d.confirmedOrder.table!==tableNum||!text(d.confirmedOrder.id)||!Number.isSafeInteger(d.confirmedOrder.num)||!Number.isFinite(d.confirmedOrder.total)))return false;
+    const restored={};let damaged=d.cart!=null&&!record(d.cart);
+    for(const [key,row] of Object.entries(record(d.cart)?d.cart:{})){
+      if(!/^[-\w]+:[-\w]+(?:#[-\w]+)?$/.test(key)||!record(row)||!text(row.name)||!row.name||!Number.isSafeInteger(row.qty)||row.qty<1||row.qty>99||!Number.isFinite(row.price)||row.price<0||(row.option!=null&&!text(row.option))||(row.productId!=null&&!text(row.productId))||(row.addons!=null&&(!record(row.addons)||Object.values(row.addons).some(v=>typeof v!=='boolean')))){
+        damaged=true;continue;
+      }
+      restored[key]={...row,addons:row.addons||{},option:row.option||null};
+    }
+    if(damaged&&d.pendingOrder!=null)return false;
+    cart=restored;guestCups=Number.isInteger(d.guestCups)&&d.guestCups>=0&&d.guestCups<=50?d.guestCups:0;
+    pendingOrder=d.pendingOrder||null;pendingCall=d.pendingCall||null;confirmedOrder=d.confirmedOrder||null;
+    document.getElementById('orderNote').value=text(d.note)?d.note:'';
+    if(damaged)flash('Часть корзины не удалось восстановить. Проверьте позиции перед отправкой.',true);
+    return true;
+  }catch{return false;}
+}
+function readMenu(raw){
+  return Object.entries(raw||{}).filter(([,c])=>c&&!c.hidden).map(([ck,c])=>({...c,items:Object.entries(c.items||{}).filter(([,i])=>i).map(([ik,i])=>({...i,_categoryKey:ck,_itemKey:ik}))}));
+}
+function refreshCartPrices(){if(pendingOrder)return;for(const [key,row] of Object.entries(cart)){const item=findItem(key);if(item&&item.name===row.name&&(item.productId||null)===(row.productId||null))row.price=Number(item.price)||0;}}
 
-;(()=>{let _lt=0,_lx=0,_ly=0;document.addEventListener('touchend',e=>{const t=Date.now();const tc=e.changedTouches[0];const tag=e.target.tagName.toLowerCase();const skip=tag==='button'||tag==='input'||tag==='select'||tag==='textarea'||e.target.closest('button,[data-action]');const dx=tc.clientX-_lx,dy=tc.clientY-_ly;if(!skip&&t-_lt<300&&Math.sqrt(dx*dx+dy*dy)<20)e.preventDefault();_lt=t;_lx=tc.clientX;_ly=tc.clientY;},{passive:false});})();
+
 let tableNum=null, token=null, sessionId=null;
 let menuData=[]; // [{cat, items:[{name,price,stock?,group?}]}]
 let cart={};     // {key: {name,price,qty,addons:{},option:null}}
@@ -40,7 +60,7 @@ function optionPrice(item){
   return item.option?parseOption(item.option).price:0;
 }
 function unitPrice(item){
-  return(item.price||0)+addonPrice(item)+optionPrice(item);
+  return(Number(item.price)||0)+addonPrice(item)+optionPrice(item);
 }
 let flashTmr=null;
 
@@ -49,62 +69,40 @@ let flashTmr=null;
   const p=new URLSearchParams(location.search);
   tableNum=p.get('table'); token=p.get('token');
   if(!tableNum||!token){showInvalid();return;}
-  try{await signInAnonymously(auth);}catch(e){}
-  const today=todayStr();
-  const metaKey=today+'_'+tableNum;
   try{
-    const snap=await get(ref(db,'tables/'+metaKey));
-    const meta=snap.val();
-    const readQuizToken=async()=>{
-      const quizSnap=await get(ref(db,'quiz_tokens/'+token));
-      const qt=quizSnap.val();
-      return qt&&String(qt.table)===String(tableNum)?qt:null;
-    };
-    if(!meta){
-      // Стол не существует — проверяем quiz_tokens (для печатных QR квиза)
-      const qt=await readQuizToken();
-      if(!qt||String(qt.table)!==String(tableNum)){showInvalid();return;}
-      // Токен валидный — автоматически открываем стол
-      const newSid=Date.now().toString(36);
-      await update(ref(db,'tables/'+metaKey),{status:'open',openedAt:Date.now(),date:today,tNum:tableNum,token,sid:newSid,autoOpened:true});
-      sessionId=newSid;
-    } else {
-      if(meta.status==='closed'){showInvalid('closed');return;}
-      if(meta.token!==token){
-        const qt=await readQuizToken();
-        if(!qt){showInvalid();return;}
-      }
-      sessionId=meta.sid||'default';
+    await signInAnonymously(auth);
+    if(!restoreDraft()){showInvalid('draft');return;}syncCallButtons();
+    if(confirmedOrder){showApp();showConfirmation(confirmedOrder);return;}
+    // A committed receipt remains recoverable even if the table was closed meanwhile.
+    if(pendingOrder){
+      showApp();openCart();
+      return;
     }
-    // Load menu once then subscribe
-    await loadMenu();
-    showApp();
-    // Real-time menu updates (for stock)
-    onValue(ref(db,'menu2'),snap=>{
-      const raw=snap.val();
-      if(raw){
-        const cats=Array.isArray(raw)?raw:Object.values(raw);
-        menuData=cats.map(c=>({...c,items:Array.isArray(c.items)?c.items:Object.values(c.items||{})}));
-        renderMenu();
-      }
-      setConn(true);
-    },()=>setConn(false));
-    // Watch table status
-    onValue(ref(db,'tables/'+metaKey),snap=>{
-      const m=snap.val();
-      if(m&&m.status==='closed')showInvalid('closed');
-    });
-  }catch(e){console.error(e);showInvalid();}
+    await initializeMenuSession();showApp();
+  }catch(e){console.error(e);showInvalid(e.code==='functions/permission-denied'?'invalid':e.code==='functions/failed-precondition'?'closed':'network');}
 })();
 
 // ─── MENU LOAD ───────────────────────────────────────
+async function initializeMenuSession(){
+  const session=await api('openGuestSession',{table:tableNum,token});
+  sessionId=session.sid;
+  await loadMenu();
+  refreshCartPrices();updateCartBar();
+  if(document.getElementById('screen-cart').classList.contains('active'))renderCartScreen();
+  if(menuSubscribed)return;
+  menuSubscribed=true;
+  onValue(ref(db,'menu2'),snap=>{
+    menuData=readMenu(snap.val());
+    activeCat=Math.min(activeCat,Math.max(0,menuData.length-1));
+    refreshCartPrices();renderTabs();renderMenu();updateCartBar();
+    if(document.getElementById('screen-cart').classList.contains('active'))renderCartScreen();
+  },()=>setConn(false));
+  onValue(ref(db,'.info/connected'),snap=>setConn(snap.val()===true));
+}
+
 async function loadMenu(){
   const snap=await get(ref(db,'menu2'));
-  const raw=snap.val();
-  if(raw){
-    const cats=Array.isArray(raw)?raw:Object.values(raw);
-    menuData=cats.map(c=>({...c,items:Array.isArray(c.items)?c.items:Object.values(c.items||{})}));
-  }
+  menuData=readMenu(snap.val());
   activeCat=0;
   renderTabs();
   renderMenu();
@@ -128,39 +126,15 @@ function stockText(item){
   if(s===0)return'Нет в наличии';
   return'Осталось: '+s+' шт.';
 }
-async function deductGuestStock(entries){
-  const txs=[];
-  for(const[,ci]of entries){
-    const oName=itemKey(ci.name);
-    for(let ci2=0;ci2<menuData.length;ci2++){
-      const catItems=menuData[ci2].items||[];
-      for(let ii=0;ii<catItems.length;ii++){
-        if(itemKey(catItems[ii].name)===oName&&getStock(catItems[ii])!==null){
-          txs.push({path:`menu2/${ci2}/items/${ii}/stock`,item:catItems[ii],qty:ci.qty,name:ci.name});
-        }
-      }
-    }
-  }
-  for(const tx of txs){
-    const res=await runTransaction(ref(db,tx.path),cur=>{
-      if(cur===undefined||cur===null||cur==='')return cur;
-      const n=Math.max(0,parseInt(cur,10)||0);
-      if(n<tx.qty)return;
-      return n-tx.qty;
-    });
-    if(!res.committed)throw new Error('Недостаточно остатков: '+tx.name);
-    tx.item.stock=res.snapshot.val();
-  }
-}
 function isOut(item){const s=getStock(item);return s!==null&&s===0;}
 function canAdd(item,key){
   const s=getStock(item);
   if(s===null)return true;
-  return s-(cart[key]?.qty||0)>0;
+  return s-Object.entries(cart).filter(([k])=>k.split('#')[0]===key.split('#')[0]).reduce((n,[,v])=>n+v.qty,0)>0;
 }
-function iKey(item){return item.id||item.name.trim().toLowerCase().replace(/\s+/g,'_');}
+function iKey(item){return item._categoryKey+':'+item._itemKey;}
 function findItem(key){
-  for(const cat of menuData)for(const it of(cat.items||[]))if(iKey(it)===key)return it;
+  for(const cat of menuData)for(const it of(cat.items||[]))if(iKey(it)===key.split('#')[0])return it;
   return null;
 }
 
@@ -169,7 +143,7 @@ function renderTabs(){
   const el=document.getElementById('catTabs');
   el.innerHTML=menuData.map((c,i)=>
     `<div class="cat-tab${i===activeCat?' active':''}" data-action="setCat" data-index="${i}">${esc(c.cat)}</div>`
-  ).join('')+'<div style="width:8px;flex-shrink:0"></div>';
+  ).join('')+'<div style="width:8px;flex-shrink:0"></div>';enhanceControls(el);
 }
 
 // ─── RENDER MENU ────────────────────────────────────
@@ -205,7 +179,7 @@ function renderMenu(){
       <div data-action="adjustCups" data-delta="1" style="width:38px;height:38px;min-width:38px;border-radius:50%;border:1.5px solid #f5a623;color:#f5a623;font-size:20px;cursor:pointer;display:flex;align-items:center;justify-content:center;">+</div>
     </div>`);
   }
-  el.innerHTML=html.join('');
+  el.innerHTML=html.join('');enhanceControls(el);
 }
 
 function renderItem(item,cat){
@@ -237,6 +211,7 @@ function renderItem(item,cat){
         ${stockHtml}
       </div>
       ${addonHtml}${optHtml}
+      ${qty>0&&(isLeafTeaCat(cat)||item.options?.length)?`<button type="button" class="variant-btn" data-action="anotherVariant" data-key="${escAttr(key)}">Добавить другой вариант</button>`:''}
     </div>
     <div class="item-btn">${btn}</div>
   </div>`;
@@ -286,11 +261,16 @@ function renderGroup(groupName,groupItems,cat){
 function addItem(key){
   const item=findItem(key);if(!item)return;
   if(!canAdd(item,key)){flash('Больше нет в наличии',true);return;}
-  if(!cart[key])cart[key]={name:item.name,price:item.price||0,qty:0,addons:{},option:null};
+  if(!cart[key])cart[key]={name:item.name,productId:item.productId||null,price:item.price||0,qty:0,addons:{},option:null};
   cart[key].qty++;
   const cat=menuData[activeCat];
   if(isTeaCat(cat)&&guestCups===0)guestCups=1;
   updateCartBar();renderMenu();
+}
+function anotherVariant(key){
+  const item=findItem(key);if(!cart[key]||!item)return;
+  if(!canAdd(item,key)){flash('Больше нет в наличии',true);return;}
+  cart[key+'#'+crypto.randomUUID()]={...cart[key]};delete cart[key];addItem(key);
 }
 function remItem(key){
   if(!cart[key])return;
@@ -302,15 +282,15 @@ function toggleAddon(key,addon){
   if(!cart[key])return;
   if(!cart[key].addons)cart[key].addons={};
   cart[key].addons[addon]=!cart[key].addons[addon];
-  renderMenu();
+  updateCartBar();renderMenu();
 }
 function selectOption(key,val){
   if(!cart[key])return;
   cart[key].option=cart[key].option===val?null:val;
-  renderMenu();
+  updateCartBar();renderMenu();
 }
 function adjustCups(delta){
-  guestCups=Math.max(0,guestCups+delta);
+  guestCups=Math.min(50,Math.max(0,guestCups+delta));saveDraft();
   renderMenu();
 }
 function cQty(key,delta){
@@ -328,6 +308,7 @@ function toggleGroup(g){
 function setCat(i){activeCat=i;renderTabs();renderMenu();document.getElementById('menuList').scrollTop=0;}
 
 function updateCartBar(){
+  saveDraft();
   const entries=Object.values(cart).filter(x=>x.qty>0);
   const total=entries.reduce((s,i)=>s+unitPrice(i)*i.qty,0);
   const count=entries.reduce((s,i)=>s+i.qty,0);
@@ -354,7 +335,7 @@ function renderCartScreen(){
   const subtotal=entries.reduce((s,[k,v])=>s+unitPrice(v)*v.qty,0);
   document.getElementById('cartList').innerHTML=entries.map(([key,item])=>
     `<div class="cart-row">
-      <div class="cart-row-name">${esc(item.name)}</div>
+      <div class="cart-row-name">${esc(item.name)}<div class="cart-options">${[...G_TEA_ADDONS.filter(a=>item.addons?.[a]).map(a=>`${esc(a)} +50 ₽`),...(item.option?[`${esc(parseOption(item.option).label)} — ${parseOption(item.option).price?fmt(parseOption(item.option).price):'бесплатно'}`]:[])].join('<br>')}</div></div>
       <div class="c-qty-row">
         <div class="c-qty-btn" data-action="cQty" data-key="${escAttr(key)}" data-delta="-1">−</div>
         <div class="c-qty-num">${item.qty}</div>
@@ -363,8 +344,10 @@ function renderCartScreen(){
       <div class="cart-row-price">${fmt(unitPrice(item)*item.qty)}</div>
     </div>`
   ).join('');
+  syncOrderControls();
   document.getElementById('cartSubtotal').textContent=fmt(subtotal);
   document.getElementById('cartGrand').textContent=fmt(subtotal);
+  enhanceControls(document.getElementById('cartList'));
   document.getElementById('cartTableLbl').textContent=tableNum;
   document.getElementById('cartBarLbl').textContent=BAR_NAME;
 }
@@ -378,89 +361,87 @@ function go(tid){
   const tgt=document.getElementById(tid);
   if(!tgt||tgt===cur)return;
   const fwd=tid!=='screen-menu';
-  if(cur){cur.classList.remove('active');cur.classList.add(fwd?'exit':'enter');setTimeout(()=>{cur.classList.remove('exit','enter');cur.classList.add('hidden');},400);}
+  if(cur){cur.inert=true;cur.classList.remove('active');cur.classList.add(fwd?'exit':'enter');setTimeout(()=>{if(cur.classList.contains('active'))return;cur.classList.remove('exit','enter');cur.classList.add('hidden');},400);}
+  tgt.inert=false;
   tgt.classList.remove('hidden','exit','enter');tgt.classList.add('active');
 }
 
 // ─── PLACE ORDER ────────────────────────────────────
-async function placeOrder(){
-  const entries=Object.entries(cart).filter(([k,v])=>v.qty>0);
-  if(!entries.length)return;
+function syncOrderControls(){
   const btn=document.getElementById('placeBtn');
-  btn.disabled=true;btn.textContent='Отправляем…';
+  btn.disabled=orderBusy||(!pendingOrder&&!Object.values(cart).some(v=>v.qty>0));
+  btn.textContent=orderBusy?'Отправляем…':pendingOrder?'ПРОВЕРИТЬ ОТПРАВКУ':'ОТПРАВИТЬ ЗАКАЗ';
+  document.getElementById('orderNote').readOnly=orderBusy||!!pendingOrder;
+}
+
+async function placeOrder(){
+  const btn=document.getElementById('placeBtn');if(orderBusy||btn.disabled)return;
+  const entries=Object.entries(cart).filter(([,v])=>v.qty>0);
+  if(!entries.length&&!pendingOrder)return;
+  orderBusy=true;syncOrderControls();
   try{
-    // Stock conflict check
-    const conflicts=[];
-    for(const [key,cartItem] of entries){
-      const menuItem=findItem(key);
-      if(!menuItem)continue;
-      const s=getStock(menuItem);
-      if(s===null)continue;
-      if(s<cartItem.qty)conflicts.push({key,name:cartItem.name,wanted:cartItem.qty,available:s});
-    }
-    if(conflicts.length){
-      let html='';
-      conflicts.forEach(c=>{
-        if(c.available===0){html+=`❌ <b>${esc(c.name)}</b> закончилась — убрана из заказа<br>`;delete cart[c.key];}
-        else{html+=`⚠️ <b>${esc(c.name)}</b>: хотели ${c.wanted} шт., осталось ${c.available} шт.<br>`;cart[c.key].qty=c.available;}
+    if(!pendingOrder){
+      const items=entries.map(([key,v])=>{
+        const item=findItem(key);
+        if(!item||item.name!==v.name||(item.productId||null)!==(v.productId||null))throw new Error('Меню изменилось. Уберите старую позицию и выберите товар заново.');
+        return{category:item._categoryKey,item:item._itemKey,name:item.name,productId:v.productId||null,qty:v.qty,option:v.option,addons:G_TEA_ADDONS.filter(a=>v.addons?.[a])};
       });
-      document.getElementById('conflictBox').innerHTML=`<div class="conflict-box">${html}</div>`;
-      renderCartScreen();updateCartBar();
-      btn.disabled=false;btn.textContent='ОТПРАВИТЬ ЗАКАЗ';
-      return;
+      pendingOrder={requestId:crypto.randomUUID(),table:tableNum,token,sid:sessionId,items,cups:guestCups,note:document.getElementById('orderNote').value.trim(),expectedTotal:entries.reduce((s,[,v])=>s+unitPrice(v)*v.qty,0)};
+      if(!saveDraft()){pendingOrder=null;throw new Error('Браузер не сохраняет состояние отправки. Разрешите хранилище для сайта и повторите.');}
     }
-    // Get order num
-    const numRes=await runTransaction(ref(db,'publicCounters/orderNum'),n=>(n||0)+1);
-    const orderNum=numRes.snapshot.val();
-    const note=document.getElementById('orderNote').value.trim();
-    const total=entries.reduce((s,[k,v])=>s+unitPrice(v)*v.qty,0);
-    const today=todayStr();
-    // Build items obj
-    const items={};
-    entries.forEach(([key,ci],i)=>{
-      const id=Date.now().toString(36)+'_'+i+'_'+Math.random().toString(36).slice(2,5);
-      let name=ci.name;
-      if(ci.addons){const sel=G_TEA_ADDONS.filter(a=>ci.addons[a]);if(sel.length)name+=` + ${sel.map(a=>a.toLowerCase()).join(', ')}`;}
-      if(ci.option)name+=` — ${parseOption(ci.option).label}`;
-      items[id]={id,name,qty:ci.qty,price:unitPrice(ci),status:'new'};
-    });
-    if(guestCups>0){const cid=Date.now().toString(36)+'_cups';const pl=guestCups===1?'кружка':guestCups<5?'кружки':'кружек';items[cid]={id:cid,name:`${guestCups} ${pl}`,qty:1,status:'new'};};
-    await deductGuestStock(entries);
-    const newRef=push(ref(db,'orders'));
-    await update(ref(db,'orders/'+newRef.key),{
-      id:newRef.key,table:parseInt(tableNum)||tableNum,
-      items,note,priority:'normal',status:'new',
-      createdAt:Date.now(),num:orderNum,date:today,sid:sessionId,source:'guest',total
-    });
-    // Show confirm
-    document.getElementById('confirmInfo').textContent=`Заказ #${orderNum} · Стол ${tableNum} · ${fmt(total)}`;
-    cart={};document.getElementById('orderNote').value='';
-    updateCartBar();go('screen-confirm');
-  }catch(e){console.error(e);flash('Ошибка соединения — попробуйте ещё раз',true);}
-  finally{btn.disabled=false;btn.textContent='ОТПРАВИТЬ ЗАКАЗ';}
+    const result=await api('placeGuestOrder',pendingOrder);
+    confirmedOrder=result;
+    pendingOrder=null;cart={};guestCups=0;document.getElementById('orderNote').value='';
+    updateCartBar();showConfirmation(result);
+  }catch(e){
+    // Only explicit validation failures guarantee the operation was not accepted.
+    if(['functions/invalid-argument','functions/failed-precondition','functions/permission-denied','functions/resource-exhausted'].includes(e.code)){
+      pendingOrder=null;saveDraft();
+      // Restored requests bypass session/menu loading so accepted receipts survive closure.
+      // After a definite rejection, restore the editing session before allowing a new request.
+      try{await initializeMenuSession();}
+      catch(recoveryError){showInvalid(recoveryError.code==='functions/permission-denied'?'invalid':recoveryError.code==='functions/failed-precondition'?'closed':'network');}
+    }
+    saveDraft();
+    const maintenance=e.code==='functions/unavailable'&&/режим обслуживания/i.test(e.message||'');
+    document.getElementById('conflictBox').textContent=pendingOrder?(maintenance?e.message+' После возобновления работы нажмите «Проверить отправку».':'Не удалось подтвердить отправку. Нажмите «Проверить отправку»: повтор не создаст второй заказ.'):(e.message||'Проверьте заказ и повторите отправку.');
+  }finally{orderBusy=false;syncOrderControls();}
 }
 
 // ─── CALL WAITER ────────────────────────────────────
+function syncCallButtons(){for(const b of document.querySelectorAll('[data-action="callWaiter"]')){b.dataset.originalLabel||=b.textContent;b.textContent=pendingCall?'Проверить вызов':b.dataset.originalLabel;}}
 async function callWaiter(){
+  if(callPending||Date.now()<callCooldown)return;
+  callPending=true;
+  const buttons=document.querySelectorAll('[data-action="callWaiter"]');
+  buttons.forEach(b=>b.disabled=true);
   try{
-    const newRef=push(ref(db,'waiterCalls'));
-    await update(ref(db,'waiterCalls/'+newRef.key),{table:tableNum,calledAt:Date.now(),date:todayStr(),status:'pending'});
-    flash('🔔 Официант уже идёт!');
-    const btn=document.getElementById('waiterBtn');
-    if(btn){
-      btn.style.opacity='.4';btn.style.pointerEvents='none';
-      btn.textContent='✓ Вызов отправлен';
-      setTimeout(()=>{btn.style.opacity='';btn.style.pointerEvents='';btn.textContent='🔔 Позвать официанта';},30000);
-    }
-  }catch(e){flash('Ошибка — попробуйте ещё раз',true);}
+    if(!pendingCall){pendingCall={requestId:crypto.randomUUID(),table:tableNum,token,sid:sessionId};if(!saveDraft()){pendingCall=null;throw new Error('Браузер не сохраняет состояние вызова. Разрешите хранилище для сайта.');}}
+    await api('guestCallWaiter',pendingCall);
+    pendingCall=null;saveDraft();
+    callCooldown=Date.now()+30000;flash('Вызов отправлен');
+  }catch(e){
+    if(['functions/invalid-argument','functions/failed-precondition','functions/permission-denied','functions/resource-exhausted'].includes(e.code))pendingCall=null;
+    saveDraft();flash(pendingCall?'Не удалось подтвердить вызов. Нажмите «Проверить вызов».':e.message,true);
+  }
+  finally{syncCallButtons();callPending=false;setTimeout(()=>buttons.forEach(b=>b.disabled=false),Math.max(0,callCooldown-Date.now()));}
 }
-
-function newOrder(){cart={};activeCat=0;updateCartBar();renderTabs();renderMenu();go('screen-menu');}
+function showConfirmation(result){document.getElementById('confirmInfo').textContent=`Заказ #${result.num} · Стол ${result.table} · ${fmt(result.total)}`;go('screen-confirm');}
+function newOrder(){confirmedOrder=null;cart={};guestCups=0;saveDraft();location.reload();}
 
 // ─── UI HELPERS ──────────────────────────────────────
 function showInvalid(reason){
+  document.getElementById('app').style.display='none';
   document.getElementById('screen-loading').classList.add('hidden');
   document.getElementById('screen-invalid').classList.remove('hidden');
+  if(reason==='draft'){
+    document.getElementById('invalidTitle').textContent='Не удалось восстановить заказ';
+    document.getElementById('invalidBody').textContent='Сохранённые данные повреждены. Уточните у официанта, был ли принят заказ, прежде чем оформлять его заново.';
+  }
+  if(reason==='network'){
+    document.getElementById('invalidTitle').textContent='Не удалось загрузить меню';
+    document.getElementById('invalidBody').textContent='Проверьте интернет и обновите страницу. Если ошибка повторится, позовите официанта.';
+  }
   if(reason==='closed'){
     document.getElementById('invalidTitle').textContent='Стол закрыт';
     document.getElementById('invalidBody').textContent='Этот стол уже закрыт. Попросите официанта открыть новую сессию.';
@@ -480,7 +461,7 @@ function flash(msg,isErr){
   el.textContent=msg;el.classList.toggle('err',!!isErr);el.classList.add('show');
   clearTimeout(flashTmr);flashTmr=setTimeout(()=>el.classList.remove('show'),2800);
 }
-function todayStr(){const d=new Date();return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate());}
+function todayStr(){return new Intl.DateTimeFormat('en-CA',{timeZone:'Europe/Moscow',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());}
 function pad(n){return String(n).padStart(2,'0');}
 function fmt(n){return(Number(n)||0).toLocaleString('ru-RU')+' ₽';}
 function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
@@ -490,9 +471,11 @@ document.addEventListener('click',e=>{
   const el=e.target.closest('[data-action]');
   if(!el)return;
   const a=el.dataset.action;
+  if((pendingOrder||orderBusy)&&!['placeOrder','callWaiter'].includes(a)){flash('Сначала проверьте отправку предыдущего заказа',true);return;}
   if(a==='setCat')setCat(Number(el.dataset.index)||0);
   else if(a==='adjustCups')adjustCups(Number(el.dataset.delta)||0);
   else if(a==='addItem')addItem(el.dataset.key);
+  else if(a==='anotherVariant')anotherVariant(el.dataset.key);
   else if(a==='remItem')remItem(el.dataset.key);
   else if(a==='toggleAddon')toggleAddon(el.dataset.key,el.dataset.addon);
   else if(a==='selectOption')selectOption(el.dataset.key,el.dataset.option);
@@ -504,3 +487,18 @@ document.addEventListener('click',e=>{
   else if(a==='newOrder')newOrder();
   else if(a==='callWaiter')callWaiter();
 });
+
+document.getElementById('orderNote').addEventListener('input',saveDraft);
+
+function enhanceControls(root){
+  root.querySelectorAll('[data-action]').forEach(el=>{
+    if(el.tagName!=='BUTTON'){el.setAttribute('role','button');el.tabIndex=0;}
+    const a=el.dataset.action;
+    if(['addItem','remItem','cQty'].includes(a))el.setAttribute('aria-label',((a==='remItem'||el.dataset.delta==='-1')?'Уменьшить количество: ':'Увеличить количество: ')+(findItem(el.dataset.key)?.name||''));
+    if(a==='selectOption')el.setAttribute('aria-pressed',String(cart[el.dataset.key]?.option===el.dataset.option));
+    if(a==='toggleAddon')el.setAttribute('aria-pressed',String(!!cart[el.dataset.key]?.addons?.[el.dataset.addon]));
+  });
+}
+enhanceControls(document);
+document.querySelectorAll('.screen.hidden').forEach(el=>el.inert=true);
+document.addEventListener('keydown',e=>{if((e.key==='Enter'||e.key===' ')&&e.target.matches('[role="button"][data-action]')){e.preventDefault();e.target.click();}});

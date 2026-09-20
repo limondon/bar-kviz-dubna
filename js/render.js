@@ -2,10 +2,11 @@ import{S}from'./state.js';
 import{esc,escAttr,fmt,empty,setBadge,setEl,todayStr,shiftDS,aggStatus,itemKey}from'./utils.js';
 import{BUILTIN_MENU}from'./menu-data.js';
 import{renderTables,renderClosed,getTMeta,getItemPrice}from'./tables.js';
+import{callService}from'./firebase.js';
 
 // ─── INSTANT ITEMS (пиво/напитки/закуски) ────────────
 export function isInstantItem(name){
-  const menu=S.BUILTIN_MENU_LIVE.length?S.BUILTIN_MENU_LIVE:BUILTIN_MENU;
+  const menu=S.menuBaseline!==undefined?S.BUILTIN_MENU_LIVE:BUILTIN_MENU;
   const key=itemKey(name);
   for(const cat of menu){
     const c=(cat.cat||'').toLowerCase();
@@ -114,12 +115,10 @@ export function renderAll(){
   const todayOrders=S.orders.filter(o=>o.date===today&&o.table!=null&&o.table!==''&&o.table!=='undefined');
   const openTablesSet=new Set();
   const closedTablesSet=new Set();
-  todayOrders.forEach(o=>{
-    const meta=getTMeta(today,o.table);
-    const sid=o.sid||'default';
-    const isCurrent=meta.sid===sid||(!meta.sid&&sid==='default');
-    if(isCurrent&&meta.status==='closed')closedTablesSet.add(String(o.table));
-    else if(isCurrent&&meta.status!=='closed')openTablesSet.add(String(o.table));
+  Object.values(S.tablesMeta).forEach(meta=>{
+    if(meta.date!==today||meta.tNum==null)return;
+    if(meta.status==='closed')closedTablesSet.add(String(meta.tNum));
+    else if(meta.status==='open')openTablesSet.add(String(meta.tNum));
   });
   setBadge('bQ',active.length);setBadge('bR',hasReady.length);setBadge('bT',openTablesSet.size);
   setBadge('bD',closedTablesSet.size);
@@ -139,25 +138,23 @@ export function renderAll(){
 // ─── STATS ───────────────────────────────────────────
 export function renderStats(){
   const el=document.getElementById('statsContent');if(!el)return;
-  const today=todayStr();
-  const todayOrders=S.orders.filter(o=>o.date===today);
-  const todayDone=todayOrders.filter(o=>o.status==='done');
-  const popMap={};
-  S.orders.forEach(o=>(o.items||[]).forEach(it=>{const k=it.name.trim().toLowerCase();if(!popMap[k])popMap[k]={name:it.name,count:0};popMap[k].count+=it.qty;}));
-  const popular=Object.values(popMap).sort((a,b)=>b.count-a.count).slice(0,10);
-  const dayStats={};
-  for(let i=6;i>=0;i--){const d=shiftDS(today,-i);dayStats[d]={date:d,orders:0,tables:new Set()};}
-  S.orders.forEach(o=>{if(dayStats[o.date]){dayStats[o.date].orders++;dayStats[o.date].tables.add(o.table);}});
-  const maxOrders=Math.max(...Object.values(dayStats).map(d=>d.orders),1);
+  if(!S.stats.loading&&(!S.stats.data||Date.now()-S.stats.loadedAt>30000)){
+    S.stats.loading=true;S.stats.error=null;
+    callService('getStaffStats',{}).then(data=>{S.stats={data,loading:false,error:null,loadedAt:Date.now()};if(S.activeTab==='stats')renderStats();}).catch(e=>{S.stats={...S.stats,loading:false,error:e?.message||'Не удалось загрузить статистику'};if(S.activeTab==='stats')renderStats();});
+  }
+  const data=S.stats.data;
+  if(!data){el.innerHTML=`<div class="stats-empty">${S.stats.error?esc(S.stats.error):'Загружаем статистику…'}</div>`;return;}
+  const today=data.today||{orders:0,done:0,tables:0},popular=data.popular||[],dayStats=data.sevenDays||[];
+  const maxOrders=Math.max(...dayStats.map(d=>d.orders),1);
   el.innerHTML=`<div class="stats-layout">
     <div class="stats-cards">
-      <div class="sc"><span class="n">${todayOrders.length}</span><span>заказов сегодня</span></div>
-      <div class="sc"><span class="n g">${todayDone.length}</span><span>выполнено</span></div>
-      <div class="sc"><span class="n b">${new Set(todayOrders.map(o=>o.table)).size}</span><span>столов</span></div>
+      <div class="sc"><span class="n">${today.orders}</span><span>заказов сегодня</span></div>
+      <div class="sc"><span class="n g">${today.done}</span><span>выполнено</span></div>
+      <div class="sc"><span class="n b">${today.tables}</span><span>столов</span></div>
     </div>
     <div class="stats-card">
       <div class="stats-card-title">📅 ЗАКАЗЫ ЗА 7 ДНЕЙ</div>
-      <div class="stats-chart">${Object.values(dayStats).map(d=>{const h=d.orders?Math.max(8,Math.round(d.orders/maxOrders*70)):2;const isToday=d.date===today;const lbl=d.date.slice(8);return`<div class="stats-bar-col${isToday?' today':''}"><div class="stats-bar-count">${d.orders||''}</div><div class="stats-bar-line" style="height:${h}px"></div><div class="stats-bar-label">${lbl}</div></div>`;}).join('')}</div>
+      <div class="stats-chart">${dayStats.map((d,index)=>{const h=d.orders?Math.max(8,Math.round(d.orders/maxOrders*70)):2;const isToday=index===dayStats.length-1;const lbl=d.date.slice(8);return`<div class="stats-bar-col${isToday?' today':''}"><div class="stats-bar-count">${d.orders||''}</div><div class="stats-bar-line" style="height:${h}px"></div><div class="stats-bar-label">${lbl}</div></div>`;}).join('')}</div>
     </div>
     <div class="stats-card">
       <div class="stats-card-title">🏆 ТОП ПОЗИЦИЙ (30 дней)</div>

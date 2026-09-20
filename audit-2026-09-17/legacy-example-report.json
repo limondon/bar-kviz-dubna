@@ -1,0 +1,52 @@
+{
+  "readOnly": true,
+  "summary": {
+    "orders": 4,
+    "structuredOrders": 3,
+    "legacyTextOrders": 1,
+    "ordersWithIssues": 3,
+    "issues": 7
+  },
+  "counts": {
+    "missing_session": 1,
+    "legacy_text_requires_review": 1,
+    "missing_price_snapshots": 1,
+    "missing_price_snapshot": 1,
+    "ambiguous_product": 1,
+    "missing_product_id": 1,
+    "total_mismatch": 1
+  },
+  "issues": [
+    {
+      "code": "missing_session",
+      "orderKey": "legacy"
+    },
+    {
+      "code": "legacy_text_requires_review",
+      "orderKey": "legacy"
+    },
+    {
+      "code": "missing_price_snapshots",
+      "orderKey": "legacy"
+    },
+    {
+      "code": "missing_price_snapshot",
+      "orderKey": "uncertain",
+      "itemKey": "i"
+    },
+    {
+      "code": "ambiguous_product",
+      "orderKey": "uncertain",
+      "itemKey": "i"
+    },
+    {
+      "code": "missing_product_id",
+      "orderKey": "uncertain",
+      "itemKey": "i"
+    },
+    {
+      "code": "total_mismatch",
+      "orderKey": "mismatch"
+    }
+  ]
+}
