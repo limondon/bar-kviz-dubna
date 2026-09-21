@@ -139,6 +139,13 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
 .c-qty-btn:active{background:var(--gold);color:#0A0809;}
 .c-qty-num{font-size:14px;font-weight:500;color:var(--text);min-width:16px;text-align:center;font-family:var(--mono);}
 .cart-row-price{font-size:13px;color:var(--gold);min-width:56px;text-align:right;font-family:var(--mono);}
+.cups-picker{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:16px 0 8px;padding:14px;border:1px solid rgba(245,166,35,.45);border-radius:12px;background:rgba(245,166,35,.1);}
+.cups-title{font-family:var(--sans);font-size:14px;font-weight:700;color:var(--gold);}
+.cups-hint{margin-top:3px;font-size:12px;color:var(--muted);}
+.cups-controls{display:flex;align-items:center;gap:10px;flex-shrink:0;}
+.cups-btn{width:38px;height:38px;border:1px solid var(--gold);border-radius:50%;background:transparent;color:var(--gold);font-size:22px;line-height:1;cursor:pointer;}
+.cups-count{min-width:22px;text-align:center;font-family:var(--mono);font-size:20px;font-weight:700;color:var(--gold);}
+.cups-summary{padding:0 2px 12px;font-size:13px;color:var(--muted);}
 .conflict-box{margin:8px 20px;padding:10px 14px;background:rgba(229,57,53,.1);border:1px solid rgba(229,57,53,.3);border-radius:10px;font-size:12px;color:var(--red);line-height:1.6;}
 .cart-notes{padding:12px 20px;flex-shrink:0;}
 .notes-lbl{font-size:10px;letter-spacing:.15em;text-transform:uppercase;color:var(--muted);margin-bottom:8px;font-weight:500;}

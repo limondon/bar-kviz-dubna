@@ -20,6 +20,11 @@ test('mobile guest recovers a committed order after lost response and page reloa
   await page.reload();await page.locator('#placeBtn').click();await expect(page.locator('#screen-confirm')).toHaveClass(/active/);
   expect(Object.keys(env.root().orders)).toHaveLength(1);expect(env.root().menu2[0].items[0].stock).toBe(4);expect(Object.values(env.root().orders)[0].note).toBe('Без льда');expect(env.errors).toEqual([]);
 });
+test('mobile guest can choose tea cups in the cart without horizontal overflow',async({page})=>{
+  const env=await setup(page);await guest(page);await page.locator('[data-action=setCat][data-index="1"]').click();await page.locator('[data-action=addItem]').click();await page.locator('#cartBar').click();
+  await expect(page.locator('.cups-picker')).toBeVisible();await page.locator('.cups-picker [data-action=adjustCups][data-delta="1"]').click();await expect(page.locator('.cups-summary')).toHaveText('Кружки — 2 шт.');
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);expect(env.errors).toEqual([]);
+});
 test('mobile delayed submission stays locked and does not double-submit',async({page})=>{
   const env=await setup(page);await guest(page);await page.locator('[data-action=addItem]').first().click();await page.locator('#cartBar').click();
   let release;const blocked=new Promise(resolve=>release=resolve);

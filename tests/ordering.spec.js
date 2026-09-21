@@ -79,6 +79,19 @@ test('one product can be ordered with different options',async({page})=>{
   await page.locator('#cartBar').click();await expect(page.locator('.cart-row')).toHaveCount(2);await expect(page.locator('#cartGrand')).toHaveText('650 ₽');
   await page.locator('#placeBtn').click();await expect(page.locator('#screen-confirm')).toHaveClass(/active/);expect(env.root().menu2[0].items[0].stock).toBe(3);
 });
+test('tea cups are chosen in the cart and reset when the last tea is removed',async({page})=>{
+  const env=await setup(page);await guest(page);await page.locator('[data-action=setCat][data-index="1"]').click();await page.locator('[data-action=addItem]').click();await page.locator('#cartBar').click();
+  await expect(page.locator('.cups-picker')).toContainText('Сколько кружек принести');await expect(page.locator('.cups-summary')).toHaveText('Кружки — 1 шт.');
+  await page.locator('.cups-picker [data-action=adjustCups][data-delta="1"]').click();await expect(page.locator('.cups-summary')).toHaveText('Кружки — 2 шт.');
+  await page.locator('[data-action=cQty][data-delta="-1"]').click();await expect(page.locator('.cups-picker')).toHaveCount(0);
+  await page.locator('[data-action=closeCart]').click();await page.locator('[data-action=setCat][data-index="0"]').click();await page.locator('[data-action=addItem]').click();await page.locator('#cartBar').click();await page.locator('#placeBtn').click();
+  await expect(page.locator('#screen-confirm')).toHaveClass(/active/);expect(Object.values(env.root().orders)[0].items.cups).toBeUndefined();expect(env.errors).toEqual([]);
+});
+test('selected tea cups are included in the order for staff',async({page})=>{
+  const env=await setup(page);await guest(page);await page.locator('[data-action=setCat][data-index="1"]').click();await page.locator('[data-action=addItem]').click();await page.locator('#cartBar').click();
+  await page.locator('.cups-picker [data-action=adjustCups][data-delta="1"]').click();await page.locator('#placeBtn').click();await expect(page.locator('#screen-confirm')).toHaveClass(/active/);
+  expect(Object.values(env.root().orders)[0].items.cups).toMatchObject({name:'Кружки',qty:2,price:0,status:'new'});expect(env.errors).toEqual([]);
+});
 test('lost accepted response can be retried without duplicate order or stock loss',async({page})=>{
   const env=await setup(page);await guest(page);await page.locator('[data-action=addItem]').first().click();await page.locator('#cartBar').click();
   env.lose();await page.locator('#placeBtn').click();await expect(page.locator('#placeBtn')).toHaveText('ПРОВЕРИТЬ ОТПРАВКУ');

@@ -137,6 +137,16 @@ function findItem(key){
   for(const cat of menuData)for(const it of(cat.items||[]))if(iKey(it)===key.split('#')[0])return it;
   return null;
 }
+function hasTeaInCart(){
+  return Object.entries(cart).some(([key,row])=>{
+    if(!row?.qty)return false;
+    const item=findItem(key);
+    return !!item&&isTeaCat(menuData.find(cat=>(cat.items||[]).includes(item)));
+  });
+}
+function normalizeGuestCups(){
+  if(!pendingOrder&&!hasTeaInCart())guestCups=0;
+}
 
 // ─── RENDER TABS ────────────────────────────────────
 function renderTabs(){
@@ -261,10 +271,11 @@ function renderGroup(groupName,groupItems,cat){
 function addItem(key){
   const item=findItem(key);if(!item)return;
   if(!canAdd(item,key)){flash('Больше нет в наличии',true);return;}
+  const hadTea=hasTeaInCart();
   if(!cart[key])cart[key]={name:item.name,productId:item.productId||null,price:item.price||0,qty:0,addons:{},option:null};
   cart[key].qty++;
   const cat=menuData[activeCat];
-  if(isTeaCat(cat)&&guestCups===0)guestCups=1;
+  if(isTeaCat(cat)&&!hadTea&&guestCups===0)guestCups=1;
   updateCartBar();renderMenu();
 }
 function anotherVariant(key){
@@ -276,6 +287,7 @@ function remItem(key){
   if(!cart[key])return;
   cart[key].qty--;
   if(cart[key].qty<=0)delete cart[key];
+  normalizeGuestCups();
   updateCartBar();renderMenu();
 }
 function toggleAddon(key,addon){
@@ -290,8 +302,10 @@ function selectOption(key,val){
   updateCartBar();renderMenu();
 }
 function adjustCups(delta){
+  if(!hasTeaInCart()){guestCups=0;updateCartBar();return;}
   guestCups=Math.min(50,Math.max(0,guestCups+delta));saveDraft();
   renderMenu();
+  if(document.getElementById('screen-cart').classList.contains('active'))renderCartScreen();
 }
 function cQty(key,delta){
   if(!cart[key])return;
@@ -299,6 +313,7 @@ function cQty(key,delta){
   if(delta>0&&item&&!canAdd(item,key)){flash('Больше нет в наличии',true);return;}
   cart[key].qty+=delta;
   if(cart[key].qty<=0)delete cart[key];
+  normalizeGuestCups();
   renderCartScreen();updateCartBar();
 }
 function toggleGroup(g){
@@ -333,6 +348,16 @@ function initStickyHeader(){
 function renderCartScreen(){
   const entries=Object.entries(cart).filter(([k,v])=>v.qty>0);
   const subtotal=entries.reduce((s,[k,v])=>s+unitPrice(v)*v.qty,0);
+  const hasTea=hasTeaInCart();
+  if(!hasTea)guestCups=0;
+  const cupsHtml=hasTea?`<section class="cups-picker" aria-label="Количество кружек">
+    <div><div class="cups-title">☕ Сколько кружек принести?</div><div class="cups-hint">Укажите число, чтобы не писать его в комментарии</div></div>
+    <div class="cups-controls">
+      <button type="button" class="cups-btn" data-action="adjustCups" data-delta="-1" aria-label="Уменьшить количество кружек">−</button>
+      <span class="cups-count">${guestCups}</span>
+      <button type="button" class="cups-btn" data-action="adjustCups" data-delta="1" aria-label="Увеличить количество кружек">+</button>
+    </div>
+  </section><div class="cups-summary">Кружки — ${guestCups} шт.</div>`:'';
   document.getElementById('cartList').innerHTML=entries.map(([key,item])=>
     `<div class="cart-row">
       <div class="cart-row-name">${esc(item.name)}<div class="cart-options">${[...G_TEA_ADDONS.filter(a=>item.addons?.[a]).map(a=>`${esc(a)} +50 ₽`),...(item.option?[`${esc(parseOption(item.option).label)} — ${parseOption(item.option).price?fmt(parseOption(item.option).price):'бесплатно'}`]:[])].join('<br>')}</div></div>
@@ -343,7 +368,7 @@ function renderCartScreen(){
       </div>
       <div class="cart-row-price">${fmt(unitPrice(item)*item.qty)}</div>
     </div>`
-  ).join('');
+  ).join('')+cupsHtml;
   syncOrderControls();
   document.getElementById('cartSubtotal').textContent=fmt(subtotal);
   document.getElementById('cartGrand').textContent=fmt(subtotal);
