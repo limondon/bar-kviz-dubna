@@ -26,6 +26,18 @@ if(rehearsalIndex>=0){
   env.REHEARSAL_INPUT=resolved;
 }
 const command=rehearsalIndex>=0?'node scripts/rehearse-migration.cjs':process.argv.includes('--load')?`node scripts/load-emulators.cjs${process.argv.includes('--live-history')?' --live-history':''}`:'node --test tests/integration.test.cjs';
+// Firebase's Functions emulator reads declared secrets from .secret.local.
+// Integration checks use a hard-coded demo project, so create an ephemeral
+// VAPID pair when a developer or CI runner has not supplied one. Never replace
+// an existing local file, and remove only the file created by this process.
+const secretFile=path.join(root,'functions','.secret.local');let generatedSecret=false;
+if(!fs.existsSync(secretFile)){
+  const webpush=require(path.join(root,'functions','node_modules','web-push'));
+  const keys=webpush.generateVAPIDKeys();
+  fs.writeFileSync(secretFile,`WEB_PUSH_PUBLIC_KEY=${keys.publicKey}\nWEB_PUSH_PRIVATE_KEY=${keys.privateKey}\n`,{flag:'wx',mode:0o600});
+  generatedSecret=true;
+}
+const cleanup=()=>{if(generatedSecret)try{fs.rmSync(secretFile);}catch{}};
 const child=spawn(node,[cli,startOnly?'emulators:start':'emulators:exec','--project','demo-bar-1708','--only','auth,database,functions','--non-interactive',...(startOnly?[]:[command])],{cwd:root,env,stdio:'inherit',windowsHide:true});
-child.on('error',error=>{console.error(error.message);process.exitCode=1;});
-child.on('exit',code=>{process.exitCode=code??1;});
+child.on('error',error=>{cleanup();console.error(error.message);process.exitCode=1;});
+child.on('exit',code=>{cleanup();process.exitCode=code??1;});

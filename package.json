@@ -7,6 +7,7 @@
     "test": "node --test tests/server.test.cjs tests/rules.test.cjs tests/sw.test.cjs tests/push.test.cjs tests/legacy-audit.test.cjs tests/archive.test.cjs tests/release.test.cjs && playwright test",
     "test:server": "node --test tests/server.test.cjs tests/rules.test.cjs tests/sw.test.cjs tests/push.test.cjs tests/legacy-audit.test.cjs tests/archive.test.cjs tests/release.test.cjs",
     "audit:data": "node scripts/audit-legacy.cjs",
+    "summarize:data": "node scripts/summarize-data-quality.cjs",
     "test:integration": "node scripts/run-integration.cjs",
     "test:rehearsal": "node scripts/run-integration.cjs --rehearse",
     "test:load": "node scripts/run-integration.cjs --load",
