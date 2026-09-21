@@ -6,6 +6,31 @@ import{buildQuickTableBtns,isInstantItem}from'./render.js';
 
 // ─── ADD ORDER ────────────────────────────────────────
 let pendingCreate=null;
+const staffDraftKey='bar_staff_order_draft';
+const staffFieldIds=['inpTable','inpItems','inpNote','inpPriority'];
+function readStaffDraft(){
+  return Object.fromEntries(staffFieldIds.map(id=>[id,document.getElementById(id)?.value||'']));
+}
+function isStaffDraft(d){
+  return !!d&&typeof d==='object'&&typeof d.inpTable==='string'&&d.inpTable.length<=30&&typeof d.inpItems==='string'&&d.inpItems.length<=5000&&typeof d.inpNote==='string'&&d.inpNote.length<=1000&&['normal','urgent'].includes(d.inpPriority);
+}
+function saveStaffDraft(){
+  if(pendingCreate)return;
+  const draft=readStaffDraft();
+  try{
+    if(!draft.inpTable.trim()&&!draft.inpItems.trim()&&!draft.inpNote.trim()&&draft.inpPriority==='normal')sessionStorage.removeItem(staffDraftKey);
+    else sessionStorage.setItem(staffDraftKey,JSON.stringify(draft));
+  }catch{}
+}
+function clearStaffDraft(){try{sessionStorage.removeItem(staffDraftKey);}catch{}}
+function restoreStaffDraft(){
+  try{
+    const saved=JSON.parse(sessionStorage.getItem(staffDraftKey)||'null');
+    if(!isStaffDraft(saved))return;
+    for(const id of staffFieldIds)document.getElementById(id).value=saved[id];
+    buildQuickTableBtns();
+  }catch{}
+}
 function syncPendingForm(){
   const locked=!!pendingCreate;S.pendingStaffOrder=locked;
   document.getElementById('staffOrderFields').inert=locked;
@@ -39,6 +64,7 @@ export async function addOrder(){
     syncPendingForm();
     const result=await callService('createStaffOrder',pendingCreate);
     pendingCreate=null;try{sessionStorage.removeItem('bar_pending_staff_order');}catch{}
+    clearStaffDraft();
     fl('fOk','✅ Заказ #'+result.num+' создан');
     ['inpTable','inpItems','inpNote'].forEach(id=>document.getElementById(id).value='');
     document.getElementById('inpPriority').value='normal';buildQuickTableBtns();
@@ -53,7 +79,12 @@ try{
   const saved=JSON.parse(sessionStorage.getItem('bar_pending_staff_order')||'null');
   if(saved&&typeof saved.table==='string'&&typeof saved.requestId==='string'&&Array.isArray(saved.items)&&saved.items.length&&saved.items.every(i=>i&&typeof i.name==='string'&&Number.isInteger(i.qty)))pendingCreate=saved;
 }catch{}
-restorePendingForm();syncPendingForm();
+if(pendingCreate)restorePendingForm();else restoreStaffDraft();
+for(const id of staffFieldIds){
+  const field=document.getElementById(id);
+  field?.addEventListener(id==='inpPriority'?'change':'input',saveStaffDraft);
+}
+syncPendingForm();
 
 // ─── ITEM ACTIONS ─────────────────────────────────────
 const updating=new Set();

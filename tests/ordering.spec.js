@@ -191,6 +191,12 @@ test('deleting all categories leaves an empty catalog and permits creating a new
 });
 
 async function newStaffOrder(page){await page.goto('https://bar.test/');await page.waitForFunction(()=>!!window.sw);await page.evaluate(()=>sw('new'));}
+test('unsubmitted staff order draft restores after reload and clears after successful submission',async({page})=>{
+  const env=await setup(page);await newStaffOrder(page);await page.evaluate(()=>pickTable('1'));await page.locator('#inpItems').fill('2 Corona');await page.locator('#inpNote').fill('Без льда');await page.locator('#inpPriority').selectOption('urgent');
+  await page.reload();await page.waitForFunction(()=>!!window.sw);await page.evaluate(()=>sw('new'));
+  await expect(page.locator('#inpTable')).toHaveValue('1');await expect(page.locator('#inpItems')).toHaveValue('2 Corona');await expect(page.locator('#inpNote')).toHaveValue('Без льда');await expect(page.locator('#inpPriority')).toHaveValue('urgent');
+  await page.locator('.btn-add').click();await expect.poll(()=>Object.keys(env.root().orders).length).toBe(1);expect(Object.values(env.root().orders)[0]).toMatchObject({table:'1',note:'Без льда',priority:'urgent'});expect(await page.evaluate(()=>sessionStorage.getItem('bar_staff_order_draft'))).toBeNull();expect(env.errors).toEqual([]);
+});
 test('staff response loss locks the submitted draft through reload and retries exactly once',async({page})=>{
   const env=await setup(page);await newStaffOrder(page);await page.locator('#inpTable').fill('1');await page.locator('#inpItems').fill('2 Corona');await page.locator('#inpNote').fill('Без льда');
   env.lose();await page.locator('.btn-add').click();await expect(page.locator('.btn-add')).toHaveText('ПРОВЕРИТЬ ОТПРАВКУ');await expect(page.locator('#inpItems')).toBeDisabled();
