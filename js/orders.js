@@ -13,6 +13,27 @@ import{buildQuickTableBtns,isInstantItem}from'./render.js';
 import{nextOrderNum}from'./counters.js';
 
 // ─── ADD ORDER ────────────────────────────────────────
+const staffDraftKey='bar_staff_order_draft';
+const staffFieldIds=['inpTable','inpItems','inpNote','inpPriority'];
+function saveStaffDraft(){
+  const draft=Object.fromEntries(staffFieldIds.map(id=>[id,document.getElementById(id)?.value||'']));
+  try{
+    if(!draft.inpTable.trim()&&!draft.inpItems.trim()&&!draft.inpNote.trim()&&draft.inpPriority==='normal')sessionStorage.removeItem(staffDraftKey);
+    else sessionStorage.setItem(staffDraftKey,JSON.stringify(draft));
+  }catch{}
+}
+function clearStaffDraft(){try{sessionStorage.removeItem(staffDraftKey);}catch{}}
+function restoreStaffDraft(){
+  try{
+    const d=JSON.parse(sessionStorage.getItem(staffDraftKey)||'null');
+    if(!d||typeof d!=='object'||typeof d.inpTable!=='string'||d.inpTable.length>30||typeof d.inpItems!=='string'||d.inpItems.length>5000||typeof d.inpNote!=='string'||d.inpNote.length>1000||!['normal','urgent'].includes(d.inpPriority))return;
+    for(const id of staffFieldIds)document.getElementById(id).value=d[id];
+    buildQuickTableBtns();
+  }catch{}
+}
+restoreStaffDraft();
+for(const id of staffFieldIds)document.getElementById(id)?.addEventListener(id==='inpPriority'?'change':'input',saveStaffDraft);
+
 export async function addOrder(){
   const btn=document.querySelector('.btn-add');
   if(btn&&btn.disabled)return;
@@ -49,6 +70,7 @@ export async function addOrder(){
         fl('fOk','✅ Заказ #'+num+' — Стол '+tNum+' ('+items.length+' поз.)');
         ['inpTable','inpItems','inpNote'].forEach(id=>document.getElementById(id).value='');
         document.getElementById('inpPriority').value='normal';
+        clearStaffDraft();
         buildQuickTableBtns();
         if(S.role==='waiter')window.sw('queue');
       }

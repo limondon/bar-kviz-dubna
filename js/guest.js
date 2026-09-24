@@ -163,6 +163,10 @@ function findItem(key){
   for(const cat of menuData)for(const it of(cat.items||[]))if(iKey(it)===key)return it;
   return null;
 }
+function hasTeaInCart(){
+  return menuData.some(cat=>isTeaCat(cat)&&(cat.items||[]).some(item=>(cart[iKey(item)]?.qty||0)>0));
+}
+function normalizeGuestCups(){if(!hasTeaInCart())guestCups=0;}
 
 // ─── RENDER TABS ────────────────────────────────────
 function renderTabs(){
@@ -286,16 +290,18 @@ function renderGroup(groupName,groupItems,cat){
 function addItem(key){
   const item=findItem(key);if(!item)return;
   if(!canAdd(item,key)){flash('Больше нет в наличии',true);return;}
+  const hadTea=hasTeaInCart();
   if(!cart[key])cart[key]={name:item.name,price:item.price||0,qty:0,addons:{},option:null};
   cart[key].qty++;
   const cat=menuData[activeCat];
-  if(isTeaCat(cat)&&guestCups===0)guestCups=1;
+  if(isTeaCat(cat)&&!hadTea&&guestCups===0)guestCups=1;
   updateCartBar();renderMenu();
 }
 function remItem(key){
   if(!cart[key])return;
   cart[key].qty--;
   if(cart[key].qty<=0)delete cart[key];
+  normalizeGuestCups();
   updateCartBar();renderMenu();
 }
 function toggleAddon(key,addon){
@@ -310,8 +316,10 @@ function selectOption(key,val){
   renderMenu();
 }
 function adjustCups(delta){
-  guestCups=Math.max(0,guestCups+delta);
+  if(!hasTeaInCart()){guestCups=0;return;}
+  guestCups=Math.min(50,Math.max(0,guestCups+delta));
   renderMenu();
+  if(document.getElementById('screen-cart').classList.contains('active'))renderCartScreen();
 }
 function cQty(key,delta){
   if(!cart[key])return;
@@ -319,6 +327,7 @@ function cQty(key,delta){
   if(delta>0&&item&&!canAdd(item,key)){flash('Больше нет в наличии',true);return;}
   cart[key].qty+=delta;
   if(cart[key].qty<=0)delete cart[key];
+  normalizeGuestCups();
   renderCartScreen();updateCartBar();
 }
 function toggleGroup(g){
@@ -352,6 +361,15 @@ function initStickyHeader(){
 function renderCartScreen(){
   const entries=Object.entries(cart).filter(([k,v])=>v.qty>0);
   const subtotal=entries.reduce((s,[k,v])=>s+unitPrice(v)*v.qty,0);
+  normalizeGuestCups();
+  const cupsHtml=hasTeaInCart()?`<section class="cups-picker" aria-label="Количество кружек">
+    <div><div class="cups-title">☕ Сколько кружек принести?</div><div class="cups-hint">Укажите число, чтобы не писать его в комментарии</div></div>
+    <div class="cups-controls">
+      <button type="button" class="cups-btn" data-action="adjustCups" data-delta="-1" aria-label="Уменьшить количество кружек">−</button>
+      <span class="cups-count">${guestCups}</span>
+      <button type="button" class="cups-btn" data-action="adjustCups" data-delta="1" aria-label="Увеличить количество кружек">+</button>
+    </div>
+  </section><div class="cups-summary">Кружки — ${guestCups} шт.</div>`:'';
   document.getElementById('cartList').innerHTML=entries.map(([key,item])=>
     `<div class="cart-row">
       <div class="cart-row-name">${esc(item.name)}</div>
@@ -362,7 +380,7 @@ function renderCartScreen(){
       </div>
       <div class="cart-row-price">${fmt(unitPrice(item)*item.qty)}</div>
     </div>`
-  ).join('');
+  ).join('')+cupsHtml;
   document.getElementById('cartSubtotal').textContent=fmt(subtotal);
   document.getElementById('cartGrand').textContent=fmt(subtotal);
   document.getElementById('cartTableLbl').textContent=tableNum;
@@ -378,7 +396,7 @@ function go(tid){
   const tgt=document.getElementById(tid);
   if(!tgt||tgt===cur)return;
   const fwd=tid!=='screen-menu';
-  if(cur){cur.classList.remove('active');cur.classList.add(fwd?'exit':'enter');setTimeout(()=>{cur.classList.remove('exit','enter');cur.classList.add('hidden');},400);}
+  if(cur){cur.classList.remove('active');cur.classList.add(fwd?'exit':'enter');setTimeout(()=>{if(!cur.classList.contains('active')){cur.classList.remove('exit','enter');cur.classList.add('hidden');}},400);}
   tgt.classList.remove('hidden','exit','enter');tgt.classList.add('active');
 }
 
@@ -434,7 +452,7 @@ async function placeOrder(){
     });
     // Show confirm
     document.getElementById('confirmInfo').textContent=`Заказ #${orderNum} · Стол ${tableNum} · ${fmt(total)}`;
-    cart={};document.getElementById('orderNote').value='';
+    cart={};guestCups=0;document.getElementById('orderNote').value='';
     updateCartBar();go('screen-confirm');
   }catch(e){console.error(e);flash('Ошибка соединения — попробуйте ещё раз',true);}
   finally{btn.disabled=false;btn.textContent='ОТПРАВИТЬ ЗАКАЗ';}
@@ -455,7 +473,7 @@ async function callWaiter(){
   }catch(e){flash('Ошибка — попробуйте ещё раз',true);}
 }
 
-function newOrder(){cart={};activeCat=0;updateCartBar();renderTabs();renderMenu();go('screen-menu');}
+function newOrder(){cart={};guestCups=0;activeCat=0;updateCartBar();renderTabs();renderMenu();go('screen-menu');}
 
 // ─── UI HELPERS ──────────────────────────────────────
 function showInvalid(reason){

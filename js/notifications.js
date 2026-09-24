@@ -6,6 +6,7 @@ let audioUnlocked=false;
 export let swReg=null;
 export let notifMuted=localStorage.getItem('bar_notif_muted')==='1';
 export const knownOrderIds=new Set();
+let ordersInitialized=false;
 
 export async function registerSW(){
   if(!('serviceWorker' in navigator))return;
@@ -28,20 +29,12 @@ document.addEventListener('click',unlockAudio,{once:true,passive:true});
 
 export function updateNotifBtn(){
   const btns=document.querySelectorAll('.notif-btn');
-  if(!('Notification' in window)&&!('vibrate' in navigator)){btns.forEach(b=>b.style.display='none');return;}
-  const perm=typeof Notification!=='undefined'?Notification.permission:'granted';
   btns.forEach(b=>{
     b.style.pointerEvents='auto';b.style.opacity='1';
-    if(perm==='denied'){
-      b.textContent='🔕 Запрещено';b.style.color='var(--red)';
-      b.style.opacity='0.6';b.style.pointerEvents='none';
-    } else if(notifMuted){
-      b.textContent='🔕 Ув. выкл.';b.style.color='var(--muted)';
-    } else if(perm==='granted'){
-      b.textContent='🔔 Ув. вкл.';b.style.color='var(--green)';
-    } else {
-      b.textContent='🔔 Ув. вкл.';b.style.color='var(--accent)';
-    }
+    b.textContent=notifMuted?'🔕 Звук выкл.':'🔔 Звук вкл.';
+    b.style.color=notifMuted?'var(--muted)':'var(--green)';
+    b.title='Звук новых заказов, пока панель открыта';
+    b.setAttribute('aria-pressed',String(!notifMuted));
   });
 }
 
@@ -55,20 +48,14 @@ async function requestNotificationPermission(){
 }
 
 export async function enableNotifications(){
-  const perm=typeof Notification!=='undefined'?Notification.permission:'default';
-  if(perm==='denied')return;
-  if(notifMuted){
-    notifMuted=false;localStorage.setItem('bar_notif_muted','0');
-    updateNotifBtn();fl('fOk','🔔 Уведомления включены');return;
-  }
-  if(perm==='granted'){
-    notifMuted=true;localStorage.setItem('bar_notif_muted','1');
-    updateNotifBtn();fl('fInfo','🔕 Уведомления выключены');return;
-  }
   unlockAudio();
-  await requestNotificationPermission();
-  notifMuted=false;localStorage.setItem('bar_notif_muted','0');
+  notifMuted=!notifMuted;localStorage.setItem('bar_notif_muted',notifMuted?'1':'0');
   updateNotifBtn();
+  fl(notifMuted?'fInfo':'fOk',notifMuted?'🔕 Звук выключен':'🔔 Звук включён. Оставьте панель открытой на время квиза.');
+  if(!notifMuted){
+    playBeep();
+    try{await requestNotificationPermission();}catch{}
+  }
 }
 
 export function playBeep(){
@@ -99,15 +86,15 @@ export function notifyNewOrder(order){
   playBeep();
   const table=order?.table||'?';
   const count=order?.items?Object.keys(order.items).length:'';
-  if(swReg&&Notification.permission==='granted'){
+  if(swReg&&typeof Notification!=='undefined'&&Notification.permission==='granted'){
     swReg.active?.postMessage({type:'NOTIFY_NEW_ORDER',table,count});
-  } else if(Notification.permission==='granted'){
+  } else if(typeof Notification!=='undefined'&&Notification.permission==='granted'){
     new Notification('🍺 Новый заказ!',{body:`Стол ${table} — ${count} позиц.`,icon:'icons/icon-192.png'});
   }
 }
 
 export function checkNewOrders(newOrders){
-  if(knownOrderIds.size===0){newOrders.forEach(o=>knownOrderIds.add(o.id));return;}
+  if(!ordersInitialized){ordersInitialized=true;newOrders.forEach(o=>knownOrderIds.add(o.id));return;}
   const newOnes=[];
   newOrders.forEach(o=>{if(!knownOrderIds.has(o.id)){knownOrderIds.add(o.id);newOnes.push(o);}});
   if(newOnes.length&&(S.role==='barman'||S.role==='admin')){

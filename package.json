@@ -1,10 +1,11 @@
 {
   "name": "bar-kviz-dubna-main",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Real-time система управления заказами бара 1708.",
   "main": "sw.js",
   "scripts": {
-    "test": "playwright test"
+    "test": "playwright test",
+    "build": "node scripts/build-spark.cjs"
   },
   "repository": {
     "type": "git",

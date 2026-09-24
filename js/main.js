@@ -1,7 +1,6 @@
 import{S}from'./state.js';
 import{db,auth,ref,update,set,remove,onValue,runTransaction,onAuthStateChanged}from'./firebase.js';
 import{todayStr,normalizeOrder,fl,closeConfirmModal,confirmOk,setBadge}from'./utils.js';
-import{BUILTIN_MENU}from'./menu-data.js';
 import{registerSW,checkNewOrders,playBeep,notifMuted,swReg,updateNotifBtn}from'./notifications.js';
 import{renderAll,startPoll}from'./render.js';
 import{renderTables,renderClosed}from'./tables.js';
@@ -26,7 +25,7 @@ S.closedViewDate=todayStr();
 window.renderAll=renderAll;
 
 // ─── FIREBASE LISTENERS ───────────────────────────────
-let _ordersLoaded=false,_tablesLoaded=false,_selfHealDone=false,_counterSeedDone=false,_counterConfigLoaded=false;
+let _ordersLoaded=false,_counterSeedDone=false,_counterConfigLoaded=false;
 function _seedOrderCounter(){
   if(_counterSeedDone||!_ordersLoaded||!_counterConfigLoaded||!S.orders.length)return;
   const orders=S.orderNumResetAt?S.orders.filter(o=>(o.createdAt||0)>=S.orderNumResetAt):S.orders;
@@ -35,66 +34,23 @@ function _seedOrderCounter(){
   const maxNum=Math.max(...orders.map(o=>o.num||0),0);
   runTransaction(ref(db,'publicCounters/orderNum'),n=>Math.max(n||0,maxNum)).catch(e=>console.error('order counter seed',e));
 }
-function _maybeRunSelfHeal(){
-  if(_selfHealDone||!_ordersLoaded||!_tablesLoaded)return;
-  _selfHealDone=true;
-  const todayKey=(()=>{const d=new Date();return d.getFullYear()+'-'+(d.getMonth()+1).toString().padStart(2,'0')+'-'+d.getDate().toString().padStart(2,'0');})();
-  const orphanUpd={};const seenSession=new Set();
-  S.orders.forEach(o=>{
-    if(!o.date||!o.table)return;
-    const sid=o.sid||'default';const sessKey=`${o.date}_${o.table}_${sid}`;
-    if(seenSession.has(sessKey))return;seenSession.add(sessKey);
-    const tk=`${o.date}_${o.table}`;const meta=S.tablesMeta[tk];
-    const sidKnown=meta&&(meta.sid===sid||(meta.closedSessions||[]).some(s=>s.sid===sid));
-    if(!meta){
-      const sessOrders=S.orders.filter(x=>x.date===o.date&&String(x.table)===String(o.table)&&(x.sid||'default')===sid);
-      const openedAt=Math.min(...sessOrders.map(x=>x.createdAt||Date.now()));
-      const isToday=o.date===todayKey;
-      orphanUpd[`tables/${tk}`]={status:isToday?'open':'closed',openedAt,date:o.date,tNum:o.table,sid,token:Math.random().toString(36).slice(2,10)+Math.random().toString(36).slice(2,6),...(isToday?{}:{closedAt:Math.max(...sessOrders.map(x=>x.doneAt||x.createdAt||Date.now()))})};
-    } else if(!sidKnown){
-      const sessOrders=S.orders.filter(x=>x.date===o.date&&String(x.table)===String(o.table)&&(x.sid||'default')===sid);
-      const openedAt=Math.min(...sessOrders.map(x=>x.createdAt||Date.now()));
-      if(!meta.sid){
-        orphanUpd[`tables/${tk}/sid`]=sid;
-        orphanUpd[`tables/${tk}/openedAt`]=openedAt;
-        if(!meta.status)orphanUpd[`tables/${tk}/status`]='open';
-        if(!meta.date)orphanUpd[`tables/${tk}/date`]=o.date;
-        if(!meta.tNum)orphanUpd[`tables/${tk}/tNum`]=o.table;
-        if(!meta.token)orphanUpd[`tables/${tk}/token`]=Math.random().toString(36).slice(2,10)+Math.random().toString(36).slice(2,6);
-      } else {
-        const closedAt=Math.max(...sessOrders.map(x=>x.doneAt||x.createdAt||Date.now()));
-        const cs=[...(meta.closedSessions||[]),{sid,openedAt,closedAt}];
-        orphanUpd[`tables/${tk}/closedSessions`]=cs;
-      }
-    }
-  });
-  if(Object.keys(orphanUpd).length){update(ref(db),orphanUpd).catch(e=>console.error('orphan recover',e));console.log('🔧 Восстановлено сессий:',Object.keys(orphanUpd).length);}
-}
 
 async function loadAll(){
   const cutoffDate=(()=>{const d=new Date();d.setDate(d.getDate()-30);return d.getFullYear()+'-'+(d.getMonth()+1).toString().padStart(2,'0')+'-'+d.getDate().toString().padStart(2,'0');})();
 
   onValue(ref(db,'orders'),(snap)=>{
     const raw=snap.val();
-    if(raw){
-      const cleanupUpd={};
-      Object.entries(raw).forEach(([orderId,o])=>{
-        if(!o.table||o.table==='undefined'||o.table===''){cleanupUpd[`orders/${orderId}`]=null;return;}
-        if(o.items&&typeof o.items==='object'&&!Array.isArray(o.items)){
-          Object.entries(o.items).forEach(([k,v])=>{if(!v||typeof v!=='object'||!v.name)cleanupUpd[`orders/${orderId}/items/${k}`]=null;});
-        }
-      });
-      if(Object.keys(cleanupUpd).length>0)update(ref(db),cleanupUpd).catch(e=>console.error('cleanup',e));
-    }
-    S.orders=raw?Object.values(raw).filter(o=>!o.date||o.date>=cutoffDate).map(normalizeOrder):[];
-    _ordersLoaded=true;_seedOrderCounter();_maybeRunSelfHeal();
+    const rows=Object.entries(raw||{});
+    const valid=rows.filter(([,o])=>o&&typeof o==='object'&&o.table&&o.table!=='undefined');
+    if(valid.length!==rows.length)fl('fErr','Некоторые старые заказы не удалось отобразить. Исходные записи сохранены.');
+    S.orders=valid.filter(([,o])=>!o.date||o.date>=cutoffDate).map(([id,o])=>normalizeOrder({...o,id}));
+    _ordersLoaded=true;_seedOrderCounter();
     checkNewOrders(S.orders);
     renderAll();
   },(e)=>console.error(e));
 
   onValue(ref(db,'tables'),(snap)=>{
     S.tablesMeta=snap.val()||{};
-    _tablesLoaded=true;_maybeRunSelfHeal();
     if(S.activeTab==='tables')renderTables();
     renderAll();
   });
@@ -113,13 +69,11 @@ async function loadAll(){
 
   onValue(ref(db,'menu2'),(snap)=>{
     const raw=snap.val();
-    if(!raw){
-      set(ref(db,'menu2'),BUILTIN_MENU).catch(e=>console.error('menu seed',e));
-    } else {
+    if(raw){
       const cats=Array.isArray(raw)?raw:Object.values(raw);
       S.BUILTIN_MENU_LIVE=cats.map(cat=>({...cat,items:Array.isArray(cat.items)?cat.items:Object.values(cat.items||{})}));
       if(S.activeTab==='menu')renderMenuPage();
-    }
+    }else{S.BUILTIN_MENU_LIVE=[];fl('fErr','Меню в базе отсутствует. Проверьте данные перед приёмом заказов.');}
   });
 
   let knownWaiterCalls=new Set();
@@ -137,8 +91,8 @@ async function loadAll(){
           if(navigator.vibrate)navigator.vibrate([200,100,200]);
           playBeep();
           const msg=`🔔 Стол ${call.table} зовёт официанта!`;
-          if(swReg&&Notification.permission==='granted')swReg.active?.postMessage({type:'NOTIFY_NEW_ORDER',table:call.table,count:'вызов'});
-          else if(Notification.permission==='granted')new Notification('🔔 Вызов официанта!',{body:`Стол ${call.table} зовёт официанта`,icon:'icon-192.png'});
+          if(swReg&&typeof Notification!=='undefined'&&Notification.permission==='granted')swReg.active?.postMessage({type:'NOTIFY_NEW_ORDER',table:call.table,count:'вызов'});
+          else if(typeof Notification!=='undefined'&&Notification.permission==='granted')new Notification('🔔 Вызов официанта!',{body:`Стол ${call.table} зовёт официанта`,icon:'icons/icon-192.png'});
           fl('fOk',msg);
         }
       }
