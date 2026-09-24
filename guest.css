@@ -13,7 +13,7 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
 .stripe-bg{position:fixed;inset:0;pointer-events:none;z-index:0;background:repeating-linear-gradient(135deg,transparent,transparent 40px,rgba(255,255,255,.012) 40px,rgba(255,255,255,.012) 41px);}
 .ambient{position:fixed;top:-100px;left:50%;transform:translateX(-50%);width:320px;height:320px;background:radial-gradient(circle,rgba(212,168,67,.07) 0%,transparent 70%);pointer-events:none;z-index:0;}
 
-#app{position:fixed;inset:0;overflow:hidden;display:flex;flex-direction:column;}
+#app{position:fixed;inset:0;overflow:hidden;overflow:clip;display:flex;flex-direction:column;}
 
 /* SCREENS */
 .screen{position:absolute;inset:0;display:flex;flex-direction:column;transition:transform .38s cubic-bezier(.32,.72,0,1),opacity .32s ease;z-index:1;}
@@ -139,6 +139,13 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
 .c-qty-btn:active{background:var(--gold);color:#0A0809;}
 .c-qty-num{font-size:14px;font-weight:500;color:var(--text);min-width:16px;text-align:center;font-family:var(--mono);}
 .cart-row-price{font-size:13px;color:var(--gold);min-width:56px;text-align:right;font-family:var(--mono);}
+.cups-picker{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin:16px 0 8px;padding:14px;border:1px solid rgba(245,166,35,.45);border-radius:12px;background:rgba(245,166,35,.1);}
+.cups-title{font-family:var(--sans);font-size:14px;font-weight:700;color:var(--gold);}
+.cups-hint{margin-top:3px;font-size:12px;color:var(--muted);}
+.cups-controls{display:flex;align-items:center;gap:10px;flex-shrink:0;}
+.cups-btn{width:44px;height:44px;border:1px solid var(--gold);border-radius:50%;background:transparent;color:var(--gold);font-size:22px;line-height:1;cursor:pointer;touch-action:manipulation;}
+.cups-count{min-width:22px;text-align:center;font-family:var(--mono);font-size:20px;font-weight:700;color:var(--gold);}
+.cups-summary{padding:0 2px 12px;font-size:13px;color:var(--muted);}
 .conflict-box{margin:8px 20px;padding:10px 14px;background:rgba(229,57,53,.1);border:1px solid rgba(229,57,53,.3);border-radius:10px;font-size:12px;color:var(--red);line-height:1.6;}
 .cart-notes{padding:12px 20px;flex-shrink:0;}
 .notes-lbl{font-size:10px;letter-spacing:.15em;text-transform:uppercase;color:var(--muted);margin-bottom:8px;font-weight:500;}

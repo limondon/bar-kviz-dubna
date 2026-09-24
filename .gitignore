@@ -1,3 +1,11 @@
 node_modules/
 test-results/
 playwright-report/
+.local-tools/
+.release/
+dist/
+dist-spark/
+functions/.secret.local
+*-debug.log
+debug.log
+test-results-mobile/

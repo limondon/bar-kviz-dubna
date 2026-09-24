@@ -22,7 +22,7 @@ export function sw(tab){
   if(tab==='calls')renderCalls();
 }
 export function setQF(f){S.qf=f;renderAll();}
-export function pickTable(val){const inp=document.getElementById('inpTable');if(inp)inp.value=val;buildQuickTableBtns();}
+export function pickTable(val){const inp=document.getElementById('inpTable');if(inp){inp.value=val;inp.dispatchEvent(new Event('input',{bubbles:true}));}buildQuickTableBtns();}
 
 // ─── DEVICE / TABS ────────────────────────────────────
 function getDevice(){const w=window.innerWidth;if(w>=1024)return'desktop';if(w>=768)return'tablet';return'phone';}

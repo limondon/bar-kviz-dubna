@@ -109,7 +109,7 @@ export function confirmMenuPicker(){
     });
   });
   if(pickerCups>0)lines.push(`${pickerCups} ${pl(pickerCups,'кружка','кружки','кружек')}`);
-  const ta=document.getElementById('inpItems');if(ta)ta.value=lines.join('\n');
+  const ta=document.getElementById('inpItems');if(ta){ta.value=lines.join('\n');ta.dispatchEvent(new Event('input',{bubbles:true}));}
   closeMenuPicker();
 }
 
