@@ -1,6 +1,6 @@
 import{S}from'./state.js';
-import{db,ref,update,remove}from'./firebase.js';
-import{fl,showConfirm,setBadge,fmt,esc,escAttr}from'./utils.js';
+import{db,ref,update}from'./firebase.js';
+import{fl,showConfirm,safeDb,setBadge,fmt,esc,escAttr}from'./utils.js';
 
 export function renderCalls(){
   const el=document.getElementById('callsContent');if(!el)return;
@@ -34,9 +34,18 @@ export async function checkInCall(callId){
   fl('fOk','✅ Отмечено — подошли к столу');
 }
 
+let clearingCalls=false;
 export async function clearCalls(){
-  const ok=await showConfirm('Очистить историю вызовов?','Все вызовы будут удалены.');
-  if(!ok)return;
-  await remove(ref(db,'waiterCalls'));
-  S.waiterCallsData={};renderCalls();
+  if(clearingCalls)return;
+  const ids=Object.keys(S.waiterCallsData||{});
+  if(!ids.length)return;
+  clearingCalls=true;
+  try{
+    const ok=await showConfirm('Очистить историю вызовов?','Текущие вызовы будут удалены. Новые вызовы, поступившие после открытия этого окна, останутся.','Очистить');
+    if(!ok)return;
+    // Staff permissions apply to each call, not the entire waiterCalls node.
+    // Let the database listener refresh the list so concurrent calls are retained.
+    const cleared=await safeDb(update(ref(db,'waiterCalls'),Object.fromEntries(ids.map(id=>[id,null]))),'Не удалось очистить вызовы. Проверьте соединение и права доступа.');
+    if(cleared)fl('fOk','История вызовов очищена');
+  }finally{clearingCalls=false;}
 }

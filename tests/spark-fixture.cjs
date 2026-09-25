@@ -1,8 +1,8 @@
 const fs=require('node:fs'),path=require('node:path');
 const root=path.resolve(__dirname,'..');
-async function setup(page,{orders={}}={}){
+async function setup(page,{orders={},waiterCalls={}}={}){
   const date=new Date().toLocaleDateString('en-CA');
-  let data={orders,menu2:[{cat:'Напитки',items:[{name:'Вода',price:100,stock:10}]},{cat:'Чай листовой',items:[{name:'Сенча',price:300,stock:10}]}],tables:{[date+'_1']:{status:'open',date,tNum:'1',token:'test-token',sid:'session',openedAt:Date.now()}},publicCounters:{orderNum:0},config:{},waiterCalls:{}};
+  let data={orders,menu2:[{cat:'Напитки',items:[{name:'Вода',price:100,stock:10}]},{cat:'Чай листовой',items:[{name:'Сенча',price:300,stock:10}]}],tables:{[date+'_1']:{status:'open',date,tNum:'1',token:'test-token',sid:'session',openedAt:Date.now()}},publicCounters:{orderNum:0},config:{},waiterCalls};
   const errors=[],external=[];
   page.on('pageerror',error=>errors.push(error.message));
   await page.exposeFunction('__syncDb',next=>{data=next;});
@@ -42,12 +42,14 @@ async function setup(page,{orders={}}={}){
       export const get=async r=>snap(r.path),push=r=>({key:'order_'+Date.now()+'_'+(++counter)}),serverTimestamp=()=>Date.now();
       export function onValue(r,cb){if(!listeners.has(r.path))listeners.set(r.path,new Set());listeners.get(r.path).add(cb);queueMicrotask(()=>cb(snap(r.path)));return ()=>listeners.get(r.path).delete(cb);}
       export async function update(r,values){
+        if(window.__failCalls&&r.path==='waiterCalls'){window.__failCalls=false;throw new Error('PERMISSION_DENIED');}
         if(window.__failOrder&&/^orders\\/[^/]+$/.test(r.path)){window.__failOrder=false;throw new Error('Test rejected write');}
         for(const [key,value]of Object.entries(values))write([r.path,key].filter(Boolean).join('/'),value);
         await window.__syncDb(clone(data));emit();
       }
       export async function set(r,value){write(r.path,value);await window.__syncDb(clone(data));emit();}
-      export const remove=r=>set(r,null);
+      // database.rules.json grants staff writes at waiterCalls/$callId, not its parent.
+      export async function remove(r){if(r.path==='waiterCalls')throw new Error('PERMISSION_DENIED');return set(r,null);}
       export async function runTransaction(r,fn){const next=fn(clone(read(r.path)));if(next===undefined)return {committed:false,snapshot:snap(r.path)};await set(r,next);return {committed:true,snapshot:snap(r.path)};}
       window.__remoteSet=(p,v)=>set(ref(null,p),v);
     `});
