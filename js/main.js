@@ -4,7 +4,7 @@ import{todayStr,normalizeOrder,fl,closeConfirmModal,confirmOk,setBadge}from'./ut
 import{registerSW,checkNewOrders,playBeep,notifMuted,swReg,updateNotifBtn}from'./notifications.js';
 import{renderAll,startPoll}from'./render.js';
 import{renderTables,renderClosed}from'./tables.js';
-import{renderMenuPage}from'./menu.js';
+import{renderMenuPage,receiveMenuSnapshot}from'./menu.js';
 import{renderStats}from'./render.js';
 import{renderCalls}from'./calls.js';
 import{barItemAction,waiterDeliverItem,waiterDeliverAll,reopenOrder,delOrder,openEditModal,closeEditModal,saveEditOrder,addOrder,updateEditRow,removeEditRow,addEditItem}from'./orders.js';
@@ -69,9 +69,8 @@ async function loadAll(){
 
   onValue(ref(db,'menu2'),(snap)=>{
     const raw=snap.val();
+    receiveMenuSnapshot(raw);
     if(raw){
-      const cats=Array.isArray(raw)?raw:Object.values(raw);
-      S.BUILTIN_MENU_LIVE=cats.map(cat=>({...cat,items:Array.isArray(cat.items)?cat.items:Object.values(cat.items||{})}));
       if(S.activeTab==='menu')renderMenuPage();
     }else{S.BUILTIN_MENU_LIVE=[];fl('fErr','Меню в базе отсутствует. Проверьте данные перед приёмом заказов.');}
   });

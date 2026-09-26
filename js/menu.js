@@ -1,5 +1,5 @@
 import{S}from'./state.js';
-import{db,ref,set,update}from'./firebase.js';
+import{db,ref,update,runTransaction}from'./firebase.js';
 import{BUILTIN_MENU}from'./menu-data.js';
 import{esc,escAttr,fl,showConfirm,parseItems,lockScroll,unlockScroll,pl}from'./utils.js';
 
@@ -172,33 +172,61 @@ document.addEventListener('click',e=>{
 // ─── MENU EDITOR ──────────────────────────────────────
 export function buildMenuButtons(){const el=document.getElementById('menuBtns');if(el)el.innerHTML='';}
 
+let menuSnapshot=null,menuSaving=false;
+const copyMenu=value=>JSON.parse(JSON.stringify(value));
+const normalizeMenu=raw=>(Array.isArray(raw)?raw:Object.values(raw||{})).filter(Boolean).map(cat=>({...cat,items:Array.isArray(cat.items)?cat.items:Object.values(cat.items||{})}));
+const canonical=value=>JSON.stringify(value,(_,v)=>v&&typeof v==='object'&&!Array.isArray(v)?Object.fromEntries(Object.keys(v).sort().map(k=>[k,v[k]])):v);
+export function receiveMenuSnapshot(raw){
+  menuSnapshot=raw?copyMenu(normalizeMenu(raw)):null;
+  S.BUILTIN_MENU_LIVE=menuSnapshot?copyMenu(menuSnapshot):[];
+}
 export async function saveMenuToFirebase(){
-  const menu=S.BUILTIN_MENU_LIVE.length?S.BUILTIN_MENU_LIVE:BUILTIN_MENU;
-  await set(ref(db,'menu2'),menu);
+  if(menuSnapshot===null){fl('fErr','Меню ещё не загружено. Дождитесь соединения перед редактированием.');return false;}
+  if(menuSaving){fl('fErr','Предыдущее изменение ещё сохраняется. Дождитесь завершения.');return false;}
+  const expected=canonical(menuSnapshot),desired=copyMenu(S.BUILTIN_MENU_LIVE);
+  menuSaving=true;
+  try{
+    const result=await runTransaction(ref(db,'menu2'),current=>{
+      // Abort if another device edited the menu or changed stock since our snapshot.
+      if(!current||canonical(normalizeMenu(current))!==expected)return;
+      return desired;
+    },{applyLocally:false});
+    if(!result.committed){
+      receiveMenuSnapshot(result.snapshot.val());
+      fl('fErr','Меню изменилось на другом устройстве или обновились остатки. Загружена актуальная версия; повторите изменение.');
+      renderMenuEditor();return false;
+    }
+    receiveMenuSnapshot(result.snapshot.val());
+    return true;
+  }catch(error){
+    S.BUILTIN_MENU_LIVE=menuSnapshot?copyMenu(menuSnapshot):[];
+    fl('fErr','Изменение меню не сохранено. Проверьте соединение и повторите.');
+    renderMenuEditor();return false;
+  }finally{menuSaving=false;}
 }
 export async function updateMenuCatItem(ci,ii,field,val){
   const menu=S.BUILTIN_MENU_LIVE.length?S.BUILTIN_MENU_LIVE:BUILTIN_MENU;
   if(!menu[ci]||!menu[ci].items[ii])return;
-  menu[ci].items[ii][field]=val;await saveMenuToFirebase();
+  menu[ci].items[ii][field]=val;if(!await saveMenuToFirebase())return;
 }
 export async function removeMenuCatItem(ci,ii){
   const menu=S.BUILTIN_MENU_LIVE.length?S.BUILTIN_MENU_LIVE:BUILTIN_MENU;
   if(!menu[ci])return;menu[ci].items.splice(ii,1);
-  await saveMenuToFirebase();renderMenuEditor();fl('fOk','Позиция удалена');
+  if(!await saveMenuToFirebase())return;renderMenuEditor();fl('fOk','Позиция удалена');
 }
 export async function addMenuCatItem(ci){
   const menu=S.BUILTIN_MENU_LIVE.length?S.BUILTIN_MENU_LIVE:BUILTIN_MENU;
   if(!menu[ci])return;
   const inp=document.getElementById('newItem_'+ci);
   const name=(inp?.value||'').trim();if(!name){fl('fInfo','Введите название');return;}
-  menu[ci].items.push({name,price:0});await saveMenuToFirebase();
+  menu[ci].items.push({name,price:0});if(!await saveMenuToFirebase())return;
   if(inp)inp.value='';renderMenuEditor();fl('fOk','✅ '+name+' добавлено');
 }
 export async function moveMenuCat(ci,dir){
   const menu=S.BUILTIN_MENU_LIVE.length?S.BUILTIN_MENU_LIVE:BUILTIN_MENU;
   const ni=ci+dir;if(ni<0||ni>=menu.length)return;
   [menu[ci],menu[ni]]=[menu[ni],menu[ci]];
-  await saveMenuToFirebase();renderMenuPage();
+  if(!await saveMenuToFirebase())return;renderMenuPage();
 }
 function reorderMenuItem(ci,fromIndex,toIndex){
   const menu=S.BUILTIN_MENU_LIVE.length?S.BUILTIN_MENU_LIVE:BUILTIN_MENU;
@@ -216,7 +244,7 @@ export async function addMenuCategory(){
   const cat=emoji?`${emoji} ${name}`:name;
   const menu=S.BUILTIN_MENU_LIVE.length?[...S.BUILTIN_MENU_LIVE]:[...BUILTIN_MENU];
   menu.push({cat,items:[]});S.BUILTIN_MENU_LIVE.length=0;menu.forEach(c=>S.BUILTIN_MENU_LIVE.push(c));
-  await saveMenuToFirebase();
+  if(!await saveMenuToFirebase())return;
   document.getElementById('newCatEmoji').value='';document.getElementById('newCatName').value='';
   renderMenuPage();fl('fOk','✅ Категория "'+cat+'" создана');
 }
@@ -231,24 +259,27 @@ export async function updateMenuCat(ci,field,val){
   } else {
     menu[ci][field]=val;
   }
-  await saveMenuToFirebase();
+  if(!await saveMenuToFirebase())return;
 }
 export async function toggleMenuCatHidden(ci){
   const menu=S.BUILTIN_MENU_LIVE.length?S.BUILTIN_MENU_LIVE:BUILTIN_MENU;
   if(!menu[ci])return;
   menu[ci].hidden=!menu[ci].hidden;
-  await saveMenuToFirebase();renderMenuEditor();
+  if(!await saveMenuToFirebase())return;renderMenuEditor();
 }
 export async function removeMenuCategory(ci){
   const menu=S.BUILTIN_MENU_LIVE.length?S.BUILTIN_MENU_LIVE:BUILTIN_MENU;
+  const version=canonical(menuSnapshot);
   const ok=await showConfirm(`Удалить категорию "${menu[ci]?.cat}"?`,'Все позиции в ней тоже удалятся.');
-  if(!ok)return;menu.splice(ci,1);await saveMenuToFirebase();renderMenuPage();fl('fOk','Категория удалена');
+  if(ok&&version!==canonical(menuSnapshot)){fl('fErr','Меню изменилось. Проверьте категорию и повторите удаление.');return;}
+  if(!ok)return;menu.splice(ci,1);if(!await saveMenuToFirebase())return;renderMenuPage();fl('fOk','Категория удалена');
 }
 
 // ─── ITEM EDITOR SHEET ───────────────────────────────
-let _ieCi=null,_ieIi=null;
+let _ieCi=null,_ieIi=null,_ieMenuVersion=null;
 export function openItemEditor(ci,ii){
   _ieCi=ci;_ieIi=ii;
+  _ieMenuVersion=canonical(menuSnapshot);
   const menu=S.BUILTIN_MENU_LIVE.length?S.BUILTIN_MENU_LIVE:BUILTIN_MENU;
   const item=menu[ci].items[ii];
   document.getElementById('ieNameInp').value=item.name||'';
@@ -263,7 +294,7 @@ export function openItemEditor(ci,ii){
 }
 export function closeItemEditor(){
   document.getElementById('itemEditorOverlay').classList.add('hidden');
-  unlockScroll();_ieCi=null;_ieIi=null;
+  unlockScroll();_ieCi=null;_ieIi=null;_ieMenuVersion=null;
   _stopSheetVP();
 }
 function _sheetVPHandler(){
@@ -287,6 +318,9 @@ function _stopSheetVP(){
 }
 export async function saveItemEditor(){
   if(_ieCi===null||_ieIi===null)return;
+  if(_ieMenuVersion!==canonical(menuSnapshot)){
+    fl('fErr','Меню или остатки изменились. Закройте карточку и откройте товар заново перед редактированием.');return;
+  }
   const name=document.getElementById('ieNameInp').value.trim();
   if(!name){fl('fInfo','Введите название');return;}
   const price=+document.getElementById('iePriceInp').value||0;
@@ -298,7 +332,7 @@ export async function saveItemEditor(){
   const menu=S.BUILTIN_MENU_LIVE.length?S.BUILTIN_MENU_LIVE:BUILTIN_MENU;
   const item=menu[_ieCi].items[_ieIi];
   item.name=name;item.price=price;item.stock=stock;item.group=group;item.options=options||undefined;
-  await saveMenuToFirebase();renderMenuEditor();closeItemEditor();
+  if(!await saveMenuToFirebase())return;renderMenuEditor();closeItemEditor();
   fl('fOk','✅ Сохранено');
 }
 
@@ -383,9 +417,9 @@ document.addEventListener('dragover',e=>{
 document.addEventListener('dragleave',e=>{e.target.closest('.menu-editor-item')?.classList.remove('drag-over');e.target.closest('.menu-editor-category')?.classList.remove('drag-over');});
 document.addEventListener('drop',async e=>{
   const row=e.target.closest('.menu-editor-item');
-  if(row&&dragMenuItemSource){const ci=Number(row.dataset.menuCat),toIndex=Number(row.dataset.menuItem);if(ci!==dragMenuItemSource.ci)return;e.preventDefault();const fromIndex=dragMenuItemSource.ii;row.classList.remove('drag-over');dragMenuItemSource=null;if(fromIndex===toIndex)return;reorderMenuItem(ci,fromIndex,toIndex);await saveMenuToFirebase();renderMenuEditor();return;}
+  if(row&&dragMenuItemSource){const ci=Number(row.dataset.menuCat),toIndex=Number(row.dataset.menuItem);if(ci!==dragMenuItemSource.ci)return;e.preventDefault();const fromIndex=dragMenuItemSource.ii;row.classList.remove('drag-over');dragMenuItemSource=null;if(fromIndex===toIndex)return;reorderMenuItem(ci,fromIndex,toIndex);if(!await saveMenuToFirebase())return;renderMenuEditor();return;}
   const cat=e.target.closest('.menu-editor-category');
-  if(cat&&dragMenuCategorySource){const toIndex=Number(cat.dataset.menuCat),fromIndex=dragMenuCategorySource.ci;e.preventDefault();cat.classList.remove('drag-over');dragMenuCategorySource=null;if(fromIndex===toIndex)return;reorderMenuCategory(fromIndex,toIndex);await saveMenuToFirebase();renderMenuEditor();}
+  if(cat&&dragMenuCategorySource){const toIndex=Number(cat.dataset.menuCat),fromIndex=dragMenuCategorySource.ci;e.preventDefault();cat.classList.remove('drag-over');dragMenuCategorySource=null;if(fromIndex===toIndex)return;reorderMenuCategory(fromIndex,toIndex);if(!await saveMenuToFirebase())return;renderMenuEditor();}
 });
 
 export async function restructureLemonades(){
@@ -400,7 +434,7 @@ export async function restructureLemonades(){
     newItems.push({name:baseName+' 1.0л',price:700,group:baseName});
   });
   menu[ci].items=newItems;
-  await saveMenuToFirebase();
+  if(!await saveMenuToFirebase())return;
   renderMenuPage();
   fl('fOk','✅ Лимонады обновлены — '+origItems.length+' вкусов × 2 размера');
 }
