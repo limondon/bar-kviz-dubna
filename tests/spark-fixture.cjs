@@ -1,9 +1,10 @@
 const fs=require('node:fs'),path=require('node:path');
 const root=path.resolve(__dirname,'..');
-async function setup(page,{orders={},waiterCalls={}}={}){
+async function setup(page,{orders={},waiterCalls={},menu2}={}){
   const date=new Date().toLocaleDateString('en-CA');
   let data={orders,menu2:[{cat:'Напитки',items:[{name:'Вода',price:100,stock:10}]},{cat:'Чай листовой',items:[{name:'Сенча',price:300,stock:10}]}],tables:{[date+'_1']:{status:'open',date,tNum:'1',token:'test-token',sid:'session',openedAt:Date.now()}},publicCounters:{orderNum:0},config:{},waiterCalls};
   const errors=[],external=[];
+  if(menu2!==undefined)data.menu2=menu2;
   page.on('pageerror',error=>errors.push(error.message));
   await page.exposeFunction('__syncDb',next=>{data=next;});
   await page.addInitScript(()=>{
@@ -34,7 +35,7 @@ async function setup(page,{orders={},waiterCalls={}}={}){
       const read=p=>p==='.info/connected'?true:p.split('/').filter(Boolean).reduce((v,k)=>v?.[k],data);
       const snap=p=>({val:()=>clone(read(p)),exists:()=>read(p)!=null});
       const write=(p,value)=>{const parts=p.split('/').filter(Boolean);if(!parts.length){data=clone(value);return;}let node=data;for(const key of parts.slice(0,-1))node=node[key]??={};if(value==null)delete node[parts.at(-1)];else node[parts.at(-1)]=clone(value);};
-      const emit=()=>{for(const [p,cbs]of listeners)for(const cb of cbs)queueMicrotask(()=>cb(snap(p)));};
+      const emit=()=>{for(const [p,cbs]of listeners)for(const cb of cbs)if(!(p==='menu2'&&window.__pauseMenuListener))queueMicrotask(()=>cb(snap(p)));};
       export const initializeApp=()=>({}),getDatabase=()=>({}),ref=(db,p='')=>({path:p});
       const auth={currentUser:{email:'manager@1708.local',uid:'staff'}};
       export const getAuth=()=>auth,signInAnonymously=async()=>({user:{uid:'guest'}}),signInWithEmailAndPassword=async()=>({user:auth.currentUser});
@@ -47,10 +48,20 @@ async function setup(page,{orders={},waiterCalls={}}={}){
         for(const [key,value]of Object.entries(values))write([r.path,key].filter(Boolean).join('/'),value);
         await window.__syncDb(clone(data));emit();
       }
-      export async function set(r,value){write(r.path,value);await window.__syncDb(clone(data));emit();}
+      export async function set(r,value){
+        if(r.path==='menu2'){
+          const validate=v=>{if(v===undefined)throw new Error('Firebase values cannot contain undefined');if(v&&typeof v==='object')Object.values(v).forEach(validate);};validate(value);
+        }
+        write(r.path,value);await window.__syncDb(clone(data));emit();
+      }
       // database.rules.json grants staff writes at waiterCalls/$callId, not its parent.
       export async function remove(r){if(r.path==='waiterCalls')throw new Error('PERMISSION_DENIED');return set(r,null);}
-      export async function runTransaction(r,fn){const next=fn(clone(read(r.path)));if(next===undefined)return {committed:false,snapshot:snap(r.path)};await set(r,next);return {committed:true,snapshot:snap(r.path)};}
+      export async function runTransaction(r,fn){
+        if(r.path==='menu2'&&window.__failMenu){window.__failMenu=false;throw new Error('Test menu write rejected');}
+        let next=fn(clone(read(r.path)));
+        if(r.path==='menu2'&&window.__menuRace){write('menu2',window.__menuRace);window.__menuRace=null;await window.__syncDb(clone(data));emit();next=fn(clone(read(r.path)));}
+        if(next===undefined)return {committed:false,snapshot:snap(r.path)};await set(r,next);return {committed:true,snapshot:snap(r.path)};
+      }
       window.__remoteSet=(p,v)=>set(ref(null,p),v);
     `});
     const file=path.resolve(root,'.'+(url.pathname==='/'?'/index.html':url.pathname));

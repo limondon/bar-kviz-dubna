@@ -1,4 +1,4 @@
-const CACHE_NAME = 'bar-spark-v2';
+const CACHE_NAME = 'bar-spark-v3';
 const ASSETS = [
   './',
   'index.html',
