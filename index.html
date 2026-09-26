@@ -264,6 +264,11 @@
 
   <!-- QUEUE -->
   <div class="section-page" id="page-queue">
+    <div class="queue-view-switch" role="group" aria-label="Вид очереди">
+      <button type="button" data-queue-view="orders" aria-pressed="true" aria-controls="qList" class="active">По заказам</button>
+      <button type="button" data-queue-view="items" aria-pressed="false" aria-controls="qList">По позициям</button>
+    </div>
+    <p id="queueItemsHint" class="queue-items-hint hidden">По времени заказа. Новые позиции начинайте отдельно — они не добавляются в работу автоматически.</p>
     <div class="stats-bar">
       <div class="sc"><span class="n" id="sN">0</span><span>всего</span></div>
       <div class="sc"><span class="n" id="sNew" style="color:var(--accent2);">0</span><span>новых</span></div>

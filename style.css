@@ -901,6 +901,33 @@ textarea{resize:vertical;min-height:clamp(70px,18vw,100px);}
    ORDER CARDS
 ═══════════════════════════════ */
 .orders-list{display:flex;flex-direction:column;gap:var(--sp-md);}
+.queue-view-switch{display:flex;gap:4px;padding:4px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);margin-bottom:var(--sp-md);}
+.queue-view-switch button{flex:1;min-height:44px;padding:8px 12px;border:0;border-radius:6px;background:transparent;color:var(--text);font:inherit;cursor:pointer;}
+.queue-view-switch button.active{background:var(--accent);color:#111;font-weight:700;}
+.queue-view-switch button:focus-visible{outline:2px solid var(--text);outline-offset:2px;}
+.queue-items-hint{font-size:var(--fs-sm);line-height:1.5;color:#b8b4ad;margin-bottom:var(--sp-md);}
+.queue-items-hint.hidden{display:none;}
+.queue-group-header{display:flex;justify-content:space-between;align-items:baseline;gap:12px;}
+.queue-group-header h3{font-size:var(--fs-lg);line-height:1.3;overflow-wrap:anywhere;}
+.queue-group-total{white-space:nowrap;color:var(--accent);font-size:var(--fs-lg);}
+.queue-group-remaining{font-weight:600;margin-top:8px;}
+.queue-group-summary{font-size:var(--fs-sm);color:#b8b4ad;line-height:1.7;margin:6px 0 12px;}
+.queue-new-alert{color:var(--accent);font-weight:700;}
+.queue-position{border-top:1px solid var(--border);padding:10px 0;}
+.queue-position:last-child{padding-bottom:0;}
+.queue-row-meta{display:flex;flex-wrap:wrap;gap:6px 12px;align-items:center;font-size:var(--fs-sm);color:#b8b4ad;}
+.queue-row-status{font-weight:600;}
+.queue-position-new .queue-row-status{color:var(--accent);}
+.queue-position-making .queue-row-status{color:#70baff;}
+.queue-position-ready .queue-row-status{color:#8cd98f;}
+.queue-position .item-row{margin-top:6px;}
+.queue-position .wait-chip{color:inherit;}
+.queue-position .wait-chip.urgent{color:#ff9088;}
+.queue-position .item-qty::before{content:'×';font-family:inherit;font-size:var(--fs-sm);}
+.queue-position .item-name{font-weight:600;}
+.queue-row-note{font-size:var(--fs-sm);color:#c9c4bb;line-height:1.5;margin-top:6px;overflow-wrap:anywhere;}
+#qList.queue-items-view{grid-template-columns:repeat(auto-fit,minmax(min(100%,340px),1fr));align-items:start;}
+#qList .queue-item-card{animation:none;}
 .order-card{
   background:var(--card);border:1px solid var(--border);
   border-radius:var(--radius);padding:var(--sp-md);

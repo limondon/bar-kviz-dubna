@@ -9,6 +9,7 @@ export const S = {
   activeTab: '',
   lastHash: '',
   qf: 'all',
+  queueView: 'orders',
   viewDate: null,        // инициализируется в main после импорта todayStr
   closedViewDate: null,
   pendingRole: null,

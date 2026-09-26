@@ -1,4 +1,4 @@
-const CACHE_NAME = 'bar-spark-v3';
+const CACHE_NAME = 'bar-spark-v4';
 const ASSETS = [
   './',
   'index.html',
@@ -13,6 +13,7 @@ const ASSETS = [
   'js/counters.js',
   'js/utils.js',
   'js/render.js',
+  'js/queue-items.js',
   'js/orders.js',
   'js/tables.js',
   'js/menu.js',
