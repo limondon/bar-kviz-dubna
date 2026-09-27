@@ -3,13 +3,13 @@ const text=value=>String(value??'').trim().replace(/\s+/g,' ').toLowerCase();
 const stable=value=>JSON.stringify(value,(_,v)=>v&&typeof v==='object'&&!Array.isArray(v)
   ?Object.fromEntries(Object.keys(v).sort().map(k=>[k,v[k]])):v);
 
-function closedOrder(order,tables){
-  if(['done','completed','cancelled','canceled','closed','deleted'].includes(order.status))return true;
+export function isQueueOrderActive(order,tables={}){
+  if(!order||['done','completed','cancelled','canceled','closed','deleted'].includes(order.status))return false;
   const meta=tables[order.date+'_'+order.table];
-  if(!meta)return false;
+  if(!meta)return true;
   const sid=order.sid||'default';
-  if((meta.closedSessions||[]).some(s=>s.sid===sid))return true;
-  return meta.status==='closed'&&(meta.sid||'default')===sid;
+  if((meta.closedSessions||[]).some(s=>s.sid===sid))return false;
+  return !(meta.status==='closed'&&(meta.sid||'default')===sid);
 }
 
 function identity(item,order,names){
@@ -36,7 +36,7 @@ export function groupQueueItems(orders,tables={},menu=[],filter='all'){
   }
   const groups=new Map();
   // FIFO, then existing item iteration order; quantities never affect priority.
-  const active=orders.filter(o=>!closedOrder(o,tables)).slice().sort((a,b)=>(Number(a.createdAt)||0)-(Number(b.createdAt)||0));
+  const active=orders.filter(o=>isQueueOrderActive(o,tables)).slice().sort((a,b)=>(Number(a.createdAt)||0)-(Number(b.createdAt)||0));
   for(const order of active)for(const item of order.items||[]){
     if(!['new','making','ready'].includes(item.status)||!(Number(item.qty)>0))continue;
     const key=identity(item,order,names);

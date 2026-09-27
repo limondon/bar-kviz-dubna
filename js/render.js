@@ -1,5 +1,5 @@
 import{S}from'./state.js';
-import{groupQueueItems}from'./queue-items.js';
+import{groupQueueItems,isQueueOrderActive}from'./queue-items.js';
 import{esc,escAttr,fmt,empty,setBadge,setEl,todayStr,shiftDS,aggStatus,itemKey,pl}from'./utils.js';
 import{BUILTIN_MENU}from'./menu-data.js';
 import{renderTables,renderClosed,getTMeta,getItemPrice}from'./tables.js';
@@ -125,11 +125,15 @@ export function renderAll(){
   if(!S.role)return;
   S.orders.forEach(o=>{if(Array.isArray(o.items))o.status=aggStatus(o.items);});
   const active=S.orders.filter(o=>o.status!=='done');
+  // The established order view keeps its original counters and filters.
+  // The item view counts only orders that its derived groups can display.
+  const visibleActive=S.queueView==='items'?active.filter(o=>isQueueOrderActive(o,S.tablesMeta)):active;
   const done=S.orders.filter(o=>o.status==='done');
   const hasReady=S.orders.filter(o=>o.status!=='done'&&o.items&&o.items.some(i=>i.status==='ready'));
   active.sort((a,b)=>{if(a.priority==='urgent'&&b.priority!=='urgent')return-1;if(b.priority==='urgent'&&a.priority!=='urgent')return 1;return a.createdAt-b.createdAt;});
   let inProgress=0,readyCnt=0,newCnt=0;
-  S.orders.forEach(o=>{if(o.status==='new')newCnt++;o.items&&o.items.forEach(it=>{if(it.status==='making')inProgress++;if(it.status==='ready')readyCnt++;});});
+  const counterOrders=S.queueView==='items'?visibleActive:S.orders;
+  counterOrders.forEach(o=>{if(o.status==='new')newCnt++;o.items&&o.items.forEach(it=>{if(it.status==='making')inProgress++;if(it.status==='ready')readyCnt++;});});
   const today=todayStr();
   const todayOrders=S.orders.filter(o=>o.date===today&&o.table!=null&&o.table!==''&&o.table!=='undefined');
   const openTablesSet=new Set();
@@ -141,10 +145,10 @@ export function renderAll(){
     if(isCurrent&&meta.status==='closed')closedTablesSet.add(String(o.table));
     else if(isCurrent&&meta.status!=='closed')openTablesSet.add(String(o.table));
   });
-  setBadge('bQ',active.length);setBadge('bR',hasReady.length);setBadge('bT',openTablesSet.size);
+  setBadge('bQ',visibleActive.length);setBadge('bR',hasReady.length);setBadge('bT',openTablesSet.size);
   setBadge('bD',closedTablesSet.size);
-  setEl('sN',active.length);setEl('sNew',newCnt);setEl('sP',inProgress);setEl('sR',readyCnt);
-  const tables=[...new Set(active.filter(o=>o.table!=null&&o.table!==''&&o.table!=='undefined').map(o=>String(o.table)))].sort((a,b)=>{const an=parseInt(a),bn=parseInt(b);if(!isNaN(an)&&!isNaN(bn))return an-bn;if(!isNaN(an))return-1;if(!isNaN(bn))return 1;return a.localeCompare(b);});
+  setEl('sN',visibleActive.length);setEl('sNew',newCnt);setEl('sP',inProgress);setEl('sR',readyCnt);
+  const tables=[...new Set(visibleActive.filter(o=>o.table!=null&&o.table!==''&&o.table!=='undefined').map(o=>String(o.table)))].sort((a,b)=>{const an=parseInt(a),bn=parseInt(b);if(!isNaN(an)&&!isNaN(bn))return an-bn;if(!isNaN(an))return-1;if(!isNaN(bn))return 1;return a.localeCompare(b);});
   const qfEl=document.getElementById('qFilters');
   if(qfEl)qfEl.innerHTML=mkFb('all','Все')+mkFb('new','🆕 Новые')+mkFb('making','🍹 В работе')+mkFb('ready','🟢 Готово')+tables.map(t=>mkFb('t'+t,'Стол '+t)).join('');
   const ql=document.getElementById('qList');

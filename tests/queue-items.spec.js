@@ -89,6 +89,19 @@ test('cancellation, closed sessions, delivered rows and deletion disappear live'
  expect(env.errors).toEqual([]);expect(env.external).toEqual([]);
 });
 
+test('item-view counters and table filters exclude closed orders without changing order view',async({page})=>{
+ const env=await queue(page,{o1:order(1,9,[line('Чай')]),o2:order(2,4,[line('Сидр')])});
+ await page.evaluate(d=>window.__remoteSet('tables/'+d+'_1',{sid:'session',status:'closed',closedSessions:[{sid:'session'}]}),date());
+ // Existing view remains unchanged, as requested.
+ await expect(page.locator('#sN')).toHaveText('2');await expect(page.locator('.order-card')).toHaveCount(2);
+ await itemsView(page);
+ await expect(page.locator('#sN')).toHaveText('1');await expect(page.locator('#sNew')).toHaveText('1');await expect(page.locator('#bQ')).toHaveText('1');
+ await expect(page.locator('.queue-item-card')).toHaveCount(1);await expect(row(page,'o1')).toHaveCount(0);
+ await expect(page.locator('#qFilters')).not.toContainText('Стол 1');await expect(page.locator('#qFilters')).toContainText('Стол 2');
+ await ordersView(page);await expect(page.locator('#sN')).toHaveText('2');await expect(page.locator('#bQ')).toHaveText('2');await expect(page.locator('.order-card')).toHaveCount(2);
+ expect(env.errors).toEqual([]);expect(env.external).toEqual([]);
+});
+
 test('product IDs, variations and ambiguous legacy names do not merge incorrectly',async({page})=>{
  const env=await queue(page,{
   o1:order(1,8,[line('Чай',1,'new',{productId:'a'}),line('Чай',1,'new',{productId:'b'})]),
