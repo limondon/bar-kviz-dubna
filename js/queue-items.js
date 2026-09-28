@@ -1,4 +1,5 @@
 // Derived view only: rows retain their original order and item references.
+import{baseItemName,itemKey}from'./utils.js';
 const text=value=>String(value??'').trim().replace(/\s+/g,' ').toLowerCase();
 const stable=value=>JSON.stringify(value,(_,v)=>v&&typeof v==='object'&&!Array.isArray(v)
   ?Object.fromEntries(Object.keys(v).sort().map(k=>[k,v[k]])):v);
@@ -16,17 +17,14 @@ function identity(item,order,names){
   // id / _fbKey identify an ORDER LINE, never a menu product in the legacy model.
   const productField=['menuItemId','productId','itemId'].find(k=>item[k]!=null&&item[k]!=='');
   const name=text(item.name);
-  const variants=[name,item.option??null,item.options??null,item.addons??null,item.variantId??null];
-  if(productField)return stable(['product',productField,item[productField],variants]);
-  // Legacy names include selected flavours/addons. Never strip their suffixes.
-  // Ambiguous legacy products have no reliable identity: keep separate lines.
-  const base=name.split(/\s+[—–-]\s+|\s+\+\s+/)[0];
+  if(productField)return stable(['product',productField,item[productField]]);
+  const base=itemKey(name);
   const menuName=names.has(name)?name:base;
   if((names.get(menuName)||0)>1)return stable(['line',order.id,item._fbKey||item.id]);
   // Staff text orders omit price; guest orders include it. A unique menu match
   // lets both sources share a group without treating price as product identity.
-  if(names.get(menuName)===1)return stable(['legacy-menu',variants]);
-  return stable(['legacy',variants,item.price??null,item.categoryId??null]);
+  if(names.get(menuName)===1)return stable(['legacy-menu',menuName]);
+  return stable(['legacy',base,item.categoryId??null]);
 }
 
 export function groupQueueItems(orders,tables={},menu=[],filter='all'){
@@ -40,7 +38,7 @@ export function groupQueueItems(orders,tables={},menu=[],filter='all'){
   for(const order of active)for(const item of order.items||[]){
     if(!['new','making','ready'].includes(item.status)||!(Number(item.qty)>0))continue;
     const key=identity(item,order,names);
-    if(!groups.has(key))groups.set(key,{key,name:item.name,rows:[]});
+    if(!groups.has(key))groups.set(key,{key,name:baseItemName(item.name),rows:[]});
     groups.get(key).rows.push({order,item});
   }
   return [...groups.values()].map(group=>{

@@ -98,7 +98,7 @@ function queueItemCard(group){
     const note=order.note?`<div class="queue-row-note">💬 ${esc(order.note)}</div>`:'';
     return `<div class="queue-position queue-position-${escAttr(item.status)}" data-order-id="${escAttr(order.id)}" data-item-id="${escAttr(item._fbKey||item.id)}">
       <div class="queue-row-meta"><span class="queue-row-status">${statusLabels[item.status]}</span><span>Заказ #${esc(order.num)}${wait}</span>${order.priority==='urgent'?'<span class="tag t-urgent">Срочно</span>':''}</div>
-      ${rowRenderer(order.id,item,'Стол '+order.table)}${note}</div>`;
+      ${rowRenderer(order.id,item,'Стол '+order.table)}${item.name!==group.name?`<div class="queue-row-note queue-row-variant">${esc(item.name)}</div>`:''}${note}</div>`;
   }).join('');
   return `<section class="order-card queue-item-card" aria-label="${escAttr(group.name)}">
     <div class="queue-group-header"><h3>${esc(group.name)}</h3><strong class="queue-group-total">${group.total} шт.</strong></div>
