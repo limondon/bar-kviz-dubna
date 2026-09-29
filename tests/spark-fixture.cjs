@@ -44,6 +44,7 @@ async function setup(page,{orders={},waiterCalls={},menu2}={}){
       export function onValue(r,cb){if(!listeners.has(r.path))listeners.set(r.path,new Set());listeners.get(r.path).add(cb);queueMicrotask(()=>cb(snap(r.path)));return ()=>listeners.get(r.path).delete(cb);}
       export async function update(r,values){
         if(window.__failCalls&&r.path==='waiterCalls'){window.__failCalls=false;throw new Error('PERMISSION_DENIED');}
+        if(window.__failTables&&r.path.startsWith('tables')){window.__failTables=false;throw new Error('Test table write rejected');}
         if(window.__failOrder&&(/^orders\\/[^/]+$/.test(r.path)||(r.path===''&&Object.keys(values).some(key=>/^orders\\/[^/]+$/.test(key))))){window.__failOrder=false;throw new Error('Test rejected write');}
         for(const [key,value]of Object.entries(values))write([r.path,key].filter(Boolean).join('/'),value);
         await window.__syncDb(clone(data));emit();
@@ -59,6 +60,7 @@ async function setup(page,{orders={},waiterCalls={},menu2}={}){
       export async function runTransaction(r,fn){
         if(r.path.startsWith('orders/')&&window.__delayStatus)await new Promise(resolve=>setTimeout(resolve,window.__delayStatus));
         if(r.path.startsWith('orders/')&&window.__failStatus){window.__failStatus=false;throw new Error('Test status write rejected');}
+        if(r.path.startsWith('tables/')&&window.__failTables){window.__failTables=false;throw new Error('Test table write rejected');}
         if(r.path==='menu2'&&window.__failMenu){window.__failMenu=false;throw new Error('Test menu write rejected');}
         let next=fn(clone(read(r.path)));
         if(r.path.startsWith('orders/')&&window.__orderRace){const race=window.__orderRace;window.__orderRace=null;write(race.path,race.value);await window.__syncDb(clone(data));emit();next=fn(clone(read(r.path)));}

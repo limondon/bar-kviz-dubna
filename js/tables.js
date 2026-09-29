@@ -1,5 +1,5 @@
 import{S}from'./state.js';
-import{db,ref,update,fbUpdate,push}from'./firebase.js';
+import{db,ref,update,fbUpdate,push,runTransaction}from'./firebase.js';
 import{todayStr,dateLbl,shiftDS,fmt,fmt2,esc,escAttr,pl,fl,showConfirm,lockScroll,unlockScroll,itemKey,itemExtraPrice}from'./utils.js';
 import{BUILTIN_MENU}from'./menu-data.js';
 import{nextOrderNum}from'./counters.js';
@@ -45,12 +45,21 @@ export function getItemPrice(name){
 export async function closeTable(date,tNum,sid){
   const ok=await showConfirm(`💳 Закрыть стол ${tNum}?`,'Отметить как оплачен.','ЗАКРЫТЬ / ОПЛАЧЕН');
   if(!ok)return;
-  const m=getTMeta(date,tNum);
-  m.status='closed';m.closedAt=Date.now();
-  if(!m.closedSessions)m.closedSessions=[];
-  m.closedSessions.push({sid:sid||m.sid||'default',closedAt:m.closedAt,openedAt:m.openedAt});
-  await fbUpdate('tables',S.tablesMeta);
-  renderTables();renderClosed();fl('fOk','✅ Стол '+tNum+' закрыт');
+  const k=tKey(date,tNum),fallback={...getTMeta(date,tNum)},sessionId=sid||fallback.sid||'default',closedAt=Date.now();
+  try{
+    const saved=await runTransaction(ref(db,'tables/'+k),current=>{
+      const m=current||fallback,sessions=[...(m.closedSessions||[])];
+      if(m.status==='closed'&&sessions.some(s=>s.sid===sessionId))return m;
+      sessions.push({sid:sessionId,closedAt,openedAt:m.openedAt});
+      return{...m,status:'closed',closedAt,closedSessions:sessions};
+    });
+    if(!saved.committed)throw new Error('Table close was not committed');
+    S.tablesMeta[k]=saved.snapshot.val();
+    renderTables();renderClosed();fl('fOk','✅ Стол '+tNum+' закрыт');
+  }catch(e){
+    console.error('closeTable',e);
+    renderTables();renderClosed();fl('fErr','❌ Не удалось закрыть стол. Проверьте соединение и повторите.');
+  }
 }
 
 export async function reopenTable(date,tNum){
