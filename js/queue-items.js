@@ -4,13 +4,9 @@ const text=value=>String(value??'').trim().replace(/\s+/g,' ').toLowerCase();
 const stable=value=>JSON.stringify(value,(_,v)=>v&&typeof v==='object'&&!Array.isArray(v)
   ?Object.fromEntries(Object.keys(v).sort().map(k=>[k,v[k]])):v);
 
-export function isQueueOrderActive(order,tables={}){
+export function isQueueOrderActive(order){
   if(!order||['done','completed','cancelled','canceled','closed','deleted'].includes(order.status))return false;
-  const meta=tables[order.date+'_'+order.table];
-  if(!meta)return true;
-  const sid=order.sid||'default';
-  if((meta.closedSessions||[]).some(s=>s.sid===sid))return false;
-  return !(meta.status==='closed'&&(meta.sid||'default')===sid);
+  return true;
 }
 
 function identity(item,order,names){

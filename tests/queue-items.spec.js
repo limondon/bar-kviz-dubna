@@ -71,33 +71,47 @@ test('quantity two stays one independent row; live quantities and filters recalc
  expect(env.errors).toEqual([]);
 });
 
-test('cancellation, closed sessions, delivered rows and deletion disappear live',async({page})=>{
+test('cancellation, payment, delivered rows and deletion recalculate live',async({page})=>{
  const env=await queue(page,{o1:order(1,9,[line('Чай')]),o2:order(2,7,[line('Чай')]),o3:order(3,4,[line('Чай','1','ready'),line('Сидр',1,'done')])},'admin');
  await itemsView(page);
  await expect(page.locator('.queue-item-card')).toHaveCount(1);
  await page.evaluate(d=>window.__remoteSet('tables/'+d+'_1',{sid:'session',status:'closed',closedSessions:[{sid:'session'}]}),date());
- await expect(row(page,'o1')).toHaveCount(0);
+ await expect(row(page,'o1')).toHaveCount(1);
  // Existing cancellation action is order deletion with confirmation.
  await page.evaluate(()=>{window.__cancel=delOrder('o2');});await page.locator('#confirmOkBtn').click();await page.evaluate(()=>window.__cancel);
  await expect(row(page,'o2')).toHaveCount(0);
  await row(page,'o3').locator('[data-action=deliver]').click();
- await expect(page.locator('.queue-item-card')).toHaveCount(0);
+ await expect(page.locator('.queue-item-card')).toHaveCount(1);
  expect(env.data().orders.o3.items.row0.status).toBe('done');
  await page.evaluate(o=>window.__remoteSet('orders/o4',o),order(4,2,[line('Вода')]));
- await expect(page.locator('.queue-item-card')).toHaveCount(1);
- await page.evaluate(()=>window.__remoteSet('orders/o4',null));await expect(page.locator('.queue-item-card')).toHaveCount(0);
+ await expect(page.locator('.queue-item-card')).toHaveCount(2);
+ await page.evaluate(()=>window.__remoteSet('orders/o4',null));await expect(page.locator('.queue-item-card')).toHaveCount(1);
+ await row(page,'o1').locator('[data-st=ready]').click();await row(page,'o1').locator('[data-action=deliver]').click();
+ await expect(page.locator('.queue-item-card')).toHaveCount(0);
  expect(env.errors).toEqual([]);expect(env.external).toEqual([]);
 });
 
-test('item-view counters and table filters exclude closed orders without changing order view',async({page})=>{
+test('paying the table keeps unfinished drinks in both queue views until delivery',async({page})=>{
+ const env=await queue(page,{cocktail:order(1,6,[line('Джин тоник',1,'making')])},'admin');
+ await itemsView(page);await expect(row(page,'cocktail')).toHaveCount(1);
+ await page.evaluate(d=>window.__remoteSet('tables/'+d+'_1',{sid:'session',status:'closed',closedSessions:[{sid:'session'}]}),date());
+ await expect(row(page,'cocktail')).toHaveCount(1);
+ await ordersView(page);await expect(page.locator('.order-card')).toHaveCount(1);
+ await itemsView(page);await row(page,'cocktail').locator('[data-st=ready]').click();
+ await row(page,'cocktail').locator('[data-action=deliver]').click();
+ await expect(row(page,'cocktail')).toHaveCount(0);
+ expect(env.data().orders.cocktail.items.row0.status).toBe('done');expect(env.errors).toEqual([]);
+});
+
+test('item-view counters and table filters keep paid unfinished orders aligned with order view',async({page})=>{
  const env=await queue(page,{o1:order(1,9,[line('Чай')]),o2:order(2,4,[line('Сидр')])});
  await page.evaluate(d=>window.__remoteSet('tables/'+d+'_1',{sid:'session',status:'closed',closedSessions:[{sid:'session'}]}),date());
  // Existing view remains unchanged, as requested.
  await expect(page.locator('#sN')).toHaveText('2');await expect(page.locator('.order-card')).toHaveCount(2);
  await itemsView(page);
- await expect(page.locator('#sN')).toHaveText('1');await expect(page.locator('#sNew')).toHaveText('1');await expect(page.locator('#bQ')).toHaveText('1');
- await expect(page.locator('.queue-item-card')).toHaveCount(1);await expect(row(page,'o1')).toHaveCount(0);
- await expect(page.locator('#qFilters')).not.toContainText('Стол 1');await expect(page.locator('#qFilters')).toContainText('Стол 2');
+ await expect(page.locator('#sN')).toHaveText('2');await expect(page.locator('#sNew')).toHaveText('2');await expect(page.locator('#bQ')).toHaveText('2');
+ await expect(page.locator('.queue-item-card')).toHaveCount(2);await expect(row(page,'o1')).toHaveCount(1);
+ await expect(page.locator('#qFilters')).toContainText('Стол 1');await expect(page.locator('#qFilters')).toContainText('Стол 2');
  await ordersView(page);await expect(page.locator('#sN')).toHaveText('2');await expect(page.locator('#bQ')).toHaveText('2');await expect(page.locator('.order-card')).toHaveCount(2);
  expect(env.errors).toEqual([]);expect(env.external).toEqual([]);
 });
@@ -278,14 +292,14 @@ test('staff and guest lines for one unique menu product group despite absent sta
  expect(env.errors).toEqual([]);
 });
 
-test('old closed session stays excluded when table reopens; separate orders at one table stay independent',async({page})=>{
+test('old paid session stays until delivery; separate orders at one table stay independent',async({page})=>{
  const env=await queue(page,{old:order(4,15,[line('Чай')],{sid:'old'}),a:order(4,4,[line('Чай')]),b:order(4,2,[line('Чай')])});
  await page.evaluate(d=>window.__remoteSet('tables/'+d+'_4',{sid:'session',status:'open',closedSessions:[{sid:'old'}]}),date());
- await itemsView(page);await expect(page.locator('.queue-position')).toHaveCount(2);
+ await itemsView(page);await expect(page.locator('.queue-position')).toHaveCount(3);
  await row(page,'a').locator('[data-st=ready]').click();
  expect(env.data().orders.b.items.row0.status).toBe('new');expect(env.data().orders.old.items.row0.status).toBe('new');
  await row(page,'b').locator('[data-st=ready]').click();
- await expect(page.locator('.queue-group-remaining')).toHaveText('Всё готово — ждёт выдачи');
+ await expect(page.locator('.queue-group-remaining')).toHaveText('Приготовить: 1');
  await expect(page.locator('.queue-position-ready')).toHaveCount(2);expect(env.errors).toEqual([]);
 });
 
