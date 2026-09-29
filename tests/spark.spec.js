@@ -62,6 +62,24 @@ test('removing the last tea resets cups and a water order has no cups',async({pa
   expect(Object.values(Object.values(env.data().orders)[0].items)).toHaveLength(1);expect(env.errors).toEqual([]);
 });
 
+test('rejected guest order leaves stock unchanged and retry deducts it only once',async({page})=>{
+  const env=await setup(page);await guest(page);
+  await page.locator('[data-action=addItem]').first().click();
+  await page.locator('[data-action=addItem]').first().click();
+  await page.locator('#cartBar').click();
+  await page.evaluate(()=>{window.__failOrder=true;});
+  await page.locator('#placeBtn').click();
+  await expect(page.locator('#flash')).toContainText('Ошибка соединения');
+  expect(env.data().orders).toEqual({});
+  expect(env.data().menu2[0].items[0].stock).toBe(10);
+
+  await page.locator('#placeBtn').click();
+  await expect(page.locator('#screen-confirm')).toHaveClass(/active/);
+  expect(Object.keys(env.data().orders)).toHaveLength(1);
+  expect(env.data().menu2[0].items[0].stock).toBe(8);
+  expect(env.errors).toEqual([]);expect(env.external).toEqual([]);
+});
+
 test('first order after an empty queue sounds even without notification permission, repeats do not',async({page})=>{
   const env=await setup(page);await staff(page);await page.locator('#inpTable').click();
   await expect.poll(()=>page.evaluate(()=>window.__beeps)).toBe(0);

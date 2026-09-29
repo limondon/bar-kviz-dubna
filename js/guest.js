@@ -128,29 +128,22 @@ function stockText(item){
   if(s===0)return'Нет в наличии';
   return'Осталось: '+s+' шт.';
 }
-async function deductGuestStock(entries){
-  const txs=[];
+function stockTargets(entries){
+  const byPath=new Map();
   for(const[,ci]of entries){
     const oName=itemKey(ci.name);
     for(let ci2=0;ci2<menuData.length;ci2++){
       const catItems=menuData[ci2].items||[];
       for(let ii=0;ii<catItems.length;ii++){
         if(itemKey(catItems[ii].name)===oName&&getStock(catItems[ii])!==null){
-          txs.push({path:`menu2/${ci2}/items/${ii}/stock`,item:catItems[ii],qty:ci.qty,name:ci.name});
+          const path=`menu2/${ci2}/items/${ii}/stock`,existing=byPath.get(path);
+          if(existing)existing.qty+=ci.qty;
+          else byPath.set(path,{path,item:catItems[ii],qty:ci.qty,name:ci.name});
         }
       }
     }
   }
-  for(const tx of txs){
-    const res=await runTransaction(ref(db,tx.path),cur=>{
-      if(cur===undefined||cur===null||cur==='')return cur;
-      const n=Math.max(0,parseInt(cur,10)||0);
-      if(n<tx.qty)return;
-      return n-tx.qty;
-    });
-    if(!res.committed)throw new Error('Недостаточно остатков: '+tx.name);
-    tx.item.stock=res.snapshot.val();
-  }
+  return [...byPath.values()];
 }
 function isOut(item){const s=getStock(item);return s!==null&&s===0;}
 function canAdd(item,key){
@@ -427,6 +420,12 @@ async function placeOrder(){
       btn.disabled=false;btn.textContent='ОТПРАВИТЬ ЗАКАЗ';
       return;
     }
+    const stockChanges=stockTargets(entries);
+    const combinedConflict=stockChanges.find(tx=>(Math.max(0,parseInt(tx.item.stock,10)||0)<tx.qty));
+    if(combinedConflict){
+      flash(`Недостаточно остатков: ${combinedConflict.name}`,true);
+      return;
+    }
     // Get order num
     const numRes=await runTransaction(ref(db,'publicCounters/orderNum'),n=>(n||0)+1);
     const orderNum=numRes.snapshot.val();
@@ -443,13 +442,17 @@ async function placeOrder(){
       items[id]={id,name,qty:ci.qty,price:unitPrice(ci),status:'new'};
     });
     if(guestCups>0){const cid=Date.now().toString(36)+'_cups';const pl=guestCups===1?'кружка':guestCups<5?'кружки':'кружек';items[cid]={id:cid,name:`${guestCups} ${pl}`,qty:1,status:'new'};};
-    await deductGuestStock(entries);
     const newRef=push(ref(db,'orders'));
-    await update(ref(db,'orders/'+newRef.key),{
+    const orderId=newRef.key;
+    const order={
       id:newRef.key,table:parseInt(tableNum)||tableNum,
       items,note,priority:'normal',status:'new',
       createdAt:Date.now(),num:orderNum,date:today,sid:sessionId,source:'guest',total
-    });
+    };
+    const writes={[`orders/${orderId}`]:order};
+    stockChanges.forEach(tx=>{writes[tx.path]=(Math.max(0,parseInt(tx.item.stock,10)||0)-tx.qty);});
+    await update(ref(db),writes);
+    stockChanges.forEach(tx=>{tx.item.stock=writes[tx.path];});
     // Show confirm
     document.getElementById('confirmInfo').textContent=`Заказ #${orderNum} · Стол ${tableNum} · ${fmt(total)}`;
     cart={};guestCups=0;document.getElementById('orderNote').value='';

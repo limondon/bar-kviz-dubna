@@ -7,7 +7,7 @@
         "items": {
           "$itemId": {
             "stock": {
-              ".write": "auth != null && (auth.token.email === 'manager@1708.local' || (data.isNumber() && newData.isNumber() && newData.val() >= 0 && newData.val() <= data.val()))"
+              ".write": "auth != null && (auth.token.email === 'manager@1708.local' || (data.isNumber() && newData.isNumber() && newData.val() >= 0 && newData.val() < data.val()))"
             }
           }
         }

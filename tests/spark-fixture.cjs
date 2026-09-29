@@ -44,7 +44,7 @@ async function setup(page,{orders={},waiterCalls={},menu2}={}){
       export function onValue(r,cb){if(!listeners.has(r.path))listeners.set(r.path,new Set());listeners.get(r.path).add(cb);queueMicrotask(()=>cb(snap(r.path)));return ()=>listeners.get(r.path).delete(cb);}
       export async function update(r,values){
         if(window.__failCalls&&r.path==='waiterCalls'){window.__failCalls=false;throw new Error('PERMISSION_DENIED');}
-        if(window.__failOrder&&/^orders\\/[^/]+$/.test(r.path)){window.__failOrder=false;throw new Error('Test rejected write');}
+        if(window.__failOrder&&(/^orders\\/[^/]+$/.test(r.path)||(r.path===''&&Object.keys(values).some(key=>/^orders\\/[^/]+$/.test(key))))){window.__failOrder=false;throw new Error('Test rejected write');}
         for(const [key,value]of Object.entries(values))write([r.path,key].filter(Boolean).join('/'),value);
         await window.__syncDb(clone(data));emit();
       }
