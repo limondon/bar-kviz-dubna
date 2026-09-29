@@ -32,22 +32,25 @@ async function setup(page,{orders={},waiterCalls={},menu2}={}){
     if(url.pathname==='/__sdk.js')return route.fulfill({contentType:'text/javascript',body:`
       let data=${JSON.stringify(data)},counter=0;const listeners=new Map();
       const clone=v=>v==null?null:structuredClone(v);
-      const read=p=>p==='.info/connected'?true:p.split('/').filter(Boolean).reduce((v,k)=>v?.[k],data);
+      const read=p=>p==='.info/connected'?(window.__connected??true):p.split('/').filter(Boolean).reduce((v,k)=>v?.[k],data);
       const snap=p=>({val:()=>clone(read(p)),exists:()=>read(p)!=null});
       const write=(p,value)=>{const parts=p.split('/').filter(Boolean);if(!parts.length){data=clone(value);return;}let node=data;for(const key of parts.slice(0,-1))node=node[key]??={};if(value==null)delete node[parts.at(-1)];else node[parts.at(-1)]=clone(value);};
       const emit=()=>{for(const [p,cbs]of listeners)for(const cb of cbs)if(!(p==='menu2'&&window.__pauseMenuListener))queueMicrotask(()=>cb(snap(p)));};
       export const initializeApp=()=>({}),getDatabase=()=>({}),ref=(db,p='')=>({path:p});
-      const auth={currentUser:{email:'manager@1708.local',uid:'staff'}};
-      export const getAuth=()=>auth,signInAnonymously=async()=>({user:{uid:'guest'}}),signInWithEmailAndPassword=async()=>({user:auth.currentUser});
+      const manager={email:'manager@1708.local',uid:'staff'},auth={currentUser:manager};
+      export const getAuth=()=>auth,signInAnonymously=async()=>{auth.currentUser={uid:'guest'};return{user:auth.currentUser};},signInWithEmailAndPassword=async()=>{auth.currentUser=manager;return{user:manager};};
       export function onAuthStateChanged(a,cb){queueMicrotask(()=>cb(a.currentUser));return ()=>{};}
       export const get=async r=>snap(r.path),push=r=>({key:'order_'+Date.now()+'_'+(++counter)}),serverTimestamp=()=>Date.now();
       export function onValue(r,cb){if(!listeners.has(r.path))listeners.set(r.path,new Set());listeners.get(r.path).add(cb);queueMicrotask(()=>cb(snap(r.path)));return ()=>listeners.get(r.path).delete(cb);}
       export async function update(r,values){
+        const hasOrder=r.path===''&&Object.keys(values).some(key=>key.startsWith('orders/'));
         if(window.__failCalls&&r.path==='waiterCalls'){window.__failCalls=false;throw new Error('PERMISSION_DENIED');}
         if(window.__failTables&&r.path.startsWith('tables')){window.__failTables=false;throw new Error('Test table write rejected');}
         if(window.__failOrder&&(/^orders\\/[^/]+$/.test(r.path)||(r.path===''&&Object.keys(values).some(key=>/^orders\\/[^/]+$/.test(key))))){window.__failOrder=false;throw new Error('Test rejected write');}
+        if(window.__hangOrder&&hasOrder){window.__hangOrder=false;return new Promise(()=>{});}
         for(const [key,value]of Object.entries(values))write([r.path,key].filter(Boolean).join('/'),value);
         await window.__syncDb(clone(data));emit();
+        if(window.__ackLostOrder&&hasOrder){window.__ackLostOrder=false;throw new Error('Test lost acknowledgement');}
       }
       export async function set(r,value){
         if(r.path==='menu2'){
@@ -68,6 +71,7 @@ async function setup(page,{orders={},waiterCalls={},menu2}={}){
         if(next===undefined)return {committed:false,snapshot:snap(r.path)};await set(r,next);return {committed:true,snapshot:snap(r.path)};
       }
       window.__remoteSet=(p,v)=>set(ref(null,p),v);
+      window.__setConnected=v=>{window.__connected=v;emit();};
     `});
     const file=path.resolve(root,'.'+(url.pathname==='/'?'/index.html':url.pathname));
     if(!file.startsWith(root+path.sep)||!fs.existsSync(file))return route.fulfill({status:404,body:'Not found'});

@@ -1,5 +1,5 @@
 import{S}from'./state.js';
-import{db,auth,ref,update,set,remove,onValue,runTransaction,onAuthStateChanged}from'./firebase.js';
+import{db,auth,ref,update,set,remove,onValue,runTransaction,onAuthStateChanged,setConnStatus}from'./firebase.js';
 import{todayStr,normalizeOrder,fl,closeConfirmModal,confirmOk,setBadge}from'./utils.js';
 import{registerSW,checkNewOrders,playBeep,notifMuted,swReg,updateNotifBtn}from'./notifications.js';
 import{renderAll,startPoll}from'./render.js';
@@ -37,6 +37,8 @@ function _seedOrderCounter(){
 
 async function loadAll(){
   const cutoffDate=(()=>{const d=new Date();d.setDate(d.getDate()-30);return d.getFullYear()+'-'+(d.getMonth()+1).toString().padStart(2,'0')+'-'+d.getDate().toString().padStart(2,'0');})();
+
+  onValue(ref(db,'.info/connected'),snap=>setConnStatus(snap.val()===true));
 
   onValue(ref(db,'orders'),(snap)=>{
     const raw=snap.val();

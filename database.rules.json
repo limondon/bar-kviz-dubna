@@ -26,7 +26,16 @@
     "orders": {
       ".read": "auth != null && auth.token.email === 'manager@1708.local'",
       "$orderId": {
-        ".write": "auth != null && (auth.token.email === 'manager@1708.local' || (!data.exists() && newData.child('source').val() === 'guest' && newData.child('status').val() === 'new'))"
+        ".write": "auth != null && (auth.token.email === 'manager@1708.local' || (!data.exists() && newData.child('source').val() === 'guest' && newData.child('status').val() === 'new' && (!newData.child('createdByUid').exists() || newData.child('createdByUid').val() === auth.uid)))"
+      }
+    },
+    "guestReceipts": {
+      ".read": "auth != null && auth.token.email === 'manager@1708.local'",
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid",
+        "$orderId": {
+          ".write": "auth != null && (auth.token.email === 'manager@1708.local' || (auth.uid === $uid && !data.exists() && newData.child('orderId').val() === $orderId && newData.child('orderNum').isNumber() && newData.child('table').exists() && newData.child('createdAt').isNumber()))"
+        }
       }
     },
     "waiterCalls": {

@@ -69,15 +69,59 @@ test('rejected guest order leaves stock unchanged and retry deducts it only once
   await page.locator('#cartBar').click();
   await page.evaluate(()=>{window.__failOrder=true;});
   await page.locator('#placeBtn').click();
-  await expect(page.locator('#flash')).toContainText('Ошибка соединения');
+  await expect(page.locator('#conflictBox')).toContainText('не был принят');
   expect(env.data().orders).toEqual({});
+  expect(env.data().guestReceipts).toBeUndefined();
   expect(env.data().menu2[0].items[0].stock).toBe(10);
 
   await page.locator('#placeBtn').click();
   await expect(page.locator('#screen-confirm')).toHaveClass(/active/);
   expect(Object.keys(env.data().orders)).toHaveLength(1);
+  expect(Object.keys(env.data().guestReceipts.guest)).toHaveLength(1);
+  expect(env.data().publicCounters.orderNum).toBe(1);
   expect(env.data().menu2[0].items[0].stock).toBe(8);
   expect(env.errors).toEqual([]);expect(env.external).toEqual([]);
+});
+
+test('guest recovers an accepted order when its acknowledgement is lost',async({page})=>{
+  const env=await setup(page);await guest(page);
+  await page.locator('[data-action=addItem]').first().click();await page.locator('#cartBar').click();
+  await page.evaluate(()=>{window.__ackLostOrder=true;});await page.locator('#placeBtn').click();
+  await expect(page.locator('#screen-confirm')).toHaveClass(/active/);
+  expect(Object.keys(env.data().orders)).toHaveLength(1);expect(env.data().menu2[0].items[0].stock).toBe(9);
+  expect(Object.keys(env.data().guestReceipts.guest)).toHaveLength(1);
+  expect(await page.evaluate(()=>localStorage.getItem('bar_guest_pending_order'))).toBeNull();
+});
+
+test('guest reload restores an order that never reached the server',async({page})=>{
+  const env=await setup(page);await guest(page);
+  await page.locator('[data-action=addItem]').first().click();await page.locator('#cartBar').click();
+  await page.evaluate(()=>{window.__hangOrder=true;});await page.locator('#placeBtn').click();
+  await expect(page.locator('#conflictBox')).toContainText('Не закрывайте страницу');
+  await expect.poll(()=>page.evaluate(()=>!!localStorage.getItem('bar_guest_pending_order'))).toBe(true);
+  await page.reload();
+  await expect(page.locator('#screen-cart')).toHaveClass(/active/);
+  await expect(page.locator('#conflictBox')).toContainText('не был принят');
+  await expect(page.locator('.cart-row')).toHaveCount(1);expect(env.data().orders).toEqual({});
+});
+
+test('guest cannot submit while offline and can retry after reconnecting',async({page})=>{
+  const env=await setup(page);await guest(page);
+  await page.locator('[data-action=addItem]').first().click();await page.locator('#cartBar').click();
+  await page.evaluate(()=>window.__setConnected(false));await page.locator('#placeBtn').click();
+  await expect(page.locator('#conflictBox')).toContainText('нет связи с сервером');
+  expect(env.data().orders).toEqual({});expect(env.data().menu2[0].items[0].stock).toBe(10);
+  await page.evaluate(()=>window.__setConnected(true));await page.locator('#placeBtn').click();
+  await expect(page.locator('#screen-confirm')).toHaveClass(/active/);
+  expect(Object.keys(env.data().orders)).toHaveLength(1);expect(env.data().menu2[0].items[0].stock).toBe(9);
+});
+
+test('staff connection indicator follows realtime connectivity',async({page})=>{
+  const env=await setup(page);await staff(page);
+  await page.evaluate(()=>window.__setConnected(false));
+  await expect(page.locator('.dot')).toHaveCSS('background-color','rgb(229, 57, 53)');
+  await page.evaluate(()=>window.__setConnected(true));
+  await expect(page.locator('.dot')).toHaveCSS('background-color','rgb(76, 175, 80)');expect(env.errors).toEqual([]);
 });
 
 test('first order after an empty queue sounds even without notification permission, repeats do not',async({page})=>{
