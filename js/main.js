@@ -73,6 +73,7 @@ async function loadAll(){
     if(raw){
       if(S.activeTab==='menu')renderMenuPage();
     }else{S.BUILTIN_MENU_LIVE=[];fl('fErr','Меню в базе отсутствует. Проверьте данные перед приёмом заказов.');}
+    if(S.queueView==='items')renderAll();
   });
 
   let knownWaiterCalls=new Set();
@@ -101,6 +102,8 @@ async function loadAll(){
 
 // ─── CLICK DELEGATION ────────────────────────────────
 document.addEventListener('click',async e=>{
+  const view=e.target.closest('[data-queue-view]');
+  if(view){S.queueView=view.dataset.queueView==='items'?'items':'orders';renderAll();return;}
   const btn=e.target.closest('[data-action],[data-st]');if(!btn)return;
   e.stopPropagation();
   const st=btn.dataset.st;

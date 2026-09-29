@@ -1,12 +1,12 @@
 import{S}from'./state.js';
-import{db,ref,push,update,set,remove}from'./firebase.js';
+import{db,ref,push,update,remove,runTransaction}from'./firebase.js';
 
 function logDelivery(o,it){
   const key=push(ref(db,'config/deliveryLog')).key;
   const entry={at:Date.now(),table:o.table,orderNum:o.num,name:it.name,qty:it.qty};
   update(ref(db,'config/deliveryLog/'+key),entry).catch(e=>console.error('logDelivery',e));
 }
-import{parseItems,aggStatus,esc,escAttr,fl,safeDb,showConfirm,todayStr,lockScroll,unlockScroll,itemKey}from'./utils.js';
+import{parseItems,normalizeOrder,aggStatus,esc,escAttr,fl,safeDb,showConfirm,todayStr,lockScroll,unlockScroll,itemKey}from'./utils.js';
 import{applyStockDeltas,deductMenuStock}from'./stock.js';
 import{getTMeta}from'./tables.js';
 import{buildQuickTableBtns,isInstantItem}from'./render.js';
@@ -82,21 +82,49 @@ export async function addOrder(){
 }
 
 // ─── ITEM ACTIONS ─────────────────────────────────────
+const pendingOrders=new Set();
+const pendingLines=new Map();
+const lineKey=it=>it._fbKey||it.id;
+const sameLine=(a,b)=>a&&b&&a.name===b.name&&Number(a.qty)===Number(b.qty)&&a.status===b.status;
+// Re-read the order inside Firebase's transaction. An old click cannot recreate
+// a deleted row or overwrite a newer status; unrelated rows stay untouched.
+async function saveLineStatuses(o,changes){
+  if(!changes.length)return false;
+  const keys=changes.map(({item})=>lineKey(item));
+  const busy=pendingLines.get(o.id)||new Set();
+  if(pendingOrders.has(o.id)||keys.some(key=>busy.has(key))){fl('fInfo','Сохраняется предыдущее действие. Дождись подтверждения.');return false;}
+  keys.forEach(key=>busy.add(key));pendingLines.set(o.id,busy);
+  try{
+    const now=Date.now();
+    const result=await runTransaction(ref(db,'orders/'+o.id),raw=>{
+      if(!raw)return;
+      const current=normalizeOrder({...raw});
+      if(changes.some(({item})=>!sameLine(item,current.items.find(it=>lineKey(it)===lineKey(item)))))return;
+      for(const {item,status}of changes){
+        const it=current.items.find(it=>lineKey(it)===lineKey(item));
+        it.status=status;
+        if(status==='new'){delete it.makingAt;delete it.readyAt;delete it.doneAt;}
+        if(status==='making'){it.makingAt=now;delete it.readyAt;delete it.doneAt;}
+        if(status==='ready'){it.readyAt=now;delete it.doneAt;}
+        if(status==='done')it.doneAt=now;
+      }
+      const status=aggStatus(current.items);
+      const next={...raw,items:itemsToDbObject(current.items),status};
+      if(status==='done')next.doneAt=now;else delete next.doneAt;
+      return next;
+    },{applyLocally:false});
+    if(!result.committed){fl('fInfo','Заказ уже изменился. Проверь актуальные позиции и повтори действие.');return false;}
+    return result.snapshot.val();
+  }catch(e){console.error('saveLineStatuses',e);fl('fErr','❌ Не удалось обновить статус — проверь интернет');return false;}
+  finally{keys.forEach(key=>busy.delete(key));if(!busy.size)pendingLines.delete(o.id);}
+}
+
 export async function barItemAction(orderId,itemFbKey,newStatus){
   const o=S.orders.find(x=>x.id===orderId);if(!o)return;
   const it=o.items.find(x=>(x._fbKey||x.id)===itemFbKey);if(!it)return;
-  it.status=newStatus;
-  if(newStatus==='making')it.makingAt=Date.now();
-  if(newStatus==='ready')it.readyAt=Date.now();
-  if(newStatus==='new'){delete it.makingAt;delete it.readyAt;}
-  const prev=o.status;o.status=aggStatus(o.items);
-  if(o.status==='ready'&&prev!=='ready')fl('fOk','🟢 Стол '+o.table+' — всё готово! Официант, забирай!');
-  const fbKey=it._fbKey||it.id;const upd={};
-  upd[`orders/${orderId}/items/${fbKey}/status`]=newStatus;
-  if(newStatus==='making')upd[`orders/${orderId}/items/${fbKey}/makingAt`]=it.makingAt;
-  if(newStatus==='ready')upd[`orders/${orderId}/items/${fbKey}/readyAt`]=it.readyAt;
-  if(newStatus==='new'){upd[`orders/${orderId}/items/${fbKey}/makingAt`]=null;upd[`orders/${orderId}/items/${fbKey}/readyAt`]=null;}
-  await safeDb(update(ref(db),upd),'❌ Не удалось обновить статус');
+  if(!({new:['making','ready'],making:['ready','new'],ready:['making']}[it.status]||[]).includes(newStatus))return;
+  const saved=await saveLineStatuses(o,[{item:it,status:newStatus}]);
+  if(saved?.status==='ready'&&o.status!=='ready')fl('fOk','🟢 Стол '+o.table+' — всё готово! Официант, забирай!');
 }
 
 export async function waiterDeliverItem(orderId,itemFbKey){
@@ -104,48 +132,22 @@ export async function waiterDeliverItem(orderId,itemFbKey){
   const it=o.items.find(x=>(x._fbKey||x.id)===itemFbKey);if(!it)return;
   if(it.status==='done')return;
   if(it.status!=='ready'&&!isInstantItem(it.name))return;
-  it.status='done';it.doneAt=Date.now();
-  o.status=aggStatus(o.items);
-  const fbKey=it._fbKey||it.id;
-  const upd={[`orders/${orderId}/items/${fbKey}/status`]:'done',[`orders/${orderId}/items/${fbKey}/doneAt`]:it.doneAt};
-  if(o.status==='done'){o.doneAt=Date.now();upd[`orders/${orderId}/doneAt`]=o.doneAt;}
-  await safeDb(update(ref(db),upd),'❌ Не удалось отметить доставку');
+  if(!await saveLineStatuses(o,[{item:it,status:'done'}]))return;
   logDelivery(o,it);
   fl('fOk','✅ '+it.qty+'× '+it.name+' → Стол '+o.table);
 }
 
 export async function waiterDeliverAll(orderId){
   const o=S.orders.find(x=>x.id===orderId);if(!o)return;
-  let count=0;const upd={};const delivered=[];
-  o.items.forEach(it=>{
-    if(it.status==='done')return;
-    if(it.status==='ready'||isInstantItem(it.name)){
-      it.status='done';it.doneAt=Date.now();count++;delivered.push(it);
-      const fbKey=it._fbKey||it.id;
-      upd[`orders/${orderId}/items/${fbKey}/status`]='done';
-      upd[`orders/${orderId}/items/${fbKey}/doneAt`]=it.doneAt;
-    }
-  });
-  o.status=aggStatus(o.items);
-  if(o.status==='done'){o.doneAt=Date.now();upd[`orders/${orderId}/doneAt`]=o.doneAt;}
-  await safeDb(update(ref(db),upd),'❌ Не удалось отметить доставку');
+  const delivered=o.items.filter(it=>it.status!=='done'&&(it.status==='ready'||isInstantItem(it.name)));
+  if(!await saveLineStatuses(o,delivered.map(item=>({item,status:'done'}))))return;
   delivered.forEach(it=>logDelivery(o,it));
-  fl('fOk','✅ '+count+' позиц. доставлены — Стол '+o.table);
+  fl('fOk','✅ '+delivered.length+' позиц. доставлены — Стол '+o.table);
 }
 
 export async function reopenOrder(id){
   const o=S.orders.find(x=>x.id===id);if(!o)return;
-  const upd={[`orders/${id}/status`]:'new',[`orders/${id}/doneAt`]:null};
-  o.items.forEach(it=>{
-    it.status='new';delete it.makingAt;delete it.readyAt;delete it.doneAt;
-    const fbKey=it._fbKey||it.id;
-    upd[`orders/${id}/items/${fbKey}/status`]='new';
-    upd[`orders/${id}/items/${fbKey}/makingAt`]=null;
-    upd[`orders/${id}/items/${fbKey}/readyAt`]=null;
-    upd[`orders/${id}/items/${fbKey}/doneAt`]=null;
-  });
-  o.status='new';delete o.doneAt;
-  await update(ref(db),upd);
+  await saveLineStatuses(o,o.items.map(item=>({item,status:'new'})));
 }
 
 export async function delOrder(id){
@@ -170,6 +172,8 @@ export async function delOrder(id){
 
 // ─── EDIT ORDER MODAL ─────────────────────────────────
 let _editItems=[];
+let _editVersion='';
+const editVersion=o=>JSON.stringify([itemsToDbObject(o.items),o.note||'',o.priority||'normal']);
 
 function buildStockDeltas(beforeItems,afterItems){
   const map=new Map();
@@ -217,6 +221,7 @@ export function openEditModal(orderId,billMode=false){
   const activeItems=(o.items||[]).filter(it=>it.status!=='done');
   if(!billMode&&activeItems.length===0)billMode=true;
   S.editOrderId=orderId;S.editBillMode=billMode;
+  _editVersion=editVersion(o);
   document.getElementById('editPriority').value=o.priority||'normal';
   document.getElementById('editNote').value=o.note||'';
   const sub=document.getElementById('editSub');
@@ -229,7 +234,7 @@ export function openEditModal(orderId,billMode=false){
     if(doneItems.length)sub.innerHTML=`Заказ #${esc(o.num)} · Стол ${esc(o.table)}<br><span class="edit-sub-muted">✅ Доставлено: ${doneItems.map(it=>esc(it.qty)+'× '+esc(it.name)).join(', ')}</span>`;
     else sub.textContent='Заказ #'+o.num+' · Стол '+o.table;
   }
-  renderEditItemsList(itemsToEdit.map(it=>({qty:it.qty,name:it.name})));
+  renderEditItemsList(itemsToEdit.map(it=>({...it})));
   document.getElementById('editOverlay').classList.remove('hidden');
   lockScroll();
 }
@@ -267,34 +272,55 @@ export async function saveEditOrder(){
   if(!S.editOrderId){fl('fInfo','❌ ID заказа не найден');return;}
   const o=S.orders.find(x=>x.id===S.editOrderId);
   if(!o){fl('fInfo','❌ Заказ не найден');return;}
+  if(pendingOrders.has(o.id)||pendingLines.has(o.id)){fl('fInfo','Сохраняется предыдущее действие. Дождись подтверждения.');return;}
+  if(editVersion(o)!==_editVersion){fl('fInfo','Заказ изменился. Закрой правку и открой заказ заново.');return;}
   const rawItems=document.getElementById('editItems').value.trim();
   const note=document.getElementById('editNote').value.trim();
   const prio=document.getElementById('editPriority').value;
   if(!rawItems){fl('fInfo','Введите позиции!');return;}
   const originalItems=Array.isArray(o.items)?o.items:[];
+  const billMode=S.editBillMode,expectedVersion=_editVersion,orderId=o.id;
+  // Keep IDs, prices, modifiers and progress of unchanged editor rows.
+  const parsed=parseItems(rawItems);
+  const editorRows=_editItems.filter(it=>it.name.trim());
+  const editedItems=parsed.map((it,i)=>{
+    const source=originalItems.find(old=>lineKey(old)===lineKey(editorRows[i]||{}));
+    if(source&&source.name===it.name&&Number(source.qty)===it.qty)return {...source,...(billMode?{status:'done',doneAt:source.doneAt||Date.now()}:{})};
+    if(source&&source.name===it.name){
+      const changed={...source,qty:it.qty,status:billMode?'done':'new'};
+      delete changed.makingAt;delete changed.readyAt;delete changed.doneAt;
+      if(billMode)changed.doneAt=Date.now();
+      return changed;
+    }
+    return billMode?{...it,status:'done',doneAt:Date.now()}:it;
+  });
   let mergedItems,stockDeltas;
-  if(S.editBillMode){
-    const parsed=parseItems(rawItems);
-    mergedItems=parsed.map(it=>({...it,status:'done',doneAt:Date.now()}));
+  if(billMode){
+    mergedItems=editedItems;
     stockDeltas=buildStockDeltas(originalItems,mergedItems);
   } else {
     const doneItems=originalItems.filter(it=>it.status==='done');
-    const newParsed=parseItems(rawItems);
-    mergedItems=[...doneItems,...newParsed];
-    stockDeltas=buildStockDeltas(originalItems.filter(it=>it.status!=='done'),newParsed);
+    mergedItems=[...doneItems,...editedItems];
+    stockDeltas=buildStockDeltas(originalItems.filter(it=>it.status!=='done'),editedItems);
   }
   const itemsObj=itemsToDbObject(mergedItems);
   let stockApplied=false;
+  pendingOrders.add(orderId);
   try{
     if(stockDeltas.length){await applyStockDeltas(stockDeltas);stockApplied=true;}
     const snapshot=orderSnapshot(o);
-    await set(ref(db,'orders/'+S.editOrderId+'/history/'+Date.now()),snapshot);
-    await set(ref(db,'orders/'+S.editOrderId+'/items'),itemsObj);
-    await update(ref(db,'orders/'+S.editOrderId),{note,priority:prio});
+    const result=await runTransaction(ref(db,'orders/'+orderId),raw=>{
+      if(!raw||editVersion(normalizeOrder({...raw}))!==expectedVersion)return;
+      const status=aggStatus(mergedItems);
+      const next={...raw,items:itemsObj,note,priority:prio,status,history:{...raw.history,[snapshot.editedAt]:snapshot}};
+      if(status==='done')next.doneAt=raw.doneAt||Date.now();else delete next.doneAt;
+      return next;
+    },{applyLocally:false});
+    if(!result.committed)throw new Error('Заказ изменился. Закрой правку и открой заказ заново.');
     closeEditModal();fl('fOk','✅ Заказ #'+o.num+' обновлён');
   }catch(e){
     if(stockApplied)await rollbackStockDeltas(stockDeltas).catch(err=>console.error('stock rollback failed:',err));
     console.error('saveEditOrder error:',e);
     fl('fInfo','❌ Ошибка: '+e.message);
-  }
+  }finally{pendingOrders.delete(orderId);}
 }

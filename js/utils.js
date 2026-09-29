@@ -38,18 +38,21 @@ export function aggStatus(items){
 }
 export function normalizeOrder(o){
   if(typeof o.items==='string'){
-    o.items=parseItems(o.items);
+    // Stable keys until a staff action converts the legacy text in one write.
+    const status=['new','making','ready','done'].includes(o.status)?o.status:'new';
+    o.items=parseItems(o.items).map((it,i)=>({...it,id:'legacy_'+i,_fbKey:'legacy_'+i,status}));
   } else if(o.items&&!Array.isArray(o.items)){
     o.items=Object.entries(o.items)
       .filter(([k,v])=>v&&typeof v==='object'&&v.name)
       .map(([k,v])=>{const it={...v};it._fbKey=k;if(!it.id)it.id=k;return it;});
   } else if(Array.isArray(o.items)){
-    o.items=o.items.filter(it=>it&&it.name).map((it,i)=>{
+    o.items=o.items.map((it,i)=>{
+      if(!it||!it.name)return null;
       const r={...it};
-      if(!r._fbKey)r._fbKey=r.id||String(i);
+      r._fbKey=String(i);
       if(!r.id)r.id=String(i);
       return r;
-    });
+    }).filter(Boolean);
   }
   if(!Array.isArray(o.items))o.items=[];
   o.items.forEach(it=>{if(!it.status)it.status='new';});
