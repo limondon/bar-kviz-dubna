@@ -238,12 +238,51 @@ test('legacy sparse arrays use database indices and text orders convert only on 
  expect(env.errors).toEqual([]);
 });
 
-test('editing quantity retains the saved unit price and identity, while changed active rows restart',async({page})=>{
- const env=await queue(page,{a:order(1,5,[line('Сенча + лимон',1,'ready',{price:350,productId:'tea',readyAt:123})])},'admin');
- await page.evaluate(()=>openEditModal('a'));await page.locator('.edit-qty-input').fill('2');await page.locator('#editNote').click();
+for(const status of ['ready','making'])test(`increasing ${status} tea preserves the batch and adds only the extra portion as new`,async({page})=>{
+ const env=await queue(page,{a:order(1,5,[line('Сенча + лимон',2,status,{price:350,productId:'tea',makingAt:100,...(status==='ready'?{readyAt:123}:{})})]),b:order(2,3,[line('Сенча + лимон')])},'admin');
+ const before=env.data().orders.a.items.row0;
+ await page.evaluate(()=>openEditModal('a'));await page.locator('.edit-qty-input').fill('3');await page.locator('#editNote').click();
  await page.evaluate(()=>saveEditOrder());await expect(page.locator('#editOverlay')).toHaveClass(/hidden/);
- expect(env.data().orders.a.items.row0).toMatchObject({price:350,productId:'tea',qty:2,status:'new'});
- expect(env.data().orders.a.items.row0.readyAt).toBeUndefined();
+ const saved=env.data().orders.a.items;
+ expect(Object.keys(saved)).toHaveLength(2);expect(saved.row0).toEqual(before);
+ const extraKey=Object.keys(saved).find(k=>k!=='row0');
+ expect(saved[extraKey]).toMatchObject({name:before.name,price:350,productId:'tea',qty:1,status:'new'});
+ expect(saved[extraKey].id).not.toBe(before.id);
+ for(const key of ['_fbKey','makingAt','readyAt','doneAt'])expect(saved[extraKey][key]).toBeUndefined();
+ expect(env.data().menu2[1].items[0].stock).toBe(9);
+ await itemsView(page);
+ await expect(row(page,'a').locator('.queue-row-status')).toContainText(status==='ready'?'Готов':'В работе');
+ await expect(row(page,'a',extraKey).locator('.queue-row-status')).toContainText('Новый');
+ await ordersView(page);await expect(page.locator(`#qList [data-oid=a][data-iid="${extraKey}"][data-st=making]`)).toHaveCount(1);
+ await page.reload();await page.waitForFunction(()=>!!window.sw);await page.evaluate(()=>sw('queue'));await itemsView(page);
+ await expect(row(page,'a',extraKey).locator('.queue-row-status')).toContainText('Новый');
+ // Saving the split order again must neither split nor deduct stock a second time.
+ await page.evaluate(()=>openEditModal('a'));await page.locator('#editNote').fill('Без сахара');await page.evaluate(()=>saveEditOrder());
+ expect(env.data().orders.a.items).toEqual(saved);expect(env.data().menu2[1].items[0].stock).toBe(9);
+ await page.evaluate(()=>barItemAction('a','row0','ready'));await page.evaluate(()=>waiterDeliverItem('a','row0'));
+ expect(env.data().orders.a.items.row0.status).toBe('done');expect(env.data().orders.a.items[extraKey].status).toBe('new');
+ expect(env.data().orders.b.items.row0.status).toBe('new');
+ await expect(row(page,'a',extraKey)).toHaveCount(1);expect(env.errors).toEqual([]);expect(env.external).toEqual([]);
+});
+
+test('increasing a new row or correcting a delivered bill does not split the row',async({page})=>{
+ const env=await queue(page,{a:order(1,5,[line('Сенча',2,'new',{price:300})]),b:order(2,3,[line('Сенча',2,'done',{price:300,doneAt:123})])},'admin');
+ for(const id of ['a','b']){
+  await page.evaluate(id=>openEditModal(id),id);await page.locator('.edit-qty-input').fill('3');await page.locator('#editNote').click();await page.evaluate(()=>saveEditOrder());
+  expect(Object.keys(env.data().orders[id].items)).toHaveLength(1);
+  expect(env.data().orders[id].items.row0).toMatchObject({qty:3,price:300,status:id==='a'?'new':'done'});
+ }
+ expect(env.data().menu2[1].items[0].stock).toBe(8);expect(env.errors).toEqual([]);
+});
+
+test('increasing a legacy array row keeps its database key and adds a separate new row',async({page})=>{
+ const legacy=[null,{id:'legacy-tea',name:'Сенча',qty:2,status:'ready',price:300,readyAt:123}];
+ const env=await queue(page,{a:order(1,5,[],{items:legacy})},'admin');
+ await page.evaluate(()=>openEditModal('a'));await page.locator('.edit-qty-input').fill('3');await page.locator('#editNote').click();await page.evaluate(()=>saveEditOrder());
+ const saved=env.data().orders.a.items;
+ expect(saved['1']).toEqual(legacy[1]);expect(saved['legacy-tea']).toBeUndefined();
+ expect(Object.keys(saved)).toHaveLength(2);
+ expect(Object.values(saved).find(it=>it.status==='new')).toMatchObject({qty:1,price:300});
  expect(env.data().menu2[1].items[0].stock).toBe(9);expect(env.errors).toEqual([]);
 });
 
