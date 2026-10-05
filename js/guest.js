@@ -22,6 +22,8 @@ let cart={};     // {key: {name,price,qty,addons:{},option:null}}
 let activeCat=0;
 let openGroups=new Set();
 let guestCups=0;
+let connected=false,appReady=false,recoveryBusy=false,pendingMemory=null;
+const PENDING_ORDER_KEY='bar_guest_pending_order';
 const G_TEA_ADDONS=['Чабрец','Лимон','Мята'];
 const G_ADDON_PRICE=50;
 function isLeafTeaCat(cat){return cat?.cat?.toLowerCase().includes('лист');}
@@ -44,12 +46,66 @@ function unitPrice(item){
 }
 let flashTmr=null;
 
+function readPendingOrder(){
+  if(pendingMemory)return pendingMemory;
+  try{pendingMemory=JSON.parse(localStorage.getItem(PENDING_ORDER_KEY)||'null');}catch{}
+  return pendingMemory;
+}
+function savePendingOrder(pending){
+  pendingMemory=pending;
+  try{localStorage.setItem(PENDING_ORDER_KEY,JSON.stringify(pending));}catch{}
+}
+function clearPendingOrder(){pendingMemory=null;try{localStorage.removeItem(PENDING_ORDER_KEY);}catch{}}
+function setSendStatus(message,tone='error'){
+  const box=document.getElementById('conflictBox');if(!box)return;
+  const el=document.createElement('div');el.className='conflict-box';el.textContent=message;
+  if(tone==='pending'){el.style.background='rgba(212,168,67,.12)';el.style.borderColor='rgba(212,168,67,.45)';el.style.color='var(--gold)';}
+  box.replaceChildren(el);
+}
+function resetPlaceButton(disabled=false,label='ОТПРАВИТЬ ЗАКАЗ'){
+  const btn=document.getElementById('placeBtn');if(!btn)return;btn.disabled=disabled;btn.textContent=label;
+}
+function restorePendingCart(pending){
+  cart=pending.cart&&typeof pending.cart==='object'?pending.cart:{};guestCups=Number(pending.guestCups)||0;
+  const note=document.getElementById('orderNote');if(note)note.value=pending.note||'';
+  updateCartBar();renderMenu();renderCartScreen();
+}
+function showAcceptedOrder(pending){
+  clearPendingOrder();
+  document.getElementById('confirmInfo').textContent=`Заказ #${pending.orderNum} · Стол ${pending.table} · ${fmt(pending.total)}`;
+  cart={};guestCups=0;document.getElementById('orderNote').value='';
+  updateCartBar();resetPlaceButton();go('screen-confirm');
+}
+async function recoverPendingOrder(){
+  const pending=readPendingOrder();
+  if(!appReady||recoveryBusy||!pending||pending.table!==tableNum||pending.token!==token)return null;
+  recoveryBusy=true;
+  try{
+    if(!connected)throw new Error('offline');
+    const receipt=await get(ref(db,`guestReceipts/${auth.currentUser.uid}/${pending.orderId}`));
+    if(receipt.exists()){showAcceptedOrder(pending);return'accepted';}
+    pending.retryable=true;savePendingOrder(pending);restorePendingCart(pending);openCart();
+    setSendStatus('Заказ не был принят. Корзина восстановлена — нажмите «Повторить отправку».');
+    resetPlaceButton(false,'ПОВТОРИТЬ ОТПРАВКУ');return'missing';
+  }catch(e){
+    console.error('pending order recovery',e);restorePendingCart(pending);openCart();
+    setSendStatus('Не удалось проверить заказ. Не отправляйте его повторно и дождитесь восстановления связи.');
+    resetPlaceButton(true,'ПРОВЕРЯЕМ ЗАКАЗ');return'unknown';
+  }finally{recoveryBusy=false;}
+}
+
 // ─── BOOT ───────────────────────────────────────────
 (async()=>{
   const p=new URLSearchParams(location.search);
   tableNum=p.get('table'); token=p.get('token');
   if(!tableNum||!token){showInvalid();return;}
-  try{await signInAnonymously(auth);}catch(e){}
+  setConn(false);
+  try{await signInAnonymously(auth);}catch(e){console.error(e);showInvalid();return;}
+  onValue(ref(db,'.info/connected'),snap=>{
+    const wasConnected=connected;
+    connected=snap.val()===true;setConn(connected);
+    if(connected&&!wasConnected&&appReady&&readPendingOrder())setTimeout(()=>recoverPendingOrder(),0);
+  });
   const today=todayStr();
   const metaKey=today+'_'+tableNum;
   try{
@@ -79,6 +135,8 @@ let flashTmr=null;
     // Load menu once then subscribe
     await loadMenu();
     showApp();
+    appReady=true;
+    await recoverPendingOrder();
     // Real-time menu updates (for stock)
     onValue(ref(db,'menu2'),snap=>{
       const raw=snap.val();
@@ -87,8 +145,7 @@ let flashTmr=null;
         menuData=cats.map(c=>({...c,items:Array.isArray(c.items)?c.items:Object.values(c.items||{})}));
         renderMenu();
       }
-      setConn(true);
-    },()=>setConn(false));
+    });
     // Watch table status
     onValue(ref(db,'tables/'+metaKey),snap=>{
       const m=snap.val();
@@ -128,29 +185,22 @@ function stockText(item){
   if(s===0)return'Нет в наличии';
   return'Осталось: '+s+' шт.';
 }
-async function deductGuestStock(entries){
-  const txs=[];
+function stockTargets(entries){
+  const byPath=new Map();
   for(const[,ci]of entries){
     const oName=itemKey(ci.name);
     for(let ci2=0;ci2<menuData.length;ci2++){
       const catItems=menuData[ci2].items||[];
       for(let ii=0;ii<catItems.length;ii++){
         if(itemKey(catItems[ii].name)===oName&&getStock(catItems[ii])!==null){
-          txs.push({path:`menu2/${ci2}/items/${ii}/stock`,item:catItems[ii],qty:ci.qty,name:ci.name});
+          const path=`menu2/${ci2}/items/${ii}/stock`,existing=byPath.get(path);
+          if(existing)existing.qty+=ci.qty;
+          else byPath.set(path,{path,item:catItems[ii],qty:ci.qty,name:ci.name});
         }
       }
     }
   }
-  for(const tx of txs){
-    const res=await runTransaction(ref(db,tx.path),cur=>{
-      if(cur===undefined||cur===null||cur==='')return cur;
-      const n=Math.max(0,parseInt(cur,10)||0);
-      if(n<tx.qty)return;
-      return n-tx.qty;
-    });
-    if(!res.committed)throw new Error('Недостаточно остатков: '+tx.name);
-    tx.item.stock=res.snapshot.val();
-  }
+  return [...byPath.values()];
 }
 function isOut(item){const s=getStock(item);return s!==null&&s===0;}
 function canAdd(item,key){
@@ -404,8 +454,15 @@ function go(tid){
 async function placeOrder(){
   const entries=Object.entries(cart).filter(([k,v])=>v.qty>0);
   if(!entries.length)return;
-  const btn=document.getElementById('placeBtn');
-  btn.disabled=true;btn.textContent='Отправляем…';
+  const unresolved=readPendingOrder();
+  if(unresolved&&unresolved.table===tableNum&&unresolved.token===token&&!unresolved.retryable){await recoverPendingOrder();return;}
+  if(!connected){
+    setSendStatus('Заказ не отправлен: нет связи с сервером. Корзина сохранена — попробуйте после восстановления связи.');
+    resetPlaceButton(false,'ПОВТОРИТЬ ОТПРАВКУ');return;
+  }
+  resetPlaceButton(true,'Отправляем…');
+  setSendStatus('Отправляем заказ. Не закрывайте страницу и не нажимайте повторно.','pending');
+  let slowTimer=setTimeout(()=>setSendStatus('Заказ всё ещё отправляется. Не закрывайте страницу и не нажимайте повторно.','pending'),7000);
   try{
     // Stock conflict check
     const conflicts=[];
@@ -424,12 +481,23 @@ async function placeOrder(){
       });
       document.getElementById('conflictBox').innerHTML=`<div class="conflict-box">${html}</div>`;
       renderCartScreen();updateCartBar();
-      btn.disabled=false;btn.textContent='ОТПРАВИТЬ ЗАКАЗ';
       return;
     }
-    // Get order num
-    const numRes=await runTransaction(ref(db,'publicCounters/orderNum'),n=>(n||0)+1);
-    const orderNum=numRes.snapshot.val();
+    const stockChanges=stockTargets(entries);
+    const combinedConflict=stockChanges.find(tx=>(Math.max(0,parseInt(tx.item.stock,10)||0)<tx.qty));
+    if(combinedConflict){
+      flash(`Недостаточно остатков: ${combinedConflict.name}`,true);
+      return;
+    }
+    // A retry reuses the same number and order id, so a delayed first request cannot create a duplicate.
+    const retry=readPendingOrder();
+    let orderNum,orderId,createdAt;
+    if(retry?.retryable&&retry.table===tableNum&&retry.token===token){
+      ({orderNum,orderId,createdAt}=retry);
+    }else{
+      const numRes=await runTransaction(ref(db,'publicCounters/orderNum'),n=>(n||0)+1);
+      orderNum=numRes.snapshot.val();orderId=push(ref(db,'orders')).key;createdAt=Date.now();
+    }
     const note=document.getElementById('orderNote').value.trim();
     const total=entries.reduce((s,[k,v])=>s+unitPrice(v)*v.qty,0);
     const today=todayStr();
@@ -443,19 +511,34 @@ async function placeOrder(){
       items[id]={id,name,qty:ci.qty,price:unitPrice(ci),status:'new'};
     });
     if(guestCups>0){const cid=Date.now().toString(36)+'_cups';const pl=guestCups===1?'кружка':guestCups<5?'кружки':'кружек';items[cid]={id:cid,name:`${guestCups} ${pl}`,qty:1,status:'new'};};
-    await deductGuestStock(entries);
-    const newRef=push(ref(db,'orders'));
-    await update(ref(db,'orders/'+newRef.key),{
-      id:newRef.key,table:parseInt(tableNum)||tableNum,
+    const order={
+      id:orderId,table:parseInt(tableNum)||tableNum,
       items,note,priority:'normal',status:'new',
-      createdAt:Date.now(),num:orderNum,date:today,sid:sessionId,source:'guest',total
-    });
-    // Show confirm
-    document.getElementById('confirmInfo').textContent=`Заказ #${orderNum} · Стол ${tableNum} · ${fmt(total)}`;
-    cart={};guestCups=0;document.getElementById('orderNote').value='';
-    updateCartBar();go('screen-confirm');
-  }catch(e){console.error(e);flash('Ошибка соединения — попробуйте ещё раз',true);}
-  finally{btn.disabled=false;btn.textContent='ОТПРАВИТЬ ЗАКАЗ';}
+      createdAt,num:orderNum,date:today,sid:sessionId,source:'guest',total,createdByUid:auth.currentUser.uid
+    };
+    const pending={orderId,orderNum,createdAt,table:tableNum,token,cart:JSON.parse(JSON.stringify(cart)),guestCups,note,total,retryable:false};
+    savePendingOrder(pending);
+    const writes={
+      [`orders/${orderId}`]:order,
+      [`guestReceipts/${auth.currentUser.uid}/${orderId}`]:{orderId,orderNum,table:tableNum,createdAt}
+    };
+    stockChanges.forEach(tx=>{writes[tx.path]=(Math.max(0,parseInt(tx.item.stock,10)||0)-tx.qty);});
+    await update(ref(db),writes);
+    stockChanges.forEach(tx=>{tx.item.stock=writes[tx.path];});
+    showAcceptedOrder(pending);
+  }catch(e){
+    console.error(e);
+    const result=await recoverPendingOrder();
+    if(!result){
+      setSendStatus('Заказ не отправлен. Корзина сохранена — попробуйте ещё раз.');
+      resetPlaceButton(false,'ПОВТОРИТЬ ОТПРАВКУ');
+    }
+  }finally{
+    clearTimeout(slowTimer);
+    const pending=readPendingOrder();
+    if(!pending)resetPlaceButton();
+    else if(pending.retryable)resetPlaceButton(false,'ПОВТОРИТЬ ОТПРАВКУ');
+  }
 }
 
 // ─── CALL WAITER ────────────────────────────────────

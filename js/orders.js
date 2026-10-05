@@ -58,6 +58,7 @@ export async function addOrder(){
           existingMeta.sessions.push({sid:existingMeta.sid,closedAt:existingMeta.closedAt,openedAt:existingMeta.openedAt});
           existingMeta.sid=newSid;existingMeta.status='open';existingMeta.openedAt=Date.now();
           delete existingMeta.closedAt;
+          delete existingMeta.autoClosed;
         }
         const sid=existingMeta.sid||(existingMeta.sid=Date.now().toString(36));
         const newRef=push(ref(db,'orders'));
@@ -283,10 +284,17 @@ export async function saveEditOrder(){
   // Keep IDs, prices, modifiers and progress of unchanged editor rows.
   const parsed=parseItems(rawItems);
   const editorRows=_editItems.filter(it=>it.name.trim());
-  const editedItems=parsed.map((it,i)=>{
+  const editedItems=parsed.flatMap((it,i)=>{
     const source=originalItems.find(old=>lineKey(old)===lineKey(editorRows[i]||{}));
     if(source&&source.name===it.name&&Number(source.qty)===it.qty)return {...source,...(billMode?{status:'done',doneAt:source.doneAt||Date.now()}:{})};
     if(source&&source.name===it.name){
+      if(!billMode&&it.qty>Number(source.qty)&&['making','ready'].includes(source.status)){
+        // Keep the started batch intact; only the added quantity needs preparation.
+        // Do not copy its database key or progress timestamps onto the new line.
+        const extra={...source,id:it.id,qty:it.qty-Number(source.qty),status:'new'};
+        delete extra._fbKey;delete extra.makingAt;delete extra.readyAt;delete extra.doneAt;
+        return [{...source},extra];
+      }
       const changed={...source,qty:it.qty,status:billMode?'done':'new'};
       delete changed.makingAt;delete changed.readyAt;delete changed.doneAt;
       if(billMode)changed.doneAt=Date.now();

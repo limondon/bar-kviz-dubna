@@ -1,9 +1,9 @@
 import{S}from'./state.js';
-import{db,auth,ref,update,set,remove,onValue,runTransaction,onAuthStateChanged}from'./firebase.js';
+import{db,auth,ref,update,set,remove,onValue,runTransaction,onAuthStateChanged,setConnStatus}from'./firebase.js';
 import{todayStr,normalizeOrder,fl,closeConfirmModal,confirmOk,setBadge}from'./utils.js';
 import{registerSW,checkNewOrders,playBeep,notifMuted,swReg,updateNotifBtn}from'./notifications.js';
 import{renderAll,startPoll}from'./render.js';
-import{renderTables,renderClosed}from'./tables.js';
+import{renderTables,renderClosed,autoCloseExpiredTables}from'./tables.js';
 import{renderMenuPage,receiveMenuSnapshot}from'./menu.js';
 import{renderStats}from'./render.js';
 import{renderCalls}from'./calls.js';
@@ -38,6 +38,8 @@ function _seedOrderCounter(){
 async function loadAll(){
   const cutoffDate=(()=>{const d=new Date();d.setDate(d.getDate()-30);return d.getFullYear()+'-'+(d.getMonth()+1).toString().padStart(2,'0')+'-'+d.getDate().toString().padStart(2,'0');})();
 
+  onValue(ref(db,'.info/connected'),snap=>setConnStatus(snap.val()===true));
+
   onValue(ref(db,'orders'),(snap)=>{
     const raw=snap.val();
     const rows=Object.entries(raw||{});
@@ -53,6 +55,7 @@ async function loadAll(){
     S.tablesMeta=snap.val()||{};
     if(S.activeTab==='tables')renderTables();
     renderAll();
+    void autoCloseExpiredTables();
   });
 
   onValue(ref(db,'config/orderNumResetAt'),(snap)=>{S.orderNumResetAt=snap.val()||0;_counterConfigLoaded=true;_seedOrderCounter();});
@@ -102,6 +105,10 @@ async function loadAll(){
 
 // ─── CLICK DELEGATION ────────────────────────────────
 document.addEventListener('click',async e=>{
+  const day=e.target.closest('[data-stats-date]');
+  if(day){S.statsDate=day.dataset.statsDate;renderStats();return;}
+  const period=e.target.closest('[data-stats-days]');
+  if(period){const days=Number(period.dataset.statsDays);if([7,14,30].includes(days)){S.statsDays=days;renderStats();}return;}
   const view=e.target.closest('[data-queue-view]');
   if(view){S.queueView=view.dataset.queueView==='items'?'items':'orders';renderAll();return;}
   const btn=e.target.closest('[data-action],[data-st]');if(!btn)return;
@@ -172,6 +179,11 @@ Object.assign(window,{
 });
 
 // ─── BOOT ─────────────────────────────────────────────
+// A slow module download may recover after the standalone HTML warning appeared.
+const bootstrapError=document.getElementById('fErr');
+if(bootstrapError?.dataset.bootstrapError==='true'){
+  bootstrapError.classList.remove('show');delete bootstrapError.dataset.bootstrapError;
+}
 function hideSplash(){const el=document.getElementById('splashScreen');if(!el)return;el.style.transition='opacity .2s';el.style.opacity='0';setTimeout(()=>el?.remove(),220);}
 
 let _appStarted=false;
@@ -180,6 +192,8 @@ async function startApp(){
   _appStarted=true;
   await loadAll();
   startPoll();
+  setInterval(()=>void autoCloseExpiredTables(),60000);
+  document.addEventListener('visibilitychange',()=>{if(!document.hidden)void autoCloseExpiredTables();});
 }
 window.startApp=startApp;
 
