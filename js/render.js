@@ -1,6 +1,6 @@
 import{S}from'./state.js';
 import{groupQueueItems,isQueueOrderActive}from'./queue-items.js';
-import{esc,escAttr,fmt,empty,setBadge,setEl,todayStr,shiftDS,aggStatus,itemKey,pl}from'./utils.js';
+import{esc,escAttr,fmt,dateLbl,empty,setBadge,setEl,todayStr,shiftDS,aggStatus,itemKey,pl}from'./utils.js';
 import{BUILTIN_MENU}from'./menu-data.js';
 import{renderTables,renderClosed,getTMeta,getItemPrice}from'./tables.js';
 
@@ -163,18 +163,47 @@ export function renderAll(){
   if(rl){const rs=hasReady.slice().sort((a,b)=>a.createdAt-b.createdAt);rl.innerHTML=rs.length?rs.map(o=>orderCard(o,false)).join(''):empty('⏳','Нет готовых позиций');}
   if(S.activeTab==='tables')renderTables();
   if(S.activeTab==='done')renderClosed();
+  if(S.activeTab==='stats')renderStats();
   if(document.getElementById('quickTableBtns'))buildQuickTableBtns();
 }
 
 // ─── STATS ───────────────────────────────────────────
+function statsProducts(orders){
+  const map=Object.create(null);
+  orders.forEach(o=>(o.items||[]).forEach(it=>{
+    const name=String(it.name||'').trim(),key=name.toLowerCase(),qty=Number(it.qty)||0;
+    // Cups are serving instructions, including historic guest cup rows.
+    if(!key||qty<=0||/^(?:\d+\s+)?круж(?:ка|ки|ек)$/i.test(key))return;
+    if(!map[key])map[key]={name,count:0};
+    map[key].count+=qty;
+  }));
+  return Object.values(map).sort((a,b)=>b.count-a.count);
+}
+function statsProductRows(products){
+  return products.length?products.map((p,i)=>`<div class="stats-pop-row"><div class="stats-pop-name"><span class="stats-pop-rank">${i+1}</span><span>${esc(p.name)}</span></div><span class="stats-pop-count">${esc(p.count)}</span></div>`).join(''):'<div class="stats-empty">Нет данных</div>';
+}
+function statsDayDetails(date){
+  const orders=S.orders.filter(o=>o.date===date).sort((a,b)=>a.createdAt-b.createdAt);
+  const products=statsProducts(orders),done=orders.filter(o=>o.status==='done').length;
+  const labels={new:'Новый',making:'В работе',ready:'Готов',done:'Выдан'};
+  return `<section class="stats-card stats-day-details" aria-label="Подробности дня">
+    <div class="stats-day-heading"><div class="stats-card-title">${esc(dateLbl(date))}</div><button type="button" data-stats-date="" class="btn-sm">Скрыть</button></div>
+    <div class="stats-day-summary">Заказов: <b>${orders.length}</b> · Столов: <b>${new Set(orders.map(o=>String(o.table))).size}</b><br>Выдано: <b>${done}</b> · В очереди: <b>${orders.length-done}</b></div>
+    <div class="stats-day-subtitle">ПОЗИЦИИ ЗА ДЕНЬ</div>${statsProductRows(products)}
+    ${orders.length?`<div class="stats-day-subtitle">ЗАКАЗЫ</div>${orders.map(o=>`<div class="stats-day-order"><div><b>Стол ${esc(o.table)} · #${esc(o.num??'—')}</b><span>${fmt(o.createdAt)} · ${esc(labels[o.status]||o.status)}</span></div><p>${(o.items||[]).map(it=>`${esc(it.name)} ×${esc(it.qty)}`).join(', ')}</p></div>`).join('')}`:''}
+  </section>`;
+}
 export function renderStats(){
   const el=document.getElementById('statsContent');if(!el)return;
   const today=todayStr();
   const todayOrders=S.orders.filter(o=>o.date===today);
   const todayDone=todayOrders.filter(o=>o.status==='done');
-  const popMap={};
-  S.orders.forEach(o=>(o.items||[]).forEach(it=>{const k=it.name.trim().toLowerCase();if(!popMap[k])popMap[k]={name:it.name,count:0};popMap[k].count+=it.qty;}));
-  const popular=Object.values(popMap).sort((a,b)=>b.count-a.count).slice(0,10);
+  const days=[7,14,30].includes(S.statsDays)?S.statsDays:30;
+  const since=shiftDS(today,1-days);
+  const popular=statsProducts(S.orders.filter(o=>{
+    const date=o.date||new Date(Number(o.createdAt)).toLocaleDateString('en-CA');
+    return date>=since&&date<=today;
+  })).slice(0,10);
   const dayStats={};
   for(let i=6;i>=0;i--){const d=shiftDS(today,-i);dayStats[d]={date:d,orders:0,tables:new Set()};}
   S.orders.forEach(o=>{if(dayStats[o.date]){dayStats[o.date].orders++;dayStats[o.date].tables.add(o.table);}});
@@ -187,11 +216,14 @@ export function renderStats(){
     </div>
     <div class="stats-card">
       <div class="stats-card-title">📅 ЗАКАЗЫ ЗА 7 ДНЕЙ</div>
-      <div class="stats-chart">${Object.values(dayStats).map(d=>{const h=d.orders?Math.max(8,Math.round(d.orders/maxOrders*70)):2;const isToday=d.date===today;const lbl=d.date.slice(8);return`<div class="stats-bar-col${isToday?' today':''}"><div class="stats-bar-count">${d.orders||''}</div><div class="stats-bar-line" style="height:${h}px"></div><div class="stats-bar-label">${lbl}</div></div>`;}).join('')}</div>
+      <div class="stats-chart">${Object.values(dayStats).map(d=>{const h=d.orders?Math.max(8,Math.round(d.orders/maxOrders*70)):2;const isToday=d.date===today;const lbl=d.date.slice(8);return`<button type="button" data-stats-date="${d.date}" aria-label="${escAttr(dateLbl(d.date))}: ${d.orders} ${pl(d.orders,'заказ','заказа','заказов')}" aria-pressed="${S.statsDate===d.date}" class="stats-bar-col${isToday?' today':''}${S.statsDate===d.date?' selected':''}"><span class="stats-bar-count">${d.orders||''}</span><span class="stats-bar-line" style="height:${h}px"></span><span class="stats-bar-label">${lbl}</span></button>`;}).join('')}</div>
+      <p class="stats-chart-hint">Нажмите на день, чтобы увидеть подробности</p>
     </div>
+    ${dayStats[S.statsDate]?statsDayDetails(S.statsDate):''}
     <div class="stats-card">
-      <div class="stats-card-title">🏆 ТОП ПОЗИЦИЙ (30 дней)</div>
-      ${popular.length?popular.map((p,i)=>`<div class="stats-pop-row"><div class="stats-pop-name"><span class="stats-pop-rank">${i+1}</span><span>${esc(p.name)}</span></div><span class="stats-pop-count">${esc(p.count)}</span></div>`).join(''):'<div class="stats-empty">Нет данных</div>'}
+      <div class="stats-card-title">🏆 ТОП ПОЗИЦИЙ (${days} дней)</div>
+      <div class="stats-periods" role="group" aria-label="Период топа позиций">${[7,14,30].map(n=>`<button type="button" data-stats-days="${n}" aria-pressed="${days===n}" class="${days===n?'selected':''}">${n===30?'Месяц':n+' дней'}</button>`).join('')}</div>
+      ${statsProductRows(popular)}
     </div>
   </div>`;
 }

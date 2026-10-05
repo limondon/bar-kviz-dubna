@@ -1,10 +1,11 @@
 const fs=require('node:fs'),path=require('node:path');
 const root=path.resolve(__dirname,'..');
-async function setup(page,{orders={},waiterCalls={},menu2}={}){
+async function setup(page,{orders={},waiterCalls={},menu2,tables}={}){
   const date=new Date().toLocaleDateString('en-CA');
   let data={orders,menu2:[{cat:'Напитки',items:[{name:'Вода',price:100,stock:10}]},{cat:'Чай листовой',items:[{name:'Сенча',price:300,stock:10}]}],tables:{[date+'_1']:{status:'open',date,tNum:'1',token:'test-token',sid:'session',openedAt:Date.now()}},publicCounters:{orderNum:0},config:{},waiterCalls};
   const errors=[],external=[];
   if(menu2!==undefined)data.menu2=menu2;
+  if(tables!==undefined)data.tables=tables;
   page.on('pageerror',error=>errors.push(error.message));
   await page.exposeFunction('__syncDb',next=>{data=next;});
   await page.addInitScript(()=>{
@@ -66,6 +67,7 @@ async function setup(page,{orders={},waiterCalls={},menu2}={}){
         if(r.path.startsWith('tables/')&&window.__failTables){window.__failTables=false;throw new Error('Test table write rejected');}
         if(r.path==='menu2'&&window.__failMenu){window.__failMenu=false;throw new Error('Test menu write rejected');}
         let next=fn(clone(read(r.path)));
+        if(r.path.startsWith('tables/')&&window.__tableRace){const race=window.__tableRace;window.__tableRace=null;write(race.path,race.value);await window.__syncDb(clone(data));emit();next=fn(clone(read(r.path)));}
         if(r.path.startsWith('orders/')&&window.__orderRace){const race=window.__orderRace;window.__orderRace=null;write(race.path,race.value);await window.__syncDb(clone(data));emit();next=fn(clone(read(r.path)));}
         if(r.path==='menu2'&&window.__menuRace){write('menu2',window.__menuRace);window.__menuRace=null;await window.__syncDb(clone(data));emit();next=fn(clone(read(r.path)));}
         if(next===undefined)return {committed:false,snapshot:snap(r.path)};await set(r,next);return {committed:true,snapshot:snap(r.path)};

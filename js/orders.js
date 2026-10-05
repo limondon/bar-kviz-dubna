@@ -58,6 +58,7 @@ export async function addOrder(){
           existingMeta.sessions.push({sid:existingMeta.sid,closedAt:existingMeta.closedAt,openedAt:existingMeta.openedAt});
           existingMeta.sid=newSid;existingMeta.status='open';existingMeta.openedAt=Date.now();
           delete existingMeta.closedAt;
+          delete existingMeta.autoClosed;
         }
         const sid=existingMeta.sid||(existingMeta.sid=Date.now().toString(36));
         const newRef=push(ref(db,'orders'));

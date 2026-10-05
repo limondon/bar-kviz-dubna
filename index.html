@@ -334,10 +334,11 @@
     const hasRole = document.getElementById('hRole')?.textContent?.trim();
     const passwordOpen = !document.getElementById('passwordOverlay')?.classList.contains('hidden');
     const roleOpen = !document.getElementById('roleOverlay')?.classList.contains('hidden');
-    if (hasRole || passwordOpen || roleOpen) return;
+    if (typeof window.sw === 'function' || hasRole || passwordOpen || roleOpen) return;
     const err = document.getElementById('fErr');
     if (!err) return;
-    err.textContent = 'Не удалось загрузить приложение. Проверь интернет и доступ к Firebase/CDN.';
+    err.textContent = 'Не удалось загрузить приложение. Проверьте интернет и повторите открытие страницы.';
+    err.dataset.bootstrapError = 'true';
     err.classList.add('show');
   }, 4500);
 </script>

@@ -3,7 +3,7 @@ import{db,auth,ref,update,set,remove,onValue,runTransaction,onAuthStateChanged,s
 import{todayStr,normalizeOrder,fl,closeConfirmModal,confirmOk,setBadge}from'./utils.js';
 import{registerSW,checkNewOrders,playBeep,notifMuted,swReg,updateNotifBtn}from'./notifications.js';
 import{renderAll,startPoll}from'./render.js';
-import{renderTables,renderClosed}from'./tables.js';
+import{renderTables,renderClosed,autoCloseExpiredTables}from'./tables.js';
 import{renderMenuPage,receiveMenuSnapshot}from'./menu.js';
 import{renderStats}from'./render.js';
 import{renderCalls}from'./calls.js';
@@ -55,6 +55,7 @@ async function loadAll(){
     S.tablesMeta=snap.val()||{};
     if(S.activeTab==='tables')renderTables();
     renderAll();
+    void autoCloseExpiredTables();
   });
 
   onValue(ref(db,'config/orderNumResetAt'),(snap)=>{S.orderNumResetAt=snap.val()||0;_counterConfigLoaded=true;_seedOrderCounter();});
@@ -104,6 +105,10 @@ async function loadAll(){
 
 // ─── CLICK DELEGATION ────────────────────────────────
 document.addEventListener('click',async e=>{
+  const day=e.target.closest('[data-stats-date]');
+  if(day){S.statsDate=day.dataset.statsDate;renderStats();return;}
+  const period=e.target.closest('[data-stats-days]');
+  if(period){const days=Number(period.dataset.statsDays);if([7,14,30].includes(days)){S.statsDays=days;renderStats();}return;}
   const view=e.target.closest('[data-queue-view]');
   if(view){S.queueView=view.dataset.queueView==='items'?'items':'orders';renderAll();return;}
   const btn=e.target.closest('[data-action],[data-st]');if(!btn)return;
@@ -174,6 +179,11 @@ Object.assign(window,{
 });
 
 // ─── BOOT ─────────────────────────────────────────────
+// A slow module download may recover after the standalone HTML warning appeared.
+const bootstrapError=document.getElementById('fErr');
+if(bootstrapError?.dataset.bootstrapError==='true'){
+  bootstrapError.classList.remove('show');delete bootstrapError.dataset.bootstrapError;
+}
 function hideSplash(){const el=document.getElementById('splashScreen');if(!el)return;el.style.transition='opacity .2s';el.style.opacity='0';setTimeout(()=>el?.remove(),220);}
 
 let _appStarted=false;
@@ -182,6 +192,8 @@ async function startApp(){
   _appStarted=true;
   await loadAll();
   startPoll();
+  setInterval(()=>void autoCloseExpiredTables(),60000);
+  document.addEventListener('visibilitychange',()=>{if(!document.hidden)void autoCloseExpiredTables();});
 }
 window.startApp=startApp;
 

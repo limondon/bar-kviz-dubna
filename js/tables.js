@@ -42,6 +42,29 @@ export function getItemPrice(name){
 }
 
 // ─── TABLE ACTIONS ────────────────────────────────────
+const TABLE_OPEN_LIMIT=12*60*60*1000;
+const autoClosing=new Set();
+// Free Spark: staff clients check expiry; the transaction arbitrates concurrent clients.
+export async function autoCloseExpiredTables(now=Date.now()){
+  if(!S.role)return;
+  await Promise.all(Object.entries(S.tablesMeta).map(async([key,meta])=>{
+    const openedAt=Number(meta.openedAt),sid=meta.sid||'default';
+    if(meta.status!=='open'||!Number.isFinite(openedAt)||openedAt<=0||now-openedAt<TABLE_OPEN_LIMIT||autoClosing.has(key))return;
+    autoClosing.add(key);
+    try{
+      const saved=await runTransaction(ref(db,'tables/'+key),current=>{
+        // A reopened/replaced session must never be closed by an older client's check.
+        if(!current||current.status!=='open'||(current.sid||'default')!==sid||Number(current.openedAt)!==openedAt)return;
+        const sessions=(current.closedSessions||[]).filter(s=>s.sid!==sid);
+        sessions.push({sid,openedAt,closedAt:now,autoClosed:true});
+        return{...current,status:'closed',closedAt:now,autoClosed:true,closedSessions:sessions};
+      },{applyLocally:false});
+      if(saved.committed){S.tablesMeta[key]=saved.snapshot.val();window.renderAll?.();}
+    }catch(e){console.error('autoCloseExpiredTables',key,e);}
+    finally{autoClosing.delete(key);}
+  }));
+}
+
 export async function closeTable(date,tNum,sid){
   const ok=await showConfirm(`💳 Закрыть стол ${tNum}?`,'Отметить как оплачен.','ЗАКРЫТЬ / ОПЛАЧЕН');
   if(!ok)return;
@@ -51,7 +74,9 @@ export async function closeTable(date,tNum,sid){
       const m=current||fallback,sessions=[...(m.closedSessions||[])];
       if(m.status==='closed'&&sessions.some(s=>s.sid===sessionId))return m;
       sessions.push({sid:sessionId,closedAt,openedAt:m.openedAt});
-      return{...m,status:'closed',closedAt,closedSessions:sessions};
+      const next={...m,status:'closed',closedAt,closedSessions:sessions};
+      delete next.autoClosed;
+      return next;
     });
     if(!saved.committed)throw new Error('Table close was not committed');
     S.tablesMeta[k]=saved.snapshot.val();
@@ -63,12 +88,19 @@ export async function closeTable(date,tNum,sid){
 }
 
 export async function reopenTable(date,tNum){
-  const m=getTMeta(date,tNum);
-  m.status='open';delete m.closedAt;
-  m.token=genToken();
-  if(m.closedSessions&&m.closedSessions.length)m.closedSessions.pop();
-  await fbUpdate('tables',S.tablesMeta);
-  renderTables();renderClosed();fl('fOk','↩ Стол '+tNum+' переоткрыт — новый QR готов');
+  const key=tKey(date,tNum),token=genToken(),openedAt=Date.now();
+  try{
+    const saved=await runTransaction(ref(db,'tables/'+key),current=>{
+      if(!current)return;
+      const sid=current.sid||'default';
+      const next={...current,status:'open',openedAt,token,closedSessions:(current.closedSessions||[]).filter(s=>s.sid!==sid)};
+      delete next.closedAt;delete next.autoClosed;
+      return next;
+    },{applyLocally:false});
+    if(!saved.committed)throw new Error('Table reopen was not committed');
+    S.tablesMeta[key]=saved.snapshot.val();
+    renderTables();renderClosed();fl('fOk','↩ Стол '+tNum+' переоткрыт — новый QR готов');
+  }catch(e){console.error('reopenTable',e);fl('fErr','❌ Не удалось переоткрыть стол. Проверьте соединение и повторите.');}
 }
 
 let _renameCb=null;
@@ -509,6 +541,7 @@ export function renderClosed(){
     const isCurrent=meta.sid===sid||(!meta.sid&&sid==='default');
     const closedSessionHist=(meta.closedSessions||[]).find(s=>s.sid===sid);
     const closedAt=isCurrent?meta.closedAt:closedSessionHist?.closedAt;
+    const autoClosed=isCurrent?meta.autoClosed:closedSessionHist?.autoClosed;
     const sumMap={},pendingMap={};
     tOrders.forEach(o=>(o.items||[]).forEach(it=>{const k=it.name.trim().toLowerCase();if(it.status==='done'){if(!sumMap[k])sumMap[k]={name:it.name,qty:0,price:it.price??getItemPrice(it.name)};sumMap[k].qty+=it.qty;}else{if(!pendingMap[k])pendingMap[k]={name:it.name,qty:0};pendingMap[k].qty+=it.qty;}}));
     const doneItems=Object.values(sumMap).sort((a,b)=>a.name.localeCompare(b.name));
@@ -518,6 +551,6 @@ export function renderClosed(){
     const totalItems=tOrders.reduce((s,o)=>s+(o.items?o.items.reduce((a,i)=>a+i.qty,0):0),0);
     const safeDate=escAttr(S.closedViewDate),safeT=escAttr(tNum),safeSid=escAttr(sid);
     const cardId='cl-'+String(tNum).replace(/[^\w-]/g,'_')+'_'+String(sid).replace(/[^\w-]/g,'_');
-    return`<div class="table-bill closed" id="${escAttr(cardId)}"><div class="tb-header" onclick="toggleBill('${escAttr(cardId)}')"><div class="tb-left"><div class="tb-num"><small>СТОЛ</small>${esc(tNum)}</div><div class="tb-meta"><b>${tOrders.length} ${pl(tOrders.length,'заказ','заказа','заказов')} · ${totalItems} позиц.</b> с ${fmt(tOrders[0]?.createdAt)}${closedAt?`<span class="tb-paid-time">✅ Закрыт в ${fmt(closedAt)}</span>`:''}</div></div><div class="tb-state-wrap"><span class="tb-st tb-closed">✅ Оплачен</span><span class="tb-chev" id="chev-${escAttr(cardId)}">▼</span></div></div><div class="tb-body" id="body-${escAttr(cardId)}">${ordersHtml}<div class="tb-summary"><h4>📋 ИТОГО</h4>${sumLines||'<div class="tb-summary-empty">Нет позиций</div>'}</div><div class="tb-actions"><button class="btn-reopen" data-action="reopenTable" data-date="${safeDate}" data-tnum="${safeT}">↩ Переоткрыть</button><button class="btn-sm bu" data-action="renameTable" data-date="${safeDate}" data-tnum="${safeT}" data-sid="${safeSid}">✏️ Переименовать</button><button class="btn-sm bx" data-action="deleteTable" data-date="${safeDate}" data-tnum="${safeT}" data-sid="${safeSid}">🗑 Удалить стол</button></div></div></div>`;
+    return`<div class="table-bill closed" id="${escAttr(cardId)}"><div class="tb-header" onclick="toggleBill('${escAttr(cardId)}')"><div class="tb-left"><div class="tb-num"><small>СТОЛ</small>${esc(tNum)}</div><div class="tb-meta"><b>${tOrders.length} ${pl(tOrders.length,'заказ','заказа','заказов')} · ${totalItems} позиц.</b> с ${fmt(tOrders[0]?.createdAt)}${closedAt?`<span class="tb-paid-time">✅ Закрыт в ${fmt(closedAt)}</span>`:''}</div></div><div class="tb-state-wrap"><span class="tb-st tb-closed">${autoClosed?'⏱ Закрыт автоматически':'✅ Оплачен'}</span><span class="tb-chev" id="chev-${escAttr(cardId)}">▼</span></div></div><div class="tb-body" id="body-${escAttr(cardId)}">${ordersHtml}<div class="tb-summary"><h4>📋 ИТОГО</h4>${sumLines||'<div class="tb-summary-empty">Нет позиций</div>'}</div><div class="tb-actions"><button class="btn-reopen" data-action="reopenTable" data-date="${safeDate}" data-tnum="${safeT}">↩ Переоткрыть</button><button class="btn-sm bu" data-action="renameTable" data-date="${safeDate}" data-tnum="${safeT}" data-sid="${safeSid}">✏️ Переименовать</button><button class="btn-sm bx" data-action="deleteTable" data-date="${safeDate}" data-tnum="${safeT}" data-sid="${safeSid}">🗑 Удалить стол</button></div></div></div>`;
   }).join('');
 }
