@@ -1181,6 +1181,10 @@ textarea{resize:vertical;min-height:clamp(70px,18vw,100px);}
 .empty{text-align:center;padding:clamp(36px,10vw,60px) 20px;color:var(--muted);}
 .empty .ei{font-size:clamp(36px,10vw,50px);margin-bottom:var(--sp-sm);}
 .empty p{font-size:var(--fs-sm);}
+.table-history-notice{grid-column:1/-1;padding:14px;border:1px solid var(--border);border-radius:var(--radius);background:var(--card);color:var(--text);}
+.table-history-notice p{margin:0 0 12px;font-size:var(--fs-sm);line-height:1.5;}
+.table-history-link{min-height:var(--touch);padding:10px 14px;border:1px solid var(--accent);border-radius:6px;background:var(--surface);color:var(--accent);font:inherit;font-size:13px;cursor:pointer;white-space:normal;}
+.table-history-link:focus-visible{outline:2px solid var(--accent);outline-offset:3px;}
 
 /* ═══════════════════════════════
    TABLES PAGE

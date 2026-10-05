@@ -118,6 +118,7 @@ document.addEventListener('click',async e=>{
   const action=btn.dataset.action;
   const oid=btn.dataset.oid,iid=btn.dataset.iid;
   const date=btn.dataset.date,tnum=btn.dataset.tnum,sid=btn.dataset.sid;
+  if(action==='showClosedTables'&&date){jumpClosedDate(date);sw('done');return;}
   if(action==='deliver'&&oid&&iid){await waiterDeliverItem(oid,iid);return;}
   if(action==='deliverall'&&oid){await waiterDeliverAll(oid);return;}
   if(action==='reopen'&&oid){await reopenOrder(oid);return;}
