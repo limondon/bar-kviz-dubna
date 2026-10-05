@@ -441,6 +441,11 @@ export function jumpDate(d){S.viewDate=d;renderTables();}
 export function shiftClosedDate(n){S.closedViewDate=shiftDS(S.closedViewDate,n);renderClosed();}
 export function jumpClosedDate(d){S.closedViewDate=d;renderClosed();}
 
+function isClosedSession(sid,meta){
+  const isCurrent=meta.sid===sid||(!meta.sid&&sid==='default');
+  return(isCurrent&&meta.status==='closed')||(meta.closedSessions||[]).some(s=>s.sid===sid);
+}
+
 export function renderTables(){
   document.getElementById('dateLabel').textContent=dateLbl(S.viewDate);
   const allDates=[...new Set(S.orders.map(o=>o.date).filter(Boolean))].sort((a,b)=>b.localeCompare(a));
@@ -472,8 +477,13 @@ export function renderTables(){
     if(a.tNum!==b.tNum){const an=parseInt(a.tNum),bn=parseInt(b.tNum);const aIsNum=!isNaN(an),bIsNum=!isNaN(bn);if(aIsNum&&bIsNum)return an-bn;if(aIsNum)return-1;if(bIsNum)return 1;return String(a.tNum).localeCompare(String(b.tNum));}
     return(a.orders[0]?.createdAt||0)-(b.orders[0]?.createdAt||0);
   });
-  if(!sessions.length){document.getElementById('tablesBillList').innerHTML=`<div class="empty"><div class="ei">🗓️</div><p>Нет заказов за ${dateLbl(S.viewDate)}</p></div>`;return;}
-  document.getElementById('tablesBillList').innerHTML=sessions.map(({tNum,sid,orders:tOrdersRaw,meta})=>{
+  const closedOrderCount=Object.values(sessionMap).filter(({sid,meta})=>isClosedSession(sid,meta)).reduce((total,s)=>total+s.orders.length,0);
+  const historyNotice=closedOrderCount?`<div class="table-history-notice"><p>${closedOrderCount} ${pl(closedOrderCount,'заказ','заказа','заказов')} ${pl(closedOrderCount,'сохранён','сохранены','сохранены')} в разделе «Закрытые».</p><button type="button" class="table-history-link" data-action="showClosedTables" data-date="${escAttr(S.viewDate)}">Посмотреть закрытые заказы</button></div>`:'';
+  if(!sessions.length){
+    const message=dayOrders.length?(closedOrderCount===dayOrders.length?'Все столы за этот день закрыты.':`Нет открытых столов за ${dateLbl(S.viewDate)}`):`Нет заказов за ${dateLbl(S.viewDate)}`;
+    document.getElementById('tablesBillList').innerHTML=`<div class="empty"><div class="ei">🗓️</div><p>${message}</p>${historyNotice}</div>`;return;
+  }
+  document.getElementById('tablesBillList').innerHTML=historyNotice+sessions.map(({tNum,sid,orders:tOrdersRaw,meta})=>{
     const tOrders=tOrdersRaw.sort((a,b)=>a.createdAt-b.createdAt);
     const isCurrentSession=meta.sid===sid||(!meta.sid&&sid==='default');
     const isOpen=isCurrentSession&&meta.status!=='closed';
@@ -527,11 +537,7 @@ export function renderClosed(){
     const meta=getTMeta(S.closedViewDate,o.table);const sid=o.sid||'default';const k=o.table+'_'+sid;
     if(!sessionMap[k])sessionMap[k]={tNum:o.table,sid,orders:[],meta};sessionMap[k].orders.push(o);
   });
-  const closedSessions=Object.values(sessionMap).filter(({tNum,sid,meta})=>{
-    const isCurrent=meta.sid===sid||(!meta.sid&&sid==='default');
-    const wasClosedInHistory=(meta.closedSessions||[]).some(s=>s.sid===sid);
-    return(isCurrent&&meta.status==='closed')||wasClosedInHistory;
-  }).sort((a,b)=>{
+  const closedSessions=Object.values(sessionMap).filter(({sid,meta})=>isClosedSession(sid,meta)).sort((a,b)=>{
     const getCA=(s)=>{if(s.meta.sid===s.sid&&s.meta.closedAt)return s.meta.closedAt;const h=(s.meta.closedSessions||[]).find(x=>x.sid===s.sid);return h?.closedAt||0;};
     return getCA(b)-getCA(a);
   });
