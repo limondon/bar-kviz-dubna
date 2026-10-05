@@ -478,7 +478,7 @@ export function renderTables(){
     return(a.orders[0]?.createdAt||0)-(b.orders[0]?.createdAt||0);
   });
   const closedOrderCount=Object.values(sessionMap).filter(({sid,meta})=>isClosedSession(sid,meta)).reduce((total,s)=>total+s.orders.length,0);
-  const historyNotice=closedOrderCount?`<div class="table-history-notice"><p>${closedOrderCount} ${pl(closedOrderCount,'заказ','заказа','заказов')} сохранены в разделе «Закрытые».</p><button type="button" class="table-history-link" data-action="showClosedTables" data-date="${escAttr(S.viewDate)}">Посмотреть закрытые заказы</button></div>`:'';
+  const historyNotice=closedOrderCount?`<div class="table-history-notice"><p>${closedOrderCount} ${pl(closedOrderCount,'заказ','заказа','заказов')} ${pl(closedOrderCount,'сохранён','сохранены','сохранены')} в разделе «Закрытые».</p><button type="button" class="table-history-link" data-action="showClosedTables" data-date="${escAttr(S.viewDate)}">Посмотреть закрытые заказы</button></div>`:'';
   if(!sessions.length){
     const message=dayOrders.length?(closedOrderCount===dayOrders.length?'Все столы за этот день закрыты.':`Нет открытых столов за ${dateLbl(S.viewDate)}`):`Нет заказов за ${dateLbl(S.viewDate)}`;
     document.getElementById('tablesBillList').innerHTML=`<div class="empty"><div class="ei">🗓️</div><p>${message}</p>${historyNotice}</div>`;return;
