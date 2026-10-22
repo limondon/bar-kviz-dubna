@@ -202,6 +202,132 @@ test('two different lines of one order can be actioned while the first write is 
  expect(env.errors).toEqual([]);
 });
 
+test('delayed status writes show pending feedback in both views and keep other lines usable',async({page},testInfo)=>{
+ const env=await queue(page,{a:order(1,5,[line('Сенча'),line('Сенча + лимон')])},'admin');
+ await page.clock.install();
+ await page.evaluate(()=>{window.__delayStatus=10000;});
+ await page.locator('#qList [data-oid=a][data-iid=row0][data-st=ready]').click();
+ await expect(page.locator('#qList .item-row').first().getByRole('button',{name:'Сохраняю…'})).toBeDisabled();
+ expect(env.data().orders.a.items.row0.status).toBe('new');
+ await expect(page.locator('#qList [data-oid=a][data-iid=row1][data-st=ready]')).toBeEnabled();
+ await itemsView(page);
+ await expect(row(page,'a').getByRole('button',{name:'Сохраняю…'})).toBeDisabled();
+ await page.clock.fastForward(5100);
+ await expect(row(page,'a')).toContainText('Нет подтверждения');
+ expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+ await page.screenshot({path:testInfo.outputPath('pending-status.png'),fullPage:true});
+ expect(env.data().orders.a.items.row0.status).toBe('new');
+ await page.clock.fastForward(5000);
+ await expect(row(page,'a')).toContainText('Готов');
+ expect(env.data().orders.a.items.row0.status).toBe('ready');
+ await page.clock.fastForward(1000);
+ await expect(row(page,'a').locator('[data-action=deliver]')).toBeEnabled();
+ expect(env.errors).toEqual([]);expect(env.external).toEqual([]);
+});
+
+test('mobile navigation stays at the viewport bottom while the order queue scrolls and updates',async({page,isMobile},testInfo)=>{
+ test.skip(!isMobile,'Mobile bottom navigation only');
+ const env=await queue(page,{a:order(1,5,Array.from({length:8},(_,i)=>line('Напиток '+i)))},'admin');
+ const checkNav=async()=>{
+  const nav=await page.locator('#bottomNav').boundingBox();
+  const viewport=page.viewportSize();
+  expect(nav).not.toBeNull();
+  expect(Math.abs(nav.y+nav.height-viewport.height)).toBeLessThanOrEqual(1);
+  expect(nav.x).toBe(0);expect(nav.width).toBe(viewport.width);
+ };
+ await checkNav();
+ await page.screenshot({path:testInfo.outputPath('orders-viewport-top.png'),fullPage:false});
+ await page.evaluate(()=>window.scrollTo(0,document.documentElement.scrollHeight));
+ await page.waitForFunction(()=>scrollY>0);
+ await checkNav();
+ const last=await page.locator('#qList .item-row').last().boundingBox();
+ const nav=await page.locator('#bottomNav').boundingBox();
+ expect(last.y+last.height).toBeLessThanOrEqual(nav.y);
+ await page.screenshot({path:testInfo.outputPath('orders-viewport-bottom.png'),fullPage:false});
+ await page.evaluate(o=>window.__remoteSet('orders/b',o),order(2,1,[line('Новый напиток')]));
+ await expect(page.locator('#qList .order-card')).toHaveCount(2);
+ await checkNav();
+ await itemsView(page);await checkNav();
+ await ordersView(page);await checkNav();
+ expect(env.errors).toEqual([]);expect(env.external).toEqual([]);
+});
+
+test('pending controls keep the tapped row height and real touch repeats do not action a neighbour',async({page,isMobile})=>{
+ test.skip(!isMobile,'Touch scenario runs on Android and iPhone');
+ const env=await queue(page,{a:order(1,5,[line('Сенча'),line('Вода',1,'ready')])},'admin');
+ await page.evaluate(()=>{window.__delayStatus=2000;});
+ const first=page.locator('#qList .item-row').first(),height=(await first.boundingBox()).height;
+ const button=first.locator('[data-st=ready]');
+ await button.evaluate(el=>el.addEventListener('pointerdown',event=>{window.__lastTap={x:event.clientX,y:event.clientY};},{once:true}));
+ await button.tap();
+ const point=await page.evaluate(()=>window.__lastTap);
+ await expect(first.getByRole('button',{name:'Сохраняю…'})).toBeDisabled();
+ expect((await first.boundingBox()).height).toBeGreaterThanOrEqual(height);
+ await page.touchscreen.tap(point.x,point.y);
+ expect(env.data().orders.a.items.row1.status).toBe('ready');
+ await expect(first.getByRole('button',{name:'✓ Готово'})).toBeDisabled();
+ await page.touchscreen.tap(point.x,point.y);
+ expect(env.data().orders.a.items.row0.status).toBe('ready');
+ expect(env.data().orders.a.items.row1.status).toBe('ready');
+ expect(env.data().config.deliveryLog).toBeUndefined();
+ expect(env.errors).toEqual([]);expect(env.external).toEqual([]);
+});
+
+test('an old confirmation timer cannot release a newer pending write after a rejected action',async({page})=>{
+ const env=await queue(page,{a:order(1,5,[line('Сенча')])},'admin');
+ await page.clock.install();
+ await page.evaluate(()=>barItemAction('a','row0','ready'));
+ await page.evaluate(async()=>{window.__failStatus=true;await waiterDeliverItem('a','row0');});
+ await page.evaluate(()=>{window.__delayStatus=10000;void waiterDeliverItem('a','row0');});
+ await page.clock.fastForward(1000);
+ await expect(page.locator('#qList').getByRole('button',{name:'Сохраняю…'})).toBeDisabled();
+ await page.evaluate(()=>waiterDeliverItem('a','row0'));
+ await expect(page.locator('#fInfo')).toContainText('предыдущее действие');
+ expect(env.data().orders.a.items.row0.status).toBe('ready');
+ expect(env.data().config.deliveryLog).toBeUndefined();
+ await page.clock.fastForward(9100);
+ expect(env.data().orders.a.items.row0.status).toBe('done');
+ await expect.poll(()=>Object.keys(env.data().config.deliveryLog||{}).length).toBe(1);
+ expect(env.errors).toEqual([]);expect(env.external).toEqual([]);
+});
+
+test('delivery confirmation holds the row so repeated taps cannot hit the next table',async({page})=>{
+ const env=await queue(page,{a:order(1,5,[line('Сенча',1,'ready')]),b:order(2,4,[line('Сенча',1,'ready')])},'waiter');
+ await itemsView(page);await page.clock.install();
+ await page.evaluate(()=>{window.__delayStatus=2000;});
+ const button=row(page,'a').locator('[data-action=deliver]');
+ const box=await button.boundingBox(),point={x:box.x+box.width/2,y:box.y+box.height/2};
+ await page.mouse.click(point.x,point.y);
+ await expect(row(page,'a').getByRole('button',{name:'Сохраняю…'})).toBeDisabled();
+ await page.mouse.click(point.x,point.y);
+ await expect(page.locator('#fInfo')).not.toContainText('предыдущее действие');
+ await page.clock.fastForward(2100);
+ await expect(row(page,'a').getByRole('button',{name:'✓ Отнесено'})).toBeDisabled();
+ expect(env.data().orders.a.items.row0.status).toBe('done');
+ // The second table must not move into the button that was just tapped.
+ await page.mouse.click(point.x,point.y);
+ expect(env.data().orders.b.items.row0.status).toBe('ready');
+ await page.clock.fastForward(1000);await expect(row(page,'a')).toHaveCount(0);
+ await expect(row(page,'b').locator('[data-action=deliver]')).toBeEnabled();
+ await expect.poll(()=>Object.keys(env.data().config.deliveryLog||{}).length).toBe(1);
+ expect(env.errors).toEqual([]);expect(env.external).toEqual([]);
+});
+
+for(const view of ['orders','items'])test(`live updates preserve a pressed button in the ${view} view`,async({page})=>{
+ const env=await queue(page,{a:order(1,5,[line('Сенча')]),b:order(2,4,[line('Сенча')])});
+ if(view==='items')await itemsView(page);
+ const selector='#qList [data-oid=a][data-iid=row0][data-st=ready]';
+ await page.locator(selector).evaluate(el=>{window.__pressedButton=el;});
+ const box=await page.locator(selector).boundingBox();
+ await page.mouse.move(box.x+box.width/2,box.y+box.height/2);await page.mouse.down();
+ await page.evaluate(async()=>{await window.__remoteSet('orders/b/items/row0/status','making');});
+ expect(await page.locator(selector).evaluate(el=>el===window.__pressedButton)).toBe(true);
+ await page.mouse.up();
+ await expect.poll(()=>env.data().orders.a.items.row0.status).toBe('ready');
+ expect(env.data().orders.b.items.row0.status).toBe('making');
+ expect(env.errors).toEqual([]);expect(env.external).toEqual([]);
+});
+
 test('guest addon order and newly created staff plain tea meet in the same queue group',async({page})=>{
  const env=await setup(page);await guest(page);
  await page.locator('[data-action=setCat][data-index="1"]').click();await page.locator('[data-action=addItem]').click();

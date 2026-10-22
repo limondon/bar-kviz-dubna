@@ -18,4 +18,6 @@ export const S = {
   appPassword: null,
   orderNumResetAt: 0,
   deliveryLog: {},
+  // UI feedback only; item statuses remain authoritative in orders.
+  pendingItemActions: new Map(),
 };

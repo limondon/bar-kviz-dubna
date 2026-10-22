@@ -9,7 +9,7 @@ function logDelivery(o,it){
 import{parseItems,normalizeOrder,aggStatus,esc,escAttr,fl,safeDb,showConfirm,todayStr,lockScroll,unlockScroll,itemKey}from'./utils.js';
 import{applyStockDeltas,deductMenuStock}from'./stock.js';
 import{getTMeta}from'./tables.js';
-import{buildQuickTableBtns,isInstantItem}from'./render.js';
+import{buildQuickTableBtns,isInstantItem,renderAll}from'./render.js';
 import{nextOrderNum}from'./counters.js';
 
 // ─── ADD ORDER ────────────────────────────────────────
@@ -84,7 +84,7 @@ export async function addOrder(){
 
 // ─── ITEM ACTIONS ─────────────────────────────────────
 const pendingOrders=new Set();
-const pendingLines=new Map();
+const pendingLines=S.pendingItemActions;
 const lineKey=it=>it._fbKey||it.id;
 const sameLine=(a,b)=>a&&b&&a.name===b.name&&Number(a.qty)===Number(b.qty)&&a.status===b.status;
 // Re-read the order inside Firebase's transaction. An old click cannot recreate
@@ -92,9 +92,35 @@ const sameLine=(a,b)=>a&&b&&a.name===b.name&&Number(a.qty)===Number(b.qty)&&a.st
 async function saveLineStatuses(o,changes){
   if(!changes.length)return false;
   const keys=changes.map(({item})=>lineKey(item));
-  const busy=pendingLines.get(o.id)||new Set();
-  if(pendingOrders.has(o.id)||keys.some(key=>busy.has(key))){fl('fInfo','Сохраняется предыдущее действие. Дождись подтверждения.');return false;}
-  keys.forEach(key=>busy.add(key));pendingLines.set(o.id,busy);
+  const busy=pendingLines.get(o.id)||new Map();
+  if(pendingOrders.has(o.id)||keys.some(key=>busy.has(key)&&busy.get(key).phase!=='confirmed')){fl('fInfo','Сохраняется предыдущее действие. Дождись подтверждения.');return false;}
+  const actions=new Map(changes.map(({item,status})=>[lineKey(item),{phase:'saving',fromStatus:item.status,orderStatus:o.status,targetStatus:status}]));
+  // Keep the tapped row/card's space while its controls change to feedback.
+  // Otherwise a two-button row can collapse and pull the next button upward.
+  for(const row of document.querySelectorAll('.item-row[data-render-key]')){
+    const key=changes.find(({item})=>row.dataset.renderKey===JSON.stringify(['line',o.id,lineKey(item)]));
+    if(!key)continue;
+    const action=actions.get(lineKey(key.item)),height=row.getBoundingClientRect().height;
+    if(!height)continue;
+    action.rowHeight=Math.max(action.rowHeight||0,height);
+    const card=row.closest('.order-card');
+    if(card){action.cardHeights??=new Map();action.cardHeights.set(card.dataset.renderKey,card.getBoundingClientRect().height);}
+  }
+  actions.forEach((action,key)=>busy.set(key,action));
+  pendingLines.set(o.id,busy);
+  renderAll();
+  const release=()=>{
+    actions.forEach((action,key)=>{if(busy.get(key)===action)busy.delete(key);});
+    if(!busy.size&&pendingLines.get(o.id)===busy)pendingLines.delete(o.id);
+    renderAll();
+  };
+  // A slow acknowledgement is not a failed write: keep the lock until the
+  // transaction really settles, otherwise a retry can race its late result.
+  const slowTimer=setTimeout(()=>{
+    keys.forEach(key=>{const action=busy.get(key);if(action)action.phase='slow';});
+    renderAll();
+  },5000);
+  let confirmed=false;
   try{
     const now=Date.now();
     const result=await runTransaction(ref(db,'orders/'+o.id),raw=>{
@@ -115,9 +141,17 @@ async function saveLineStatuses(o,changes){
       return next;
     },{applyLocally:false});
     if(!result.committed){fl('fInfo','Заказ уже изменился. Проверь актуальные позиции и повтори действие.');return false;}
+    confirmed=true;
+    keys.forEach(key=>busy.get(key).phase='confirmed');
+    renderAll();
     return result.snapshot.val();
   }catch(e){console.error('saveLineStatuses',e);fl('fErr','❌ Не удалось обновить статус — проверь интернет');return false;}
-  finally{keys.forEach(key=>busy.delete(key));if(!busy.size)pendingLines.delete(o.id);}
+  finally{
+    clearTimeout(slowTimer);
+    // Keep an acknowledged row briefly in place: a repeated tap must not
+    // become a delivery of the next row when this one disappears.
+    if(confirmed)setTimeout(release,800);else release();
+  }
 }
 
 export async function barItemAction(orderId,itemFbKey,newStatus){
