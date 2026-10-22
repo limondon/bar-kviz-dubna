@@ -18,6 +18,28 @@ export function isInstantItem(name){
 }
 
 // ─── ITEM ROWS ────────────────────────────────────────
+function itemActionFeedback(orderId,item){
+  const action=S.pendingItemActions.get(orderId)?.get(item._fbKey||item.id);
+  if(!action)return '';
+  const confirmed=action.phase==='confirmed';
+  const label=confirmed?({making:'✓ В работе',ready:'✓ Готово',done:'✓ Отнесено',new:'✓ Возвращено'}[action.targetStatus]):action.phase==='slow'?'Ожидаю…':'Сохраняю…';
+  return `<button class="ib ib-undo" disabled aria-busy="${!confirmed}">${label}</button>`;
+}
+
+const lineRenderKey=(orderId,item)=>escAttr(JSON.stringify(['line',orderId,item._fbKey||item.id]));
+function feedbackRowStyle(orderId,item){
+  const height=S.pendingItemActions.get(orderId)?.get(item._fbKey||item.id)?.rowHeight;
+  return height?` style="min-height:${height}px;transition:none"`:'';
+}
+function feedbackNotice(orderId,item){
+  return S.pendingItemActions.get(orderId)?.get(item._fbKey||item.id)?.phase==='slow'?'<span class="queue-row-note" role="status" style="flex-basis:100%">Нет подтверждения от сервера. Повторять нажатие не нужно.</span>':'';
+}
+function feedbackCardStyle(key,orderIds){
+  let height=0;
+  for(const id of orderIds)for(const action of S.pendingItemActions.get(id)?.values()||[])height=Math.max(height,action.cardHeights?.get(key)||0);
+  return height?` style="min-height:${height}px"`:'';
+}
+
 export function barmanItemRow(orderId,it,displayName=it.name){
   const cls={new:'',making:'is-making',ready:'is-ready',done:'is-done'}[it.status]||'';
   const ico={new:'⬜',making:'🍹',ready:'🟢',done:'✅'}[it.status]||'⬜';
@@ -26,7 +48,8 @@ export function barmanItemRow(orderId,it,displayName=it.name){
   if(it.status==='new'){btns=`<button class="ib ib-start" data-oid="${oid}" data-iid="${iid}" data-st="making">🍹 Начал</button><button class="ib ib-barready" data-oid="${oid}" data-iid="${iid}" data-st="ready">🟢 Готово</button>`;}
   else if(it.status==='making'){btns=`<button class="ib ib-barready" data-oid="${oid}" data-iid="${iid}" data-st="ready">🟢 Готово</button><button class="ib ib-undo" data-oid="${oid}" data-iid="${iid}" data-st="new">↩</button>`;}
   else if(it.status==='ready'){btns=`<span class="item-status-chip isc-ready">✓ ждёт офиц.</span><button class="ib ib-undo" data-oid="${oid}" data-iid="${iid}" data-st="making">↩</button>`;}
-  return`<div class="item-row ${cls}"><span class="item-ico">${ico}</span><span class="item-qty">${esc(it.qty)}</span><span class="item-name">${esc(displayName)}</span><div class="item-btns">${btns}</div></div>`;
+  btns=itemActionFeedback(orderId,it)||btns;
+  return`<div class="item-row ${cls}" data-render-key="${lineRenderKey(orderId,it)}"${feedbackRowStyle(orderId,it)}><span class="item-ico">${ico}</span><span class="item-qty">${esc(it.qty)}</span><span class="item-name">${esc(displayName)}</span><div class="item-btns">${btns}</div>${feedbackNotice(orderId,it)}</div>`;
 }
 
 export function waiterItemRow(orderId,it,displayName=it.name){
@@ -39,7 +62,8 @@ export function waiterItemRow(orderId,it,displayName=it.name){
   if(it.status==='ready'){btns=`<button class="ib ib-deliver" data-oid="${oid}" data-iid="${iid}" data-action="deliver">✅ Отнёс</button>`;}
   else if(it.status==='making'){btns=instant?`<button class="ib ib-deliver" data-oid="${oid}" data-iid="${iid}" data-action="deliver">✅ Отнёс</button>`:`<span class="item-status-chip isc-making">🍹 готовится</span>`;}
   else if(it.status==='new'){btns=instant?`<button class="ib ib-deliver" data-oid="${oid}" data-iid="${iid}" data-action="deliver">✅ Отнёс</button>`:`<span class="item-status-chip isc-waiting">ожидает</span>`;}
-  return`<div class="item-row ${cls}"><span class="item-ico">${ico}</span><span class="item-qty">${esc(it.qty)}</span><span class="item-name">${esc(displayName)}</span><div class="item-btns">${btns}</div></div>`;
+  btns=itemActionFeedback(orderId,it)||btns;
+  return`<div class="item-row ${cls}" data-render-key="${lineRenderKey(orderId,it)}"${feedbackRowStyle(orderId,it)}><span class="item-ico">${ico}</span><span class="item-qty">${esc(it.qty)}</span><span class="item-name">${esc(displayName)}</span><div class="item-btns">${btns}</div>${feedbackNotice(orderId,it)}</div>`;
 }
 
 export function adminItemRow(orderId,it,displayName=it.name){
@@ -52,7 +76,8 @@ export function adminItemRow(orderId,it,displayName=it.name){
   if(it.status==='new'){btns=instant?`<button class="ib ib-deliver" data-oid="${oid}" data-iid="${iid}" data-action="deliver">✅ Отнёс</button>`:`<button class="ib ib-start" data-oid="${oid}" data-iid="${iid}" data-st="making">🍹 Начал</button><button class="ib ib-barready" data-oid="${oid}" data-iid="${iid}" data-st="ready">🟢 Готово</button>`;}
   else if(it.status==='making'){btns=instant?`<button class="ib ib-deliver" data-oid="${oid}" data-iid="${iid}" data-action="deliver">✅ Отнёс</button><button class="ib ib-undo" data-oid="${oid}" data-iid="${iid}" data-st="new">↩</button>`:`<button class="ib ib-barready" data-oid="${oid}" data-iid="${iid}" data-st="ready">🟢 Готово</button><button class="ib ib-undo" data-oid="${oid}" data-iid="${iid}" data-st="new">↩</button>`;}
   else if(it.status==='ready'){btns=`<button class="ib ib-deliver" data-oid="${oid}" data-iid="${iid}" data-action="deliver">✅ Отнёс</button><button class="ib ib-undo" data-oid="${oid}" data-iid="${iid}" data-st="making">↩</button>`;}
-  return`<div class="item-row ${cls}"><span class="item-ico">${ico}</span><span class="item-qty">${esc(it.qty)}</span><span class="item-name">${esc(displayName)}</span><div class="item-btns">${btns}</div></div>`;
+  btns=itemActionFeedback(orderId,it)||btns;
+  return`<div class="item-row ${cls}" data-render-key="${lineRenderKey(orderId,it)}"${feedbackRowStyle(orderId,it)}><span class="item-ico">${ico}</span><span class="item-qty">${esc(it.qty)}</span><span class="item-name">${esc(displayName)}</span><div class="item-btns">${btns}</div>${feedbackNotice(orderId,it)}</div>`;
 }
 
 // ─── ORDER CARD ───────────────────────────────────────
@@ -85,24 +110,24 @@ export function orderCard(o,isDone){
   }
   const waitMins=isDone?0:Math.floor((Date.now()-o.createdAt)/60000);
   const waitLbl=!isDone&&o.createdAt?`<span data-created="${escAttr(o.createdAt)}" class="wait-chip${waitMins>=15?' urgent':''}">${waitMins>0?`⏱ ${waitMins} мин${waitMins>=15?' !':''}`:'⏱ &lt;1 мин'}</span>`:'';
-  return`<div class="order-card ${borderCls}"><div class="cnum">#${esc(o.num)}</div><div class="card-header"><div class="tnum-big"><small>СТОЛ</small>${esc(o.table)}</div><div class="tags">${pTag}${stTag}</div></div>${banner}<div class="order-time">принят в ${fmt(o.createdAt)}${waitLbl}</div>${note}${prog}${itemsHtml}${acts?`<div class="order-actions">${acts}</div>`:''}</div>`;
+  return`<div class="order-card ${borderCls}" data-render-key="${escAttr('order:'+o.id)}"${feedbackCardStyle('order:'+o.id,[o.id])}><div class="cnum">#${esc(o.num)}</div><div class="card-header"><div class="tnum-big"><small>СТОЛ</small>${esc(o.table)}</div><div class="tags">${pTag}${stTag}</div></div>${banner}<div class="order-time">принят в ${fmt(o.createdAt)}${waitLbl}</div>${note}${prog}${itemsHtml}${acts?`<div class="order-actions">${acts}</div>`:''}</div>`;
 }
 
 function queueItemCard(group){
   const rowRenderer=S.role==='barman'?barmanItemRow:S.role==='waiter'?waiterItemRow:adminItemRow;
-  const statusLabels={new:'● Новый',making:'◐ В работе',ready:'✓ Готов'};
-  const summary=[group.counts.making?`${group.counts.making} в работе`:'',group.counts.new?`${group.counts.new} ${pl(group.counts.new,'новый','новых','новых')}`:'',group.counts.ready?`${group.counts.ready} готово`:''].filter(Boolean).join(' • ');
+  const statusLabels={new:'● Новый',making:'◐ В работе',ready:'✓ Готов',done:'✓ Выдан'};
+  const summary=[group.counts.making?`${group.counts.making} в работе`:'',group.counts.new?`${group.counts.new} ${pl(group.counts.new,'новый','новых','новых')}`:'',group.counts.ready?`${group.counts.ready} готово`:'',group.counts.done?`${group.counts.done} выдано`:''].filter(Boolean).join(' • ');
   const rows=group.rows.map(({order,item})=>{
     const mins=Math.max(0,Math.floor((Date.now()-order.createdAt)/60000));
     const wait=order.createdAt?`<span class="wait-chip${mins>=15?' urgent':''}" data-created="${escAttr(order.createdAt)}">${mins?`⏱ ${mins} мин`:'⏱ &lt;1 мин'}</span>`:'';
     const note=order.note?`<div class="queue-row-note">💬 ${esc(order.note)}</div>`:'';
-    return `<div class="queue-position queue-position-${escAttr(item.status)}" data-order-id="${escAttr(order.id)}" data-item-id="${escAttr(item._fbKey||item.id)}">
+    return `<div class="queue-position queue-position-${escAttr(item.status)}" data-render-key="${lineRenderKey(order.id,item)}" data-order-id="${escAttr(order.id)}" data-item-id="${escAttr(item._fbKey||item.id)}">
       <div class="queue-row-meta"><span class="queue-row-status">${statusLabels[item.status]}</span><span>Заказ #${esc(order.num)}${wait}</span>${order.priority==='urgent'?'<span class="tag t-urgent">Срочно</span>':''}</div>
       ${rowRenderer(order.id,item,'Стол '+order.table)}${item.name!==group.name?`<div class="queue-row-note queue-row-variant">${esc(item.name)}</div>`:''}${note}</div>`;
   }).join('');
-  return `<section class="order-card queue-item-card" aria-label="${escAttr(group.name)}">
-    <div class="queue-group-header"><h3>${esc(group.name)}</h3><strong class="queue-group-total">${group.total} шт.</strong></div>
-    <p class="queue-group-remaining">${group.remaining?`Приготовить: ${group.remaining}`:'Всё готово — ждёт выдачи'}</p>
+  return `<section class="order-card queue-item-card" data-render-key="${escAttr('group:'+group.key)}"${feedbackCardStyle('group:'+group.key,new Set(group.rows.map(({order})=>order.id)))} aria-label="${escAttr(group.name)}">
+    <div class="queue-group-header"><h3>${esc(group.name)}</h3><strong class="queue-group-total">${group.total?group.total+' шт.':'Выдано'}</strong></div>
+    <p class="queue-group-remaining">${group.remaining?`Приготовить: ${group.remaining}`:group.total?'Всё готово — ждёт выдачи':'Выдача подтверждена'}</p>
     <p class="queue-group-summary">${group.counts.new&&group.counts.making?'<span class="queue-new-alert">Есть новые</span> ':''}${summary}</p>
     <div class="queue-group-rows">${rows}</div></section>`;
 }
@@ -120,11 +145,42 @@ export function buildQuickTableBtns(){
 
 function mkFb(val,label){return`<button class="fb${S.qf===val?' active':''}" onclick="setQF('${escAttr(val)}',this)">${esc(label)}</button>`;}
 
+// Update queue nodes in place. Replacing innerHTML on every live snapshot
+// removes a button between pointer-down and click, losing the user's tap.
+function nodeKey(node){
+  if(node.nodeType!==1)return '#'+node.nodeType;
+  return node.getAttribute('data-render-key')||node.id||[node.tagName,node.classList[0]||'',node.getAttribute('data-st')||node.getAttribute('data-action')||''].join(':');
+}
+function patchQueueNodes(parent,next){
+  const available=new Map(),oldNodes=[...parent.childNodes],used=new Set();
+  for(const node of oldNodes){const key=nodeKey(node);if(!available.has(key))available.set(key,[]);available.get(key).push(node);}
+  let cursor=parent.firstChild;
+  for(const fresh of [...next.childNodes]){
+    const node=available.get(nodeKey(fresh))?.shift()||fresh.cloneNode(true);
+    used.add(node);
+    if(node.nodeType===1){
+      if(node.outerHTML!==fresh.outerHTML){
+        for(const attr of [...node.attributes])if(!fresh.hasAttribute(attr.name))node.removeAttribute(attr.name);
+        for(const attr of [...fresh.attributes])if(node.getAttribute(attr.name)!==attr.value)node.setAttribute(attr.name,attr.value);
+        patchQueueNodes(node,fresh);
+      }
+    }else if(node.nodeValue!==fresh.nodeValue)node.nodeValue=fresh.nodeValue;
+    if(node!==cursor)parent.insertBefore(node,cursor);
+    cursor=node.nextSibling;
+  }
+  for(const node of oldNodes)if(!used.has(node))node.remove();
+}
+function renderQueuePanel(element,html){
+  const template=document.createElement('template');template.innerHTML=html;
+  patchQueueNodes(element,template.content);
+}
+
 // ─── RENDER ALL ───────────────────────────────────────
 export function renderAll(){
   if(!S.role)return;
   S.orders.forEach(o=>{if(Array.isArray(o.items))o.status=aggStatus(o.items);});
   const active=S.orders.filter(o=>o.status!=='done');
+  const hasFeedback=o=>S.pendingItemActions.has(o.id);
   // The established order view keeps its original counters and filters.
   // The item view counts only orders that its derived groups can display.
   const visibleActive=S.queueView==='items'?active.filter(o=>isQueueOrderActive(o,S.tablesMeta)):active;
@@ -156,11 +212,16 @@ export function renderAll(){
   document.getElementById('queueItemsHint')?.classList.toggle('hidden',S.queueView!=='items');
   if(ql)ql.classList.toggle('queue-items-view',S.queueView==='items');
   if(ql&&S.queueView==='items'){
-    const groups=groupQueueItems(S.orders,S.tablesMeta,S.BUILTIN_MENU_LIVE.length?S.BUILTIN_MENU_LIVE:BUILTIN_MENU,S.qf);
-    ql.innerHTML=groups.length?groups.map(queueItemCard).join(''):empty('📭','Нет позиций в очереди');
-  }else if(ql){let list=active;if(S.qf==='new')list=active.filter(o=>o.status==='new');if(S.qf==='making')list=active.filter(o=>o.status==='making');if(S.qf==='ready')list=active.filter(o=>o.status==='ready');if(S.qf.startsWith('t')){const t=S.qf.slice(1);list=active.filter(o=>String(o.table)===t);}ql.innerHTML=list.length?list.map(o=>orderCard(o,false)).join(''):empty('📭','Нет заказов в очереди');}
+    const groups=groupQueueItems(S.orders,S.tablesMeta,S.BUILTIN_MENU_LIVE.length?S.BUILTIN_MENU_LIVE:BUILTIN_MENU,S.qf,S.pendingItemActions);
+    renderQueuePanel(ql,groups.length?groups.map(queueItemCard).join(''):empty('📭','Нет позиций в очереди'));
+  }else if(ql){
+    let list=S.orders.filter(o=>o.status!=='done'||hasFeedback(o)).sort((a,b)=>{if(a.priority==='urgent'&&b.priority!=='urgent')return -1;if(b.priority==='urgent'&&a.priority!=='urgent')return 1;return a.createdAt-b.createdAt;});
+    if(['new','making','ready'].includes(S.qf))list=list.filter(o=>o.status===S.qf||[...(S.pendingItemActions.get(o.id)?.values()||[])].some(action=>action.orderStatus===S.qf));
+    if(S.qf.startsWith('t'))list=list.filter(o=>String(o.table)===S.qf.slice(1));
+    renderQueuePanel(ql,list.length?list.map(o=>orderCard(o,false)).join(''):empty('📭','Нет заказов в очереди'));
+  }
   const rl=document.getElementById('rList');
-  if(rl){const rs=hasReady.slice().sort((a,b)=>a.createdAt-b.createdAt);rl.innerHTML=rs.length?rs.map(o=>orderCard(o,false)).join(''):empty('⏳','Нет готовых позиций');}
+  if(rl){const rs=S.orders.filter(o=>hasReady.includes(o)||[...(S.pendingItemActions.get(o.id)?.values()||[])].some(action=>action.fromStatus==='ready')).sort((a,b)=>a.createdAt-b.createdAt);renderQueuePanel(rl,rs.length?rs.map(o=>orderCard(o,false)).join(''):empty('⏳','Нет готовых позиций'));}
   if(S.activeTab==='tables')renderTables();
   if(S.activeTab==='done')renderClosed();
   if(S.activeTab==='stats')renderStats();
