@@ -25,6 +25,8 @@ jobs:
           node-version: '22'
           cache: npm
       - run: npm ci
+      - name: Use the primary Ubuntu package mirror
+        run: echo 'https://archive.ubuntu.com/ubuntu' | sudo tee /etc/apt/apt-mirrors.txt > /dev/null
       - run: npx playwright install --with-deps chromium webkit
       - run: npm test
       - run: npm run build
