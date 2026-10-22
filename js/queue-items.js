@@ -23,23 +23,24 @@ function identity(item,order,names){
   return stable(['legacy',base,item.categoryId??null]);
 }
 
-export function groupQueueItems(orders,tables={},menu=[],filter='all'){
+export function groupQueueItems(orders,tables={},menu=[],filter='all',pending=new Map()){
   const names=new Map();
   for(const category of menu)for(const item of category.items||[]){
     const name=text(item.name);names.set(name,(names.get(name)||0)+1);
   }
   const groups=new Map();
   // FIFO, then existing item iteration order; quantities never affect priority.
-  const active=orders.filter(o=>isQueueOrderActive(o,tables)).slice().sort((a,b)=>(Number(a.createdAt)||0)-(Number(b.createdAt)||0));
+  const active=orders.filter(o=>isQueueOrderActive(o,tables)||(o.status==='done'&&pending.has(o.id))).slice().sort((a,b)=>(Number(a.createdAt)||0)-(Number(b.createdAt)||0));
   for(const order of active)for(const item of order.items||[]){
-    if(!['new','making','ready'].includes(item.status)||!(Number(item.qty)>0))continue;
+    const action=pending.get(order.id)?.get(item._fbKey||item.id);
+    if((!['new','making','ready'].includes(item.status)&&!(item.status==='done'&&action))||!(Number(item.qty)>0))continue;
     const key=identity(item,order,names);
     if(!groups.has(key))groups.set(key,{key,name:baseItemName(item.name),rows:[]});
     groups.get(key).rows.push({order,item});
   }
   return [...groups.values()].map(group=>{
-    const rows=group.rows.filter(({order,item})=>filter==='all'||filter===item.status||filter==='t'+order.table);
-    const counts={new:0,making:0,ready:0};
+    const rows=group.rows.filter(({order,item})=>filter==='all'||filter===item.status||filter===pending.get(order.id)?.get(item._fbKey||item.id)?.fromStatus||filter==='t'+order.table);
+    const counts={new:0,making:0,ready:0,done:0};
     rows.forEach(({item})=>counts[item.status]+=Number(item.qty));
     return {...group,rows,counts,total:counts.new+counts.making+counts.ready,remaining:counts.new+counts.making};
   }).filter(group=>group.rows.length);
