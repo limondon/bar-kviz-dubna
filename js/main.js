@@ -76,7 +76,7 @@ async function loadAll(){
     if(raw){
       if(S.activeTab==='menu')renderMenuPage();
     }else{S.BUILTIN_MENU_LIVE=[];fl('fErr','Меню в базе отсутствует. Проверьте данные перед приёмом заказов.');}
-    if(S.queueView==='items')renderAll();
+    if(S.queueView==='items'||S.activeTab==='stats')renderAll();
   });
 
   let knownWaiterCalls=new Set();

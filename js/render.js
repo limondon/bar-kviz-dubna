@@ -229,6 +229,26 @@ export function renderAll(){
 }
 
 // ─── STATS ───────────────────────────────────────────
+let statsRenderedDay='';
+function statsRevenue(today){
+  const menu=S.BUILTIN_MENU_LIVE.length?S.BUILTIN_MENU_LIVE:BUILTIN_MENU;
+  const knownPrices=new Set(menu.flatMap(cat=>(cat.items||[]).filter(it=>it.price!=null&&Number.isFinite(Number(it.price))&&Number(it.price)>=0).map(it=>itemKey(it.name))));
+  let kopecks=0,estimated=false,missing=0;
+  for(const order of S.orders){
+    if(order.date!==today)continue;
+    for(const item of order.items||[]){
+      const qty=Number(item.qty);if(!Number.isFinite(qty)||qty<=0)continue;
+      if(/^(?:\d+\s+)?круж(?:ка|ки|ек)$/i.test(String(item.name||'').trim()))continue;
+      let price;
+      if(item.price!=null&&item.price!=='')price=Number(item.price);
+      else if(knownPrices.has(itemKey(item.name))){price=Number(getItemPrice(item.name));estimated=true;}
+      if(!Number.isFinite(price)||price<0){missing++;continue;}
+      // Keep each line's original price; identical names can have different prices.
+      kopecks+=Math.round(price*100)*qty;
+    }
+  }
+  return{amount:new Intl.NumberFormat('ru-RU',{style:'currency',currency:'RUB',minimumFractionDigits:kopecks%100?2:0,maximumFractionDigits:2}).format(kopecks/100),estimated,missing};
+}
 function statsProducts(orders){
   const map=Object.create(null);
   orders.forEach(o=>(o.items||[]).forEach(it=>{
@@ -257,6 +277,8 @@ function statsDayDetails(date){
 export function renderStats(){
   const el=document.getElementById('statsContent');if(!el)return;
   const today=todayStr();
+  statsRenderedDay=today;
+  const revenue=statsRevenue(today);
   const todayOrders=S.orders.filter(o=>o.date===today);
   const todayDone=todayOrders.filter(o=>o.status==='done');
   const days=[7,14,30].includes(S.statsDays)?S.statsDays:30;
@@ -270,6 +292,13 @@ export function renderStats(){
   S.orders.forEach(o=>{if(dayStats[o.date]){dayStats[o.date].orders++;dayStats[o.date].tables.add(o.table);}});
   const maxOrders=Math.max(...Object.values(dayStats).map(d=>d.orders),1);
   el.innerHTML=`<div class="stats-layout">
+    <section class="stats-card stats-revenue" aria-label="Выручка за сегодня">
+      <div class="stats-card-title">ВЫРУЧКА ЗА СЕГОДНЯ</div>
+      <div class="stats-revenue-amount">${esc(revenue.amount)}</div>
+      <p class="stats-revenue-caption">Все заказы за сегодня, включая неоплаченные</p>
+      ${revenue.estimated?'<p class="stats-revenue-note">Часть суммы рассчитана по текущим ценам меню</p>':''}
+      ${revenue.missing?`<p class="stats-revenue-note">Без цены: ${revenue.missing} позиц. — сумма неполная</p>`:''}
+    </section>
     <div class="stats-cards">
       <div class="sc"><span class="n">${todayOrders.length}</span><span>заказов сегодня</span></div>
       <div class="sc"><span class="n g">${todayDone.length}</span><span>выполнено</span></div>
@@ -291,6 +320,6 @@ export function renderStats(){
 
 // ─── POLL ─────────────────────────────────────────────
 export function startPoll(){
-  setInterval(()=>{const el=document.getElementById('hTime');if(el)el.textContent=new Date().toLocaleTimeString('ru',{hour:'2-digit',minute:'2-digit'});},1000);
+  setInterval(()=>{const el=document.getElementById('hTime');if(el)el.textContent=new Date().toLocaleTimeString('ru',{hour:'2-digit',minute:'2-digit'});if(S.activeTab==='stats'&&statsRenderedDay!==todayStr())renderStats();},1000);
   setInterval(()=>{document.querySelectorAll('[data-created]').forEach(el=>{const created=parseInt(el.dataset.created);if(!created)return;const mins=Math.floor((Date.now()-created)/60000);const urgent=mins>=15;el.textContent=mins>0?`⏱ ${mins} мин${urgent?' !':''}`:'';el.classList.toggle('urgent',urgent);});},60000);
 }

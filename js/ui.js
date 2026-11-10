@@ -89,6 +89,42 @@ function applyDeviceLayout(device){
   if(device==='phone'){bottomNav.style.display='flex';sidebar.style.display='none';tabsBar.style.display='none';desktopLayout.style.display='block';}
   else if(device==='tablet'){bottomNav.style.display='none';sidebar.style.display='none';tabsBar.style.display='flex';desktopLayout.style.display='block';}
   else{bottomNav.style.display='none';sidebar.style.display='flex';tabsBar.style.display='none';desktopLayout.style.display='grid';}
+  if(device!=='phone')document.getElementById('settingsPopup')?.remove();
+  scheduleBottomNavViewport();
+}
+
+// iOS can scroll/resize the visible viewport without updating the layout
+// viewport used by bottom:0. Anchor the dock to the visible edge instead.
+let bottomNavFrame=0;
+function syncBottomNavViewport(){
+  const nav=document.getElementById('bottomNav'),viewport=window.visualViewport;
+  if(!nav)return;
+  if(getDevice()!=='phone'||!viewport||!Number.isFinite(viewport.height)||viewport.height<=0||!nav.offsetHeight){
+    nav.classList.remove('viewport-anchored');nav.style.removeProperty('--bottom-nav-top');return;
+  }
+  const top=Math.max(0,viewport.offsetTop+viewport.height-nav.offsetHeight)+'px';
+  if(nav.style.getPropertyValue('--bottom-nav-top')!==top)nav.style.setProperty('--bottom-nav-top',top);
+  nav.classList.add('viewport-anchored');
+  const popup=document.getElementById('settingsPopup');
+  if(popup){
+    popup.style.maxHeight=Math.max(0,viewport.height-nav.offsetHeight-16)+'px';
+    popup.style.overflowY='auto';popup.style.bottom='auto';
+    popup.style.top=Math.max(viewport.offsetTop,parseFloat(top)-popup.offsetHeight-8)+'px';
+  }
+}
+function scheduleBottomNavViewport(){
+  if(bottomNavFrame)return;
+  bottomNavFrame=requestAnimationFrame(()=>{bottomNavFrame=0;syncBottomNavViewport();});
+}
+window.visualViewport?.addEventListener('resize',scheduleBottomNavViewport);
+window.visualViewport?.addEventListener('scroll',scheduleBottomNavViewport,{passive:true});
+window.addEventListener('resize',scheduleBottomNavViewport);
+window.addEventListener('scroll',scheduleBottomNavViewport,{passive:true});
+window.addEventListener('pageshow',scheduleBottomNavViewport);
+document.addEventListener('visibilitychange',()=>{if(!document.hidden)scheduleBottomNavViewport();});
+if(typeof ResizeObserver!=='undefined'){
+  const nav=document.getElementById('bottomNav');
+  if(nav)new ResizeObserver(scheduleBottomNavViewport).observe(nav);
 }
 
 let resizeTimer;
@@ -97,7 +133,7 @@ window.addEventListener('resize',()=>{clearTimeout(resizeTimer);resizeTimer=setT
 export function toggleSettingsMenu(){
   let popup=document.getElementById('settingsPopup');if(popup){popup.remove();return;}
   popup=document.createElement('div');popup.id='settingsPopup';
-  popup.style.cssText=`position:fixed;bottom:70px;right:8px;z-index:300;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:8px;min-width:180px;box-shadow:0 -4px 24px rgba(0,0,0,.4);animation:slideUp .2s ease;`;
+  popup.style.cssText=`position:fixed;bottom:${document.getElementById('bottomNav').offsetHeight+8}px;right:8px;z-index:300;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:8px;min-width:180px;box-shadow:0 -4px 24px rgba(0,0,0,.4);animation:slideUp .2s ease;`;
   const extraTabs=getExtraTabItems();
   const actions=getActionItems();
   const items=[
@@ -106,6 +142,7 @@ export function toggleSettingsMenu(){
   ];
   popup.innerHTML=items.map((it,i)=>`<div id="spItem${i}" style="display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:8px;cursor:pointer;font-size:13px;color:var(--text);font-family:'IBM Plex Mono',monospace;">${it.ico} ${it.label}</div>`).join('');
   document.body.appendChild(popup);
+  scheduleBottomNavViewport();
   items.forEach((it,i)=>{const el=document.getElementById('spItem'+i);if(el)el.addEventListener('click',it.action);});
   setTimeout(()=>{document.addEventListener('click',function h(e){if(!popup.contains(e.target)&&!e.target.closest('#bn-settings')){popup.remove();}document.removeEventListener('click',h);});},0);
 }

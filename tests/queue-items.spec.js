@@ -252,6 +252,63 @@ test('mobile navigation stays at the viewport bottom while the order queue scrol
  expect(env.errors).toEqual([]);expect(env.external).toEqual([]);
 });
 
+test('mobile navigation follows visual viewport changes without a window resize',async({page,isMobile})=>{
+ test.skip(!isMobile,'Mobile bottom navigation only');
+ await page.addInitScript(({height,width})=>{
+  const viewport=new EventTarget();
+  Object.assign(viewport,{height,width,offsetTop:0,offsetLeft:0,scale:1});
+  window.__testViewport=viewport;
+  Object.defineProperty(window,'visualViewport',{configurable:true,value:viewport});
+ },page.viewportSize());
+ const env=await queue(page,{a:order(1,5,Array.from({length:10},(_,i)=>line('Напиток '+i)))},'admin');
+ const checkBottom=async expected=>expect.poll(async()=>{
+  const box=await page.locator('#bottomNav').boundingBox();return Math.round(box.y+box.height);
+ }).toBe(expected);
+ await checkBottom(page.viewportSize().height);
+ const visibleHeight=page.viewportSize().height-220;
+ await page.evaluate(height=>{__testViewport.height=height;__testViewport.dispatchEvent(new Event('resize'));},visibleHeight);
+ await checkBottom(visibleHeight);
+ await page.evaluate(()=>{scrollTo(0,500);__testViewport.offsetTop=36;__testViewport.dispatchEvent(new Event('scroll'));});
+ await checkBottom(visibleHeight+36);
+ await page.locator('#bn-settings').click();
+ await expect.poll(async()=>{
+  const popup=await page.locator('#settingsPopup').boundingBox(),nav=await page.locator('#bottomNav').boundingBox();
+  return Math.round(nav.y-popup.y-popup.height);
+ }).toBe(8);
+ await page.evaluate(o=>window.__remoteSet('orders/b',o),order(2,1,[line('Новый напиток')]));
+ await checkBottom(visibleHeight+36);
+ await page.evaluate(height=>{__testViewport.height=height;__testViewport.offsetTop=0;__testViewport.dispatchEvent(new Event('resize'));},page.viewportSize().height);
+ await checkBottom(page.viewportSize().height);
+ await page.locator('#bn-settings').click();
+ await expect(page.locator('#settingsPopup')).toHaveCount(0);
+ expect(env.errors).toEqual([]);expect(env.external).toEqual([]);
+});
+
+test('mobile navigation reserves the safe area and falls back without visual viewport',async({page,isMobile})=>{
+ test.skip(!isMobile,'Mobile bottom navigation only');
+ await page.addInitScript(()=>Object.defineProperty(window,'visualViewport',{configurable:true,value:undefined}));
+ const env=await queue(page,{a:order(1,5,Array.from({length:10},(_,i)=>line('Напиток '+i)))},'admin');
+ await page.evaluate(()=>document.documentElement.style.setProperty('--bottom-nav-inset','34px'));
+ const nav=await page.locator('#bottomNav').boundingBox();
+ expect(nav.height).toBe(94);
+ expect(Math.abs(nav.y+nav.height-page.viewportSize().height)).toBeLessThanOrEqual(1);
+ const item=await page.locator('#bn-queue').boundingBox();
+ expect(item.height).toBeGreaterThanOrEqual(48);
+ expect(item.y+item.height).toBeLessThanOrEqual(nav.y+nav.height-34);
+ await page.evaluate(()=>scrollTo(0,document.documentElement.scrollHeight));
+ const last=await page.locator('#qList .order-card').last().boundingBox();
+ expect(last.y+last.height).toBeLessThanOrEqual(nav.y);
+ await page.setViewportSize({width:600,height:360});
+ await expect.poll(async()=>Math.round((await page.locator('#bottomNav').boundingBox()).height)).toBe(86);
+ const landscape=await page.locator('#bottomNav').boundingBox();
+ expect(Math.abs(landscape.y+landscape.height-360)).toBeLessThanOrEqual(1);
+ expect(await page.evaluate(()=>getComputedStyle(document.body).paddingBottom)).toBe('86px');
+ await page.setViewportSize({width:800,height:600});
+ await expect(page.locator('#bottomNav')).toBeHidden();
+ expect(await page.evaluate(()=>getComputedStyle(document.body).paddingBottom)).toBe('0px');
+ expect(env.errors).toEqual([]);expect(env.external).toEqual([]);
+});
+
 test('pending controls keep the tapped row height and real touch repeats do not action a neighbour',async({page,isMobile})=>{
  test.skip(!isMobile,'Touch scenario runs on Android and iPhone');
  const env=await queue(page,{a:order(1,5,[line('Сенча'),line('Вода',1,'ready')])},'admin');
