@@ -1,6 +1,6 @@
 import{S}from'./state.js';
 import{groupQueueItems,isQueueOrderActive}from'./queue-items.js';
-import{esc,escAttr,fmt,dateLbl,empty,setBadge,setEl,todayStr,shiftDS,aggStatus,itemKey,pl}from'./utils.js';
+import{esc,escAttr,fmt,dateLbl,empty,setBadge,setEl,todayStr,shiftDS,aggStatus,itemKey,pl,normalizeOrder}from'./utils.js';
 import{BUILTIN_MENU}from'./menu-data.js';
 import{renderTables,renderClosed,getTMeta,getItemPrice}from'./tables.js';
 
@@ -230,12 +230,12 @@ export function renderAll(){
 
 // ─── STATS ───────────────────────────────────────────
 let statsRenderedDay='';
-function statsRevenue(today){
+function statsRevenue(date,orders){
   const menu=S.BUILTIN_MENU_LIVE.length?S.BUILTIN_MENU_LIVE:BUILTIN_MENU;
   const knownPrices=new Set(menu.flatMap(cat=>(cat.items||[]).filter(it=>it.price!=null&&Number.isFinite(Number(it.price))&&Number(it.price)>=0).map(it=>itemKey(it.name))));
   let kopecks=0,estimated=false,missing=0;
-  for(const order of S.orders){
-    if(order.date!==today)continue;
+  for(const order of orders){
+    if(order.date!==date)continue;
     for(const item of order.items||[]){
       const qty=Number(item.qty);if(!Number.isFinite(qty)||qty<=0)continue;
       if(/^(?:\d+\s+)?круж(?:ка|ки|ек)$/i.test(String(item.name||'').trim()))continue;
@@ -248,6 +248,12 @@ function statsRevenue(today){
     }
   }
   return{amount:new Intl.NumberFormat('ru-RU',{style:'currency',currency:'RUB',minimumFractionDigits:kopecks%100?2:0,maximumFractionDigits:2}).format(kopecks/100),estimated,missing};
+}
+function statsRevenueSummary(revenue,caption){
+  return `<div class="stats-revenue-amount">${esc(revenue.amount)}</div>
+    <p class="stats-revenue-caption">${esc(caption)}</p>
+    ${revenue.estimated?'<p class="stats-revenue-note">Часть суммы рассчитана по текущим ценам меню</p>':''}
+    ${revenue.missing?`<p class="stats-revenue-note">Без цены: ${revenue.missing} позиц. — сумма неполная</p>`:''}`;
 }
 function statsProducts(orders){
   const map=Object.create(null);
@@ -263,12 +269,13 @@ function statsProducts(orders){
 function statsProductRows(products){
   return products.length?products.map((p,i)=>`<div class="stats-pop-row"><div class="stats-pop-name"><span class="stats-pop-rank">${i+1}</span><span>${esc(p.name)}</span></div><span class="stats-pop-count">${esc(p.count)}</span></div>`).join(''):'<div class="stats-empty">Нет данных</div>';
 }
-function statsDayDetails(date){
-  const orders=S.orders.filter(o=>o.date===date).sort((a,b)=>a.createdAt-b.createdAt);
+function statsDayDetails(date,history){
+  const orders=history.filter(o=>o.date===date).sort((a,b)=>a.createdAt-b.createdAt);
   const products=statsProducts(orders),done=orders.filter(o=>o.status==='done').length;
   const labels={new:'Новый',making:'В работе',ready:'Готов',done:'Выдан'};
   return `<section class="stats-card stats-day-details" aria-label="Подробности дня">
     <div class="stats-day-heading"><div class="stats-card-title">${esc(dateLbl(date))}</div><button type="button" data-stats-date="" class="btn-sm">Скрыть</button></div>
+    <div class="stats-day-revenue" role="group" aria-label="Выручка за выбранный день"><div class="stats-day-subtitle">ВЫРУЧКА ЗА ДЕНЬ</div>${statsRevenueSummary(statsRevenue(date,orders),'Все заказы за этот день, включая неоплаченные')}</div>
     <div class="stats-day-summary">Заказов: <b>${orders.length}</b> · Столов: <b>${new Set(orders.map(o=>String(o.table))).size}</b><br>Выдано: <b>${done}</b> · В очереди: <b>${orders.length-done}</b></div>
     <div class="stats-day-subtitle">ПОЗИЦИИ ЗА ДЕНЬ</div>${statsProductRows(products)}
     ${orders.length?`<div class="stats-day-subtitle">ЗАКАЗЫ</div>${orders.map(o=>`<div class="stats-day-order"><div><b>Стол ${esc(o.table)} · #${esc(o.num??'—')}</b><span>${fmt(o.createdAt)} · ${esc(labels[o.status]||o.status)}</span></div><p>${(o.items||[]).map(it=>`${esc(it.name)} ×${esc(it.qty)}`).join(', ')}</p></div>`).join('')}`:''}
@@ -278,26 +285,24 @@ export function renderStats(){
   const el=document.getElementById('statsContent');if(!el)return;
   const today=todayStr();
   statsRenderedDay=today;
-  const revenue=statsRevenue(today);
-  const todayOrders=S.orders.filter(o=>o.date===today);
+  const history=[...S.orders,...S.statsOlderOrders.map(([id,o])=>normalizeOrder({...o,id}))];
+  const revenue=statsRevenue(today,history);
+  const todayOrders=history.filter(o=>o.date===today);
   const todayDone=todayOrders.filter(o=>o.status==='done');
   const days=[7,14,30].includes(S.statsDays)?S.statsDays:30;
   const since=shiftDS(today,1-days);
-  const popular=statsProducts(S.orders.filter(o=>{
+  const popular=statsProducts(history.filter(o=>{
     const date=o.date||new Date(Number(o.createdAt)).toLocaleDateString('en-CA');
     return date>=since&&date<=today;
   })).slice(0,10);
   const dayStats={};
   for(let i=6;i>=0;i--){const d=shiftDS(today,-i);dayStats[d]={date:d,orders:0,tables:new Set()};}
-  S.orders.forEach(o=>{if(dayStats[o.date]){dayStats[o.date].orders++;dayStats[o.date].tables.add(o.table);}});
+  history.forEach(o=>{if(dayStats[o.date]){dayStats[o.date].orders++;dayStats[o.date].tables.add(o.table);}});
   const maxOrders=Math.max(...Object.values(dayStats).map(d=>d.orders),1);
   el.innerHTML=`<div class="stats-layout">
     <section class="stats-card stats-revenue" aria-label="Выручка за сегодня">
       <div class="stats-card-title">ВЫРУЧКА ЗА СЕГОДНЯ</div>
-      <div class="stats-revenue-amount">${esc(revenue.amount)}</div>
-      <p class="stats-revenue-caption">Все заказы за сегодня, включая неоплаченные</p>
-      ${revenue.estimated?'<p class="stats-revenue-note">Часть суммы рассчитана по текущим ценам меню</p>':''}
-      ${revenue.missing?`<p class="stats-revenue-note">Без цены: ${revenue.missing} позиц. — сумма неполная</p>`:''}
+      ${statsRevenueSummary(revenue,'Все заказы за сегодня, включая неоплаченные')}
     </section>
     <div class="stats-cards">
       <div class="sc"><span class="n">${todayOrders.length}</span><span>заказов сегодня</span></div>
@@ -308,8 +313,9 @@ export function renderStats(){
       <div class="stats-card-title">📅 ЗАКАЗЫ ЗА 7 ДНЕЙ</div>
       <div class="stats-chart">${Object.values(dayStats).map(d=>{const h=d.orders?Math.max(8,Math.round(d.orders/maxOrders*70)):2;const isToday=d.date===today;const lbl=d.date.slice(8);return`<button type="button" data-stats-date="${d.date}" aria-label="${escAttr(dateLbl(d.date))}: ${d.orders} ${pl(d.orders,'заказ','заказа','заказов')}" aria-pressed="${S.statsDate===d.date}" class="stats-bar-col${isToday?' today':''}${S.statsDate===d.date?' selected':''}"><span class="stats-bar-count">${d.orders||''}</span><span class="stats-bar-line" style="height:${h}px"></span><span class="stats-bar-label">${lbl}</span></button>`;}).join('')}</div>
       <p class="stats-chart-hint">Нажмите на день, чтобы увидеть подробности</p>
+      <label class="stats-date-picker">Другой день <input type="date" id="statsDatePicker" aria-label="Дата выручки" max="${today}" value="${escAttr(S.statsDate||'')}"></label>
     </div>
-    ${dayStats[S.statsDate]?statsDayDetails(S.statsDate):''}
+    ${/^\d{4}-\d{2}-\d{2}$/.test(S.statsDate||'')&&S.statsDate<=today?statsDayDetails(S.statsDate,history):''}
     <div class="stats-card">
       <div class="stats-card-title">🏆 ТОП ПОЗИЦИЙ (${days} дней)</div>
       <div class="stats-periods" role="group" aria-label="Период топа позиций">${[7,14,30].map(n=>`<button type="button" data-stats-days="${n}" aria-pressed="${days===n}" class="${days===n?'selected':''}">${n===30?'Месяц':n+' дней'}</button>`).join('')}</div>
