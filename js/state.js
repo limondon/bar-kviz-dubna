@@ -1,6 +1,8 @@
 // Единый объект глобального состояния приложения
 export const S = {
   orders: [],
+  // Older records from the same snapshot, normalized only when statistics opens.
+  statsOlderOrders: [],
   tablesMeta: {},
   menuItems: [],
   BUILTIN_MENU_LIVE: [],

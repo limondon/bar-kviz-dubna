@@ -46,6 +46,7 @@ async function loadAll(){
     const valid=rows.filter(([,o])=>o&&typeof o==='object'&&o.table&&o.table!=='undefined');
     if(valid.length!==rows.length)fl('fErr','Некоторые старые заказы не удалось отобразить. Исходные записи сохранены.');
     S.orders=valid.filter(([,o])=>!o.date||o.date>=cutoffDate).map(([id,o])=>normalizeOrder({...o,id}));
+    S.statsOlderOrders=valid.filter(([,o])=>o.date&&o.date<cutoffDate);
     _ordersLoaded=true;_seedOrderCounter();
     checkNewOrders(S.orders);
     renderAll();
@@ -104,6 +105,11 @@ async function loadAll(){
 }
 
 // ─── CLICK DELEGATION ────────────────────────────────
+document.addEventListener('change',e=>{
+  const picker=e.target.closest('#statsDatePicker');if(!picker)return;
+  if(!picker.checkValidity()){picker.value=S.statsDate||'';return;}
+  S.statsDate=picker.value;renderStats();
+});
 document.addEventListener('click',async e=>{
   const day=e.target.closest('[data-stats-date]');
   if(day){S.statsDate=day.dataset.statsDate;renderStats();return;}

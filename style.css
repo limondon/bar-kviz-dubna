@@ -1098,6 +1098,9 @@ textarea{resize:vertical;min-height:clamp(70px,18vw,100px);}
 .stats-chart-hint{margin:10px 0 0;font-size:12px;color:#aaa;}
 .stats-day-heading{display:flex;align-items:center;justify-content:space-between;gap:8px;}
 .stats-day-heading .stats-card-title{margin:0;}
+.stats-date-picker{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:16px;font-size:14px;}
+.stats-date-picker input{width:auto;min-width:0;max-width:100%;min-height:44px;font-size:16px;color-scheme:dark;}
+.stats-day-revenue{margin:16px 0;}
 .stats-day-heading button{background:var(--surface);border:1px solid var(--border);color:var(--text);}
 .stats-day-summary{font-size:13px;line-height:1.8;margin:12px 0;}
 .stats-day-subtitle{font-size:12px;color:#aaa;margin:16px 0 6px;}
