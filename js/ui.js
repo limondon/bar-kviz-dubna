@@ -54,6 +54,7 @@ function getExtraTabItems(){
 function getActionItems(){
   const a=[{ico:'📜',label:'Лог доставок',fn:'openDeliveryLog'},{ico:'⚙️',label:'Сменить роль',fn:'openRoleModal'}];
   if(S.role==='admin'){
+    a.push({ico:'🧾',label:'Касса Эвотор',fn:'openCashSettings'});
     a.push({ico:'🔐',label:'Сменить пароль',fn:'changePassword'});
     a.push({ico:'🔢',label:'Сбросить счётчик заказов',fn:'resetOrderCounter'});
   }

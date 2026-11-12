@@ -1,4 +1,4 @@
-const CACHE_NAME = 'bar-spark-v10';
+const CACHE_NAME = 'bar-spark-v12-cash-settings-preview';
 const ASSETS = [
   './',
   'index.html',
@@ -7,6 +7,10 @@ const ASSETS = [
   'style.css',
   'manifest.json',
   'js/main.js',
+  'js/cash-bill.js',
+  'js/cash-transfer.js',
+  'js/cash-rules.js',
+  'js/cash-settings.js',
   'js/state.js',
   'js/firebase.js',
   'js/guest.js',
