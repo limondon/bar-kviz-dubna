@@ -132,11 +132,11 @@ public final class TransferActivity extends Activity {
         if (deviceId == null) throw new IllegalStateException("Не удалось сохранить идентификатор кассы.");
         JSONObject request = client.get(BridgeClient.DEVICES + deviceId + "/refreshRequest").object();
         String id = request.optString("id");
-        if (!force && storage.getBoolean("catalog-exported", false) && id.equals(storage.getString("catalog-request", ""))) return;
+        if (!force && CashCatalog.MONEY_FORMAT.equals(storage.getString("catalog-money-format", "")) && storage.getBoolean("catalog-exported", false) && id.equals(storage.getString("catalog-request", ""))) return;
         String label = android.os.Build.MODEL + " · " + deviceId.substring(0, 8);
         JSONObject catalog = CashCatalog.export(this, deviceId, label, id);
         client.saveCatalog(deviceId, catalog);
-        if (!storage.edit().putBoolean("catalog-exported", true).putString("catalog-request", id).commit())
+        if (!storage.edit().putBoolean("catalog-exported", true).putString("catalog-money-format", CashCatalog.MONEY_FORMAT).putString("catalog-request", id).commit())
             throw new IllegalStateException("Каталог отправлен, но не удалось сохранить отметку обновления.");
     }
     private void refresh() {

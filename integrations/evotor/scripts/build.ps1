@@ -11,5 +11,6 @@ $env:PATH = (Join-Path $env:JAVA_HOME 'bin') + ';' + $env:PATH
 if ($LASTEXITCODE -ne 0) { throw 'APK build or verification failed' }
 $outputDir = Join-Path $workspaceRoot '.release\evotor'
 New-Item -ItemType Directory -Path $outputDir -Force | Out-Null
-Copy-Item -LiteralPath (Join-Path $projectRoot 'app\build\outputs\apk\debug\app-debug.apk') -Destination (Join-Path $outputDir '1708-kassa-test-0.3.apk') -Force
-Get-FileHash -LiteralPath (Join-Path $outputDir '1708-kassa-test-0.3.apk') -Algorithm SHA256
+$apkName = '1708-kassa-test-0.4.apk'
+Copy-Item -LiteralPath (Join-Path $projectRoot 'app\build\outputs\apk\debug\app-debug.apk') -Destination (Join-Path $outputDir $apkName) -Force
+Get-FileHash -LiteralPath (Join-Path $outputDir $apkName) -Algorithm SHA256
