@@ -1,0 +1,11 @@
+{
+  "schema": 1,
+  "id": "9c6fb704c986529040a2c332dd8bfaa3838ddd27758725711a710fd699e6516e",
+  "date": "2026-11-12",
+  "table": "PS1",
+  "sid": "visit-123",
+  "canonical": "[1,\"2026-11-12\",\"PS1\",\"visit-123\",[[\"order-1\",\"line-1\",\"\",\"Чай «Облепиха» + лимон\",2,35000,false],[\"order-1\",\"line-2\",\"water\",\"Вода\",1,10025,false]]]",
+  "digest": "80ae5c28f347c1ea645902873143b0faa150ba0f4962cf57e77ca3570ee8ae7c",
+  "state": "queued",
+  "createdAt": 1794430800000
+}

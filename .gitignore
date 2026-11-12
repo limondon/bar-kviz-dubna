@@ -9,3 +9,5 @@ functions/.secret.local
 *-debug.log
 debug.log
 test-results-mobile/
+test-results-cash-final/
+integrations/evotor/catalog-review/

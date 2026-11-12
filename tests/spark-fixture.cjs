@@ -62,6 +62,8 @@ async function setup(page,{orders={},waiterCalls={},menu2,tables}={}){
       // database.rules.json grants staff writes at waiterCalls/$callId, not its parent.
       export async function remove(r){if(r.path==='waiterCalls')throw new Error('PERMISSION_DENIED');return set(r,null);}
       export async function runTransaction(r,fn){
+        if(r.path.startsWith('config/evotor/')&&window.__failCash){window.__failCash=false;throw new Error('Test cash transfer write rejected');}
+        if(r.path.startsWith('config/evotor/')&&window.__delayCash)await new Promise(resolve=>setTimeout(resolve,window.__delayCash));
         if(r.path.startsWith('orders/')&&window.__delayStatus)await new Promise(resolve=>setTimeout(resolve,window.__delayStatus));
         if(r.path.startsWith('orders/')&&window.__failStatus){window.__failStatus=false;throw new Error('Test status write rejected');}
         if(r.path.startsWith('tables/')&&window.__failTables){window.__failTables=false;throw new Error('Test table write rejected');}

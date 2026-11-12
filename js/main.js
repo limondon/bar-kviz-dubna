@@ -1,4 +1,6 @@
 import{S}from'./state.js';
+import{openCashTransfer}from'./cash-transfer.js';
+import{openCashSettings}from'./cash-settings.js';
 import{db,auth,ref,update,set,remove,onValue,runTransaction,onAuthStateChanged,setConnStatus}from'./firebase.js';
 import{todayStr,normalizeOrder,fl,closeConfirmModal,confirmOk,setBadge}from'./utils.js';
 import{registerSW,checkNewOrders,playBeep,notifMuted,swReg,updateNotifBtn}from'./notifications.js';
@@ -107,7 +109,8 @@ async function loadAll(){
 // ─── CLICK DELEGATION ────────────────────────────────
 document.addEventListener('change',e=>{
   const picker=e.target.closest('#statsDatePicker');if(!picker)return;
-  if(!picker.checkValidity()){picker.value=S.statsDate||'';return;}
+  // WebKit does not consistently flag a programmatically edited date beyond max.
+  if(!picker.checkValidity()||(picker.value&&(!/^\d{4}-\d{2}-\d{2}$/.test(picker.value)||picker.value>todayStr()))){picker.value=S.statsDate||'';renderStats();return;}
   S.statsDate=picker.value;renderStats();
 });
 document.addEventListener('click',async e=>{
@@ -124,6 +127,7 @@ document.addEventListener('click',async e=>{
   const action=btn.dataset.action;
   const oid=btn.dataset.oid,iid=btn.dataset.iid;
   const date=btn.dataset.date,tnum=btn.dataset.tnum,sid=btn.dataset.sid;
+  if(action==='cashTransfer'&&date&&tnum&&sid){await openCashTransfer(date,tnum,sid);return;}
   if(action==='showClosedTables'&&date){jumpClosedDate(date);sw('done');return;}
   if(action==='deliver'&&oid&&iid){await waiterDeliverItem(oid,iid);return;}
   if(action==='deliverall'&&oid){await waiterDeliverAll(oid);return;}
@@ -164,6 +168,7 @@ window.resetOrderCounter=resetOrderCounter;
 
 // ─── EXPOSE TO HTML ───────────────────────────────────
 Object.assign(window,{
+  openCashSettings,
   pickRole,confirmRole,openRoleModal,closeRoleModal,checkPassword,changePassword,
   sw,addOrder,barItemAction,waiterDeliverItem,waiterDeliverAll,
   pickTable,enableNotifications,

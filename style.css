@@ -1652,3 +1652,28 @@ textarea{resize:vertical;min-height:clamp(70px,18vw,100px);}
   .add-form{padding:10px 12px;}
   textarea{min-height:55px;}
 }
+.cash-transfer-lines{max-height:28vh;overflow:auto;border-block:1px solid var(--border,#555);padding:8px 0}
+.cash-transfer-lines p{margin:8px 0;overflow-wrap:anywhere}
+.cash-transfer-status{min-height:3em;overflow-wrap:anywhere}
+.cash-settings-panel{max-width:1040px;width:100%;max-height:calc(100dvh - 24px);overflow:auto;font-family:Arial,sans-serif;line-height:1.45}
+.cash-settings h2,.cash-settings h3{margin:0;color:var(--text)}
+.cash-settings-head,.cash-settings-toolbar,.cash-settings-filter,.cash-settings-bulk{display:flex;gap:12px;align-items:center;justify-content:space-between;margin-bottom:16px}
+.cash-settings-head{align-items:flex-start;border-bottom:1px solid var(--border);padding-bottom:16px}
+.cash-settings-head p,.cash-settings-note{color:#bcb8af;font-size:14px;margin:8px 0}
+.cash-settings label{display:flex;flex-direction:column;gap:6px;color:var(--text);font-size:14px;letter-spacing:normal;text-transform:none}
+.cash-settings .app-modal-btn{font:inherit;min-height:44px;color:var(--text)}
+.cash-settings .app-modal-btn.primary{color:#111}
+.cash-settings .app-modal-btn:disabled{opacity:.5;cursor:default}
+.cash-settings input,.cash-settings select{min-width:0;width:100%;font:inherit;background:var(--bg);color:var(--text);border:1px solid #666;border-radius:8px;padding:12px;min-height:44px}
+.cash-settings input[type=checkbox]{width:22px;min-height:22px;accent-color:var(--accent)}
+.cash-settings input:focus-visible,.cash-settings select:focus-visible,.cash-settings button:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
+.cash-settings-tabs{display:flex;gap:8px;margin-bottom:16px}
+.cash-settings-row{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr) auto;gap:16px;align-items:center;padding:18px 0;border-top:1px solid var(--border);overflow-wrap:anywhere}
+.cash-settings-row label{flex-direction:row;align-items:center;gap:10px}
+.cash-settings-row small{display:block;color:#bcb8af;margin-top:5px}
+.cash-settings-row p{margin:5px 0}
+.cash-rule-state{color:#f5c66d;font-size:14px}.cash-rule-state.good{color:#86cf8a}
+.cash-rule-editor label{margin:14px 0}.cash-rule-editor>select{margin-bottom:12px}
+.cash-rule-part{display:grid;grid-template-columns:minmax(0,1fr) 95px auto;gap:12px;align-items:center;border-bottom:1px solid var(--border);padding:8px 0;overflow-wrap:anywhere}
+.cash-settings [role=alert]{color:#ff9b93}.cash-settings-status{color:#ddd;min-height:1.5em;margin-top:18px}
+@media(max-width:600px){.cash-settings{padding:8px;align-items:flex-start}.cash-settings-panel{padding:16px}.cash-settings-toolbar,.cash-settings-filter,.cash-settings-bulk{align-items:stretch;flex-direction:column}.cash-settings-row{grid-template-columns:minmax(0,1fr) auto;gap:10px}.cash-settings-row>div{grid-column:1/-1;grid-row:2}.cash-rule-part{grid-template-columns:minmax(0,1fr) 70px}.cash-rule-part>button{grid-column:1/-1}.cash-settings-head .app-modal-btn{padding:10px}.cash-settings .app-modal-btn{color:var(--text)}.cash-settings .app-modal-btn.primary{color:#111}}

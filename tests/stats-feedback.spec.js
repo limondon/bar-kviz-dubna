@@ -1,5 +1,7 @@
 const {test,expect}=require('@playwright/test');
 const {setup,staff}=require('./spark-fixture.cjs');
+// Unload app timers before WebKit context teardown on Windows.
+test.afterEach(async({page})=>{await page.goto('about:blank');});
 const day=offset=>{const d=new Date();d.setDate(d.getDate()+offset);return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;};
 const order=(offset,items)=>({table:'1',date:day(offset),createdAt:Date.now()+offset*86400000,items:Object.fromEntries(items.map(([name,qty],i)=>['row'+i,{id:'line'+i,name,qty,status:'done'}]))});
 
@@ -150,7 +152,10 @@ test('revenue date picker reads older history without adding old orders to the w
  const env=await setup(page,{orders:{today:{...order(0,[]),items:{a:{name:'Вода',qty:1,price:100,status:'new'}}},older,legacy:{...order(-70,[]),items:'2 Сенча'}}});
  const before=env.data().orders;await staff(page);await page.evaluate(()=>sw('stats'));
  const picker=page.getByLabel('Дата выручки'),detail=page.getByRole('region',{name:'Подробности дня'});
- await picker.fill(day(-45));
+ // fill edits WebKit's native date editor without committing (and invalid native values never commit).
+ // Explicitly submit its change to exercise the same validation, keeping all value/revenue assertions.
+ const selectDate=async value=>{await picker.fill(value);await picker.press('Tab');await picker.dispatchEvent('change');};
+ await selectDate(day(-45));
  await expect(detail).toContainText('Стол 1');await expect(detail.locator('.stats-revenue-amount')).toHaveText('800 ₽');
  await expect(detail).toContainText('Без цены: 1 позиц. — сумма неполная');
  await expect(page.getByRole('region',{name:'Выручка за сегодня'}).locator('.stats-revenue-amount')).toHaveText('100 ₽');
@@ -159,11 +164,11 @@ test('revenue date picker reads older history without adding old orders to the w
  await page.getByRole('button',{name:'14 дней',exact:true}).click();await expect(picker).toHaveValue(day(-45));
  await page.evaluate(()=>{sw('queue');sw('stats');});await expect(detail.locator('.stats-revenue-amount')).toHaveText('1 050 ₽');
  await page.screenshot({path:testInfo.outputPath('historic-revenue.png'),fullPage:true});
- await picker.fill(day(-70));await expect(detail.locator('.stats-revenue-amount')).toHaveText('600 ₽');
+ await selectDate(day(-70));await expect(detail.locator('.stats-revenue-amount')).toHaveText('600 ₽');
  await expect(detail).toContainText('Часть суммы рассчитана по текущим ценам меню');
- await picker.fill(day(1));await expect(picker).toHaveValue(day(-70));await expect(detail.locator('.stats-revenue-amount')).toHaveText('600 ₽');
+ await selectDate(day(1));await expect(picker).toHaveValue(day(-70));await expect(detail.locator('.stats-revenue-amount')).toHaveText('600 ₽');
  await page.evaluate(()=>window.__remoteSet('orders/legacy',null));await expect(detail.locator('.stats-revenue-amount')).toHaveText('0 ₽');
- await picker.fill('');await expect(detail).toHaveCount(0);
+ await selectDate('');await expect(detail).toHaveCount(0);
  await page.evaluate(()=>sw('queue'));await expect(page.locator('#qList')).not.toContainText('Сенча');await expect(page.locator('#qList')).toContainText('Вода');
  expect(env.data().orders.today).toEqual(before.today);expect(env.data().orders.older.items.a.qty).toBe(3);
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);

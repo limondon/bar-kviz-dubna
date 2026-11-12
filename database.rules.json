@@ -24,6 +24,7 @@
       }
     },
     "orders": {
+      ".indexOn": ["date"],
       ".read": "auth != null && auth.token.email === 'manager@1708.local'",
       "$orderId": {
         ".write": "auth != null && (auth.token.email === 'manager@1708.local' || (!data.exists() && newData.child('source').val() === 'guest' && newData.child('status').val() === 'new' && (!newData.child('createdByUid').exists() || newData.child('createdByUid').val() === auth.uid)))"

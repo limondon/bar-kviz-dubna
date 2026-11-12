@@ -1,0 +1,33 @@
+plugins { id 'com.android.application' }
+
+android {
+    namespace 'ru.lounge1708.evotorbridge'
+    compileSdk 34
+    defaultConfig {
+        applicationId 'ru.lounge1708.evotorbridge'
+        minSdk 23
+        targetSdk 34
+        versionCode 3
+        versionName '0.3'
+    }
+    signingConfigs {
+        debug {
+            storeFile file('../../../.local-tools/evotor/debug.keystore')
+        }
+    }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
+    }
+    testOptions.unitTests.all { systemProperty 'cash.fixture', rootProject.file('fixtures/bill.json').absolutePath }
+}
+
+dependencies {
+    implementation 'com.github.evotor:integration-library:v0.6.03'
+    testImplementation 'junit:junit:4.13.2'
+    testImplementation 'org.json:json:20240303'
+}
+
+// Keep source files UTF-8 while Gradle's Java argument files use the native
+// Windows encoding; the latter matters for workspaces with Cyrillic paths.
+tasks.withType(JavaCompile).configureEach { options.encoding = 'UTF-8' }
