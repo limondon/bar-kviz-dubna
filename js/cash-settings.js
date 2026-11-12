@@ -1,7 +1,7 @@
 import{S}from'./state.js';
 import{auth,db,ref,onValue,runTransaction}from'./firebase.js';
 import{esc,escAttr,lockScroll,unlockScroll}from'./utils.js';
-import{cashDevicesPath,cashRuleKey,addonName,cashPartsTotal,cashRuleState,editCashRules}from'./cash-rules.js';
+import{cashDevicesPath,cashRuleKey,addonName,cashPartsTotal,cashRuleState,editCashRules,cashCatalogReady,cashSuggestion}from'./cash-rules.js';
 
 let opened=false;
 export function openCashSettings(){
@@ -9,7 +9,7 @@ export function openCashSettings(){
   opened=true;lockScroll();
   const overlay=document.createElement('div');overlay.className='app-modal-overlay cash-settings';
   const previousFocus=document.activeElement;
-  overlay.innerHTML=`<section class="app-modal-panel cash-settings-panel" role="dialog" aria-modal="true" aria-label="Касса Эвотор"><div class="cash-settings-head"><div><h2>Касса Эвотор</h2><p>Выберите, как наши товары называются на кассе.</p></div><button class="app-modal-btn" data-close>Закрыть</button></div><div data-content>Загружаю настройки…</div><p role="status" class="cash-settings-status"></p></section>`;
+  overlay.innerHTML=`<section class="app-modal-panel cash-settings-panel" role="dialog" aria-modal="true" aria-label="Касса Эвотор"><div class="cash-settings-head"><div><h2>Касса Эвотор</h2><p>Выберите, как наши товары называются на кассе.</p></div><button class="app-modal-btn" data-close>Закрыть</button></div><div class="cash-settings-body"><div data-content>Загружаю настройки…</div><p role="status" class="cash-settings-status"></p></div></section>`;
   document.body.appendChild(overlay);
   overlay.querySelector('section').tabIndex=-1;overlay.querySelector('section').focus();
   overlay.addEventListener('keydown',e=>{
@@ -20,8 +20,8 @@ export function openCashSettings(){
     if(e.shiftKey&&document.activeElement===first){e.preventDefault();last?.focus();}
     else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first?.focus();}
   });
-  const content=overlay.querySelector('[data-content]'),status=overlay.querySelector('[role=status]');
-  let devices={},deviceId='',query='',kind='products',editing=null,pending=false,closed=false,menu=S.BUILTIN_MENU_LIVE;
+  const content=overlay.querySelector('[data-content]'),status=overlay.querySelector('[role=status]'),scrollBody=overlay.querySelector('.cash-settings-body');
+  let devices={},devicesReady=false,deviceId='',query='',kind='products',editing=null,pending=false,closed=false,menu=S.BUILTIN_MENU_LIVE;
   const selected=new Set();
   const device=()=>devices[deviceId]||{};
   const settings=()=>device().settings||{schema:1,revision:0};
@@ -37,24 +37,47 @@ export function openCashSettings(){
   }
   let renderToken=0;
   async function render(){
-    if(closed||editing)return;const token=++renderToken;
+    if(closed||editing||!devicesReady)return;const token=++renderToken;
+    if(!cashCatalogReady(catalog())){
+      selected.clear();
+      content.innerHTML=`<div class="cash-connect" role="region" aria-label="Подключение кассы"><h3>${catalog()?'Обновите приложение кассы':'Каталог ещё не получен'}</h3><p>${catalog()?'В каталоге версии 0.3 цены передавались с ошибкой: 250 ₽ отображались как 25 000 ₽. Цены товаров менять не нужно. Получите исправленный каталог.':'Сначала передайте товары с самого терминала Эвотор. После этого здесь можно будет настроить соответствия.'}</p><ol><li>На терминале обновите приложение «1708 — касса (тест)» до версии 0.4 или новее.</li><li>Откройте «Счета с сайта» и войдите с логином и паролем сотрудника нашего сайта.</li><li>Нажмите «Обновить каталог для сайта» и оставьте этот экран открытым на терминале.</li></ol><p class="cash-settings-note">Когда каталог поступит, список товаров появится здесь автоматически. Перезагружать страницу не нужно.</p></div>${Object.keys(devices).length?`<div class="cash-settings-toolbar"><label>Касса<select data-device>${Object.entries(devices).map(([id,d])=>`<option value="${escAttr(id)}"${id===deviceId?' selected':''}>${esc(d.catalog?.deviceName||id)}</option>`).join('')}</select></label><button class="app-modal-btn" data-refresh${pending?' disabled':''}>Обновить каталог кассы</button></div>`:''}`;
+      bindDeviceControls();return;
+    }
+    const wasWaiting=!!content.querySelector('.cash-connect');
     const list=await rows();if(closed||editing||token!==renderToken)return;
     const cat=catalog(),current=settings();
     const filtered=list.filter(r=>(r.name+' '+r.category+' '+r.group).toLocaleLowerCase('ru').includes(query.toLocaleLowerCase('ru')));
     content.innerHTML=`<div class="cash-settings-toolbar"><label>Касса<select data-device>${Object.entries(devices).map(([id,d])=>`<option value="${escAttr(id)}"${id===deviceId?' selected':''}>${esc(d.catalog?.deviceName||id)}</option>`).join('')}</select></label><button class="app-modal-btn" data-refresh${pending||!deviceId?' disabled':''}>Обновить каталог кассы</button></div>${cat?`<p class="cash-settings-note">Каталог от ${esc(new Date(cat.exportedAt).toLocaleString('ru-RU'))}. ${Object.keys(cat.items||{}).length} карточек.</p>`:'<p>Каталог ещё не получен. На Эвоторе откройте «Счета с сайта», войдите и нажмите «Обновить каталог для сайта».</p>'}<div class="cash-settings-tabs"><button class="app-modal-btn ${kind==='products'?'primary':''}" data-kind="products">Наши товары</button><button class="app-modal-btn ${kind==='addons'?'primary':''}" data-kind="addons">Добавки</button></div><div class="cash-settings-filter"><input data-search type="search" aria-label="Найти наш товар" placeholder="Название, категория или группа" value="${escAttr(query)}"><button class="app-modal-btn" data-new${!cat?' disabled':''}>Добавить соответствие</button></div><div class="cash-settings-bulk"><button class="app-modal-btn" data-select${!filtered.length?' disabled':''}>Выбрать найденные (${filtered.length})</button><button class="app-modal-btn primary" data-bulk${!selected.size||!cat?' disabled':''}>Назначить выбранным (${selected.size})</button></div><div class="cash-settings-list">${filtered.map(r=>{
       const rule=current[kind]?.[r.key],state=cashRuleState(rule,cat,Number(r.price));
-      const target=(Array.isArray(rule?.parts)?rule.parts:[]).map(p=>`${cat?.items?.[p.uuid]?.name||'Карточка недоступна'}${p.units>1?' ×'+p.units:''}`).join(' + ');
-      return`<article class="cash-settings-row"><label><input type="checkbox" data-pick="${r.key}"${selected.has(r.key)?' checked':''}><span><b>${esc(r.name)}</b><small>${esc(r.category)} · ${money(Math.round(Number(r.price)*100))}</small></span></label><div><span class="cash-rule-state${state==='Настроено'?' good':''}">${state}</span><p>${esc(target||'Выберите карточку Эвотора')}</p></div><button class="app-modal-btn" data-edit="${r.key}"${!cat?' disabled':''}>${rule?'Изменить':'Настроить'}</button></article>`;
+      const suggestion=!rule&&list.filter(x=>x.name===r.name).length===1?cashSuggestion(r,cat):null;
+      const target=(Array.isArray(rule?.parts)?rule.parts:suggestion?[suggestion]:[]).map(p=>`${cat?.items?.[p.uuid]?.name||'Карточка недоступна'}${p.units>1?' ×'+p.units:''}`).join(' + ');
+      return`<article class="cash-settings-row"><label><input type="checkbox" data-pick="${r.key}"${selected.has(r.key)?' checked':''}><span><b>${esc(r.name)}</b><small>${esc(r.category)} · ${money(Math.round(Number(r.price)*100))}</small></span></label><div><span class="cash-rule-state${state==='Настроено'?' good':''}">${suggestion?'Совпало название и цена':state}</span><p>${esc(target||'Выберите товар Эвотора')}${suggestion?' — проверьте и сохраните':''}</p></div><button class="app-modal-btn" data-edit="${r.key}"${!cat?' disabled':''}>${rule?'Изменить':'Настроить'}</button></article>`;
     }).join('')||'<p>Нет соответствий. Добавьте товар или добавку.</p>'}</div>`;
-    content.querySelector('[data-device]').onchange=e=>{deviceId=e.target.value;selected.clear();render();};
-    content.querySelector('[data-refresh]').onclick=requestCatalog;
+    if(wasWaiting)scrollBody.scrollTop=0;
+    bindDeviceControls();
     content.querySelectorAll('[data-kind]').forEach(b=>b.onclick=()=>{kind=b.dataset.kind;selected.clear();query='';render();});
     content.querySelector('[data-search]').oninput=e=>{query=e.target.value;const start=e.target.selectionStart;render().then(()=>{const input=content.querySelector('[data-search]');input?.focus();if(input?.type!=='search')input?.setSelectionRange(start,start);});};
-    content.querySelectorAll('[data-pick]').forEach(input=>input.onchange=()=>{input.checked?selected.add(input.dataset.pick):selected.delete(input.dataset.pick);render();});
+    function updateSelection(input){
+      input.checked?selected.add(input.dataset.pick):selected.delete(input.dataset.pick);
+      content.querySelectorAll('[data-pick]').forEach(box=>{
+        box.checked=selected.has(box.dataset.pick);box.closest('.cash-settings-row').classList.toggle('is-selected',box.checked);
+      });
+      const button=content.querySelector('[data-bulk]');button.textContent=`Назначить выбранным (${selected.size})`;button.disabled=!selected.size||pending;
+    }
+    content.querySelectorAll('[data-pick]').forEach(input=>{input.closest('.cash-settings-row').classList.toggle('is-selected',input.checked);input.onchange=()=>updateSelection(input);});
+    content.querySelectorAll('.cash-settings-row').forEach(row=>row.onclick=e=>{
+      if(e.target.closest('button,input,select,a,label'))return;
+      const input=row.querySelector('[data-pick]');input.checked=!input.checked;updateSelection(input);
+    });
     content.querySelector('[data-select]').onclick=()=>{filtered.forEach(r=>selected.add(r.key));render();};
     content.querySelector('[data-bulk]').onclick=()=>edit(list.filter(r=>selected.has(r.key)));
     content.querySelectorAll('[data-edit]').forEach(b=>b.onclick=()=>edit(list.filter(r=>r.key===b.dataset.edit)));
     content.querySelector('[data-new]').onclick=()=>edit([]);
+  }
+  function bindDeviceControls(){
+    const picker=content.querySelector('[data-device]'),refresh=content.querySelector('[data-refresh]');
+    if(picker)picker.onchange=e=>{deviceId=e.target.value;selected.clear();render();};
+    if(refresh)refresh.onclick=requestCatalog;
   }
   async function requestCatalog(){
     if(pending||!deviceId)return;
@@ -63,25 +86,35 @@ export function openCashSettings(){
     catch{message('Не удалось запросить каталог. Проверьте соединение.');}finally{pending=false;render();}
   }
   async function edit(targets){
-    if(editing||!catalog())return;
+    if(editing||!cashCatalogReady(catalog()))return;
     const originalDevice=deviceId,originalKind=kind,cat=structuredClone(catalog());
     const baseline=structuredClone(settings()),originalTargets=targets;
     let parts=structuredClone(targets.length===1?baseline[kind]?.[targets[0].key]?.parts||[]:[]);
+    const suggestion=targets.length===1&&!parts.length?cashSuggestion(targets[0],cat):null;
+    if(suggestion)parts=[suggestion];
+    let advanced=parts.length>1||parts.some(p=>p.units!==1);
     editing={};++renderToken;
-    content.innerHTML=`<div class="cash-rule-editor"><h3>${targets.length?targets.length===1?esc(targets[0].name):'Одно соответствие для '+targets.length+' товаров':'Новое соответствие'}</h3>${targets.length?'':`<label>Название ${kind==='addons'?'добавки в заказе':'на сайте, точно как в заказе'}<input data-name maxlength="200" placeholder="${kind==='addons'?'лимон':'Название товара или варианта'}"></label><label>Цена на сайте, ₽<input data-price type="number" min="0" step="0.01"></label>`}<p>Карточки на одну нашу позицию. Для «чай + лимон» можно указать две карточки.</p><div data-parts></div><label>Найти товар на кассе<input data-find type="search" placeholder="Название или категория"></label><select data-card aria-label="Карточка Эвотора"></select><button class="app-modal-btn" data-add>Добавить карточку</button><p data-total></p><p data-error role="alert"></p><div class="app-modal-actions"><button class="app-modal-btn" data-back>Назад</button><button class="app-modal-btn" data-delete${targets.length!==1||!baseline[kind]?.[targets[0]?.key]?' disabled':''}>Удалить соответствие</button><button class="app-modal-btn primary" data-save>Сохранить</button></div></div>`;
+    content.innerHTML=`<div class="cash-rule-editor"><h3>${targets.length?targets.length===1?esc(targets[0].name):'Одно соответствие для '+targets.length+' товаров':'Новое соответствие'}</h3>${targets.length?`<p>На сайте: ${money(Math.round(Number(targets[0].price)*100))}${targets.length>1?' за каждый товар':''}</p>`:`<label>Название ${kind==='addons'?'добавки в заказе':'на сайте, точно как в заказе'}<input data-name maxlength="200" placeholder="${kind==='addons'?'лимон':'Название товара или варианта'}"></label><label>Цена на сайте, ₽<input data-price type="number" min="0" step="0.01"></label>`}${suggestion?'<p class="cash-settings-note">Найдено единственное совпадение названия и цены. Проверьте товар и нажмите «Сохранить».</p>':''}<label>Найти товар на кассе<input data-find type="search" placeholder="Название или категория"></label><label>Товар в Эвоторе<select data-card aria-label="Карточка Эвотора"></select></label><div data-parts></div><button class="app-modal-btn" data-add>Добавить карточку</button><p data-total></p><button class="app-modal-btn" data-mode></button><p data-mode-note class="cash-settings-note"></p><p data-error role="alert"></p><div class="app-modal-actions"><button class="app-modal-btn" data-back>Назад</button><button class="app-modal-btn" data-delete${targets.length!==1||!baseline[kind]?.[targets[0]?.key]?' disabled':''}>Удалить соответствие</button><button class="app-modal-btn primary" data-save>Сохранить</button></div></div>`;
     const error=content.querySelector('[data-error]'),save=content.querySelector('[data-save]'),back=content.querySelector('[data-back]');
-    const finish=async()=>{if(pending)return;editing=null;await render();overlay.querySelector('section').scrollTop=0;};back.onclick=finish;
+    const finish=async()=>{if(pending)return;editing=null;await render();scrollBody.scrollTop=0;};back.onclick=finish;
     function cards(){
       const q=content.querySelector('[data-find]').value.trim().toLocaleLowerCase('ru');
-      content.querySelector('[data-card]').innerHTML=Object.entries(cat.items||{}).filter(([,p])=>p.supported===true&&(p.name+' '+p.category).toLocaleLowerCase('ru').includes(q)).map(([id,p])=>`<option value="${escAttr(id)}">${esc(p.category||'Без категории')} / ${esc(p.name)} · ${money(p.priceKopecks)} · …${esc(id.slice(-8))}</option>`).join('');
+      const chosen=!advanced?parts[0]?.uuid:content.querySelector('[data-card]').value;
+      content.querySelector('[data-card]').innerHTML='<option value="">Выберите товар кассы</option>'+Object.entries(cat.items||{}).filter(([id,p])=>p.supported===true&&(id===chosen||(p.name+' '+p.category).toLocaleLowerCase('ru').includes(q))).map(([id,p])=>`<option value="${escAttr(id)}">${esc(p.category||'Без категории')} / ${esc(p.name)} · ${money(p.priceKopecks)} · …${esc(id.slice(-8))}</option>`).join('');
+      content.querySelector('[data-card]').value=chosen||'';
     }
     function paint(){
+      content.querySelector('[data-parts]').hidden=!advanced;content.querySelector('[data-add]').hidden=!advanced;
+      content.querySelector('[data-mode]').textContent=advanced?'Один товар кассы':'Составить из нескольких товаров';
+      content.querySelector('[data-mode-note]').textContent=advanced?'Добавьте все составляющие на одну позицию сайта. Например, чай и лимон.':'Выберите один товар Эвотора и сохраните. Количество в заказе перенесётся автоматически.';
       content.querySelector('[data-parts]').innerHTML=parts.map((p,i)=>`<div class="cash-rule-part"><span>${esc(cat.items[p.uuid]?.name||'Карточка удалена')} · ${money(cat.items[p.uuid]?.priceKopecks||0)}</span><label>Количество<input type="number" min="1" max="10" value="${p.units}" data-units="${i}"></label><button class="app-modal-btn" data-remove="${i}" aria-label="Убрать карточку ${i+1}">Убрать</button></div>`).join('');
       content.querySelectorAll('[data-remove]').forEach(b=>b.onclick=()=>{parts.splice(Number(b.dataset.remove),1);paint();});
       content.querySelectorAll('[data-units]').forEach(input=>input.onchange=()=>{parts[Number(input.dataset.units)].units=Number(input.value);sum();});sum();
     }
     function sum(){try{content.querySelector('[data-total]').textContent='На кассе: '+money(cashPartsTotal(parts,cat));}catch(e){content.querySelector('[data-total]').textContent=e.message;}}
     content.querySelector('[data-find]').oninput=cards;
+    content.querySelector('[data-card]').onchange=e=>{if(!advanced){const uuid=e.target.value;parts=uuid?[{uuid,units:1,fingerprint:cat.items[uuid].fingerprint}]:[];paint();}};
+    content.querySelector('[data-mode]').onclick=()=>{advanced=!advanced;if(!advanced)parts=parts.length?[{...parts[0],units:1}]:[];cards();paint();};
     content.querySelector('[data-add]').onclick=()=>{const uuid=content.querySelector('[data-card]').value;if(!uuid||parts.length>=12)return;parts.push({uuid,units:1,fingerprint:cat.items[uuid].fingerprint});paint();};
     async function persist(remove=false){
       if(pending)return;error.textContent='';let list=originalTargets;
@@ -108,16 +141,16 @@ export function openCashSettings(){
         const result=await runTransaction(ref(db,`${cashDevicesPath}/${originalDevice}/settings`),current=>editCashRules(current,changes,Date.now()),{applyLocally:false});
         if(!result.committed)throw Error('Соответствие изменилось на другом устройстве. Вернитесь и откройте его заново.');
         message(remove?'Соответствие удалено.':'Сохранено. Касса получит настройки при следующем выборе счёта.');
-        pending=false;selected.clear();editing=null;await render();overlay.querySelector('section').scrollTop=0;
+        pending=false;selected.clear();editing=null;await render();scrollBody.scrollTop=0;
       }catch(e){error.textContent=e.message;message('Настройки не сохранены.');}finally{pending=false;save.disabled=false;back.disabled=false;overlay.querySelector('[data-close]').textContent='Закрыть';}
     }
     save.onclick=()=>persist();content.querySelector('[data-delete]').onclick=()=>persist(true);cards();paint();
   }
   overlay.querySelector('[data-close]').onclick=()=>{closed=true;opened=false;unsubscribe();unsubscribeMenu();overlay.remove();unlockScroll();if(previousFocus?.isConnected)previousFocus.focus();};
   const unsubscribe=onValue(ref(db,cashDevicesPath),snapshot=>{
-    devices=snapshot.val()||{};
+    devices=snapshot.val()||{};devicesReady=true;
     if(!devices[deviceId])deviceId=Object.keys(devices)[0]||'';
-    if(device().catalog?.requestId&&device().catalog.requestId===device().refreshRequest?.id)message('Каталог кассы обновлён.');
+    if(cashCatalogReady(catalog())&&device().catalog?.requestId&&device().catalog.requestId===device().refreshRequest?.id)message('Каталог кассы обновлён.');
     render();
   },()=>{message('Не удалось прочитать настройки. Проверьте вход сотрудника и соединение.');});
   const unsubscribeMenu=onValue(ref(db,'menu2'),snapshot=>{const value=snapshot.val();if(value){menu=Object.values(value).filter(c=>c&&c.items).map(c=>({...c,items:Object.values(c.items)}));render();}});

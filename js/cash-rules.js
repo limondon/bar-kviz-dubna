@@ -2,7 +2,16 @@ import{cashHash}from'./cash-bill.js';
 export const cashDevicesPath='config/evotor/v1/devices';
 export const addonName=name=>name.trim().toLocaleLowerCase('ru-RU');
 export const cashRuleKey=(name,addon=false)=>cashHash(addon?addonName(name):name.trim());
+export const cashCatalogReady=catalog=>catalog?.moneyFormat==='kopecks-v1';
+export function cashSuggestion(row,catalog){
+  if(!cashCatalogReady(catalog)||row.price==null||row.price===''||!Number.isFinite(Number(row.price))||Number(row.price)<0)return null;
+  const normalized=name=>String(name||'').trim().replace(/\s+/g,' ').toLocaleLowerCase('ru-RU');
+  const matches=Object.entries(catalog.items||{}).filter(([,p])=>p?.supported===true&&p.priceKopecks===Math.round(Number(row.price)*100)&&normalized(p.name)===normalized(row.name));
+  if(matches.length!==1)return null;
+  const [uuid,card]=matches[0];return{uuid,units:1,fingerprint:card.fingerprint};
+}
 export function cashPartsTotal(parts,catalog){
+  if(!cashCatalogReady(catalog))throw Error('Обновите приложение кассы до 0.4 и получите каталог заново.');
   if(!Array.isArray(parts)||!parts.length||parts.length>12)throw Error('Выберите от 1 до 12 карточек кассы.');
   let total=0;
   for(const part of parts){

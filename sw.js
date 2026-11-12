@@ -1,4 +1,4 @@
-const CACHE_NAME = 'bar-spark-v12-cash-settings-preview';
+const CACHE_NAME = 'bar-spark-v13-cash-price-selection';
 const ASSETS = [
   './',
   'index.html',

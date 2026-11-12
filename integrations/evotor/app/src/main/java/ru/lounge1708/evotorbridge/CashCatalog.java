@@ -11,13 +11,21 @@ import ru.evotor.framework.receipt.TaxNumber;
 import org.json.JSONArray;
 import org.json.JSONObject;
 import java.math.BigDecimal;
-import java.math.RoundingMode;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
 
 final class CashCatalog {
+    static final String MONEY_FORMAT = "kopecks-v1";
+    static long priceKopecks(Cursor row) {
+        // ProductTable stores integer minor units; SDK getMoney divides this field by 100.
+        String raw = row.getString(row.getColumnIndexOrThrow(ProductTable.ROW_PRICE_OUT));
+        if (raw == null) throw new IllegalArgumentException("Нет цены карточки.");
+        long price = new BigDecimal(raw).longValueExact();
+        if (price < 0) throw new IllegalArgumentException("Отрицательная цена карточки.");
+        return price;
+    }
     private static JSONObject describe(Cursor row) throws Exception {
         String uuid = row.getString(row.getColumnIndexOrThrow(ProductTable.ROW_UUID));
         String type = row.getString(row.getColumnIndexOrThrow(ProductTable.ROW_TYPE));
@@ -33,8 +41,7 @@ final class CashCatalog {
         boolean supported = DraftPolicy.supportsType(type);
         try { TaxNumber.valueOf(tax); } catch (RuntimeException e) { supported = false; }
         try {
-            long price = new BigDecimal(row.getString(row.getColumnIndexOrThrow(ProductTable.ROW_PRICE_OUT))).setScale(2, RoundingMode.UNNECESSARY).movePointRight(2).longValueExact();
-            result.put("priceKopecks", price); if (price < 0) supported = false;
+            result.put("priceKopecks", priceKopecks(row));
         } catch (RuntimeException e) { supported = false; }
         return result.put("supported", supported);
     }
@@ -62,7 +69,7 @@ final class CashCatalog {
             }
             items.put(pair.getKey(), entry.put("category", category));
         }
-        return new JSONObject().put("schema", 1).put("deviceId", deviceId).put("deviceName", deviceName).put("requestId", requestId)
+        return new JSONObject().put("schema", 1).put("moneyFormat", MONEY_FORMAT).put("deviceId", deviceId).put("deviceName", deviceName).put("requestId", requestId)
                 .put("exportedAt", System.currentTimeMillis()).put("items", items);
     }
     static ProductItem.Product checked(Context context, String uuid) throws Exception {
