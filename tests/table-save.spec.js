@@ -1,5 +1,6 @@
 const {test,expect}=require('@playwright/test');
 const {setup,staff}=require('./spark-fixture.cjs');
+test.afterEach(async({page})=>{await page.goto('about:blank');});
 
 function date(){return new Date().toLocaleDateString('en-CA');}
 function order(){return {id:'one',table:'1',date:date(),sid:'session',num:1,createdAt:Date.now(),status:'new',items:{water:{id:'water',name:'Вода',qty:1,status:'new'}}};}
