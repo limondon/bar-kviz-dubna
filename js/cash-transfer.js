@@ -22,6 +22,9 @@ export async function openCashTransfer(date,table,sid){
   const panel=document.createElement('div');panel.className='app-modal-overlay';
   panel.innerHTML=`<section class="app-modal-panel" role="dialog" aria-modal="true" aria-label="Передать счёт на кассу"><h3>Стол ${esc(table)} · передача на Эвотор</h3><p>Снимок счёта: ${bill.rows.length} строк, ${(bill.total/100).toLocaleString('ru-RU')} ₽. Кружки исключены.</p>${bill.estimated?'<p>В старых заказах нет сохранённой цены. Использована текущая цена меню — проверьте сумму.</p>':''}<p>Состав можно обновить до открытия чека. После начала открытия повторная передача этого посещения заблокирована, включая дозаказы. Сначала завершите проверку на кассе.</p><div class="cash-transfer-lines">${bill.rows.map(r=>`<p>${esc(r[3])} ×${r[4]} — ${r[4]*r[5]/100} ₽</p>`).join('')}</div><p class="cash-transfer-status" role="status">Проверяю состояние передачи…</p><div class="app-modal-actions"><button class="app-modal-btn" data-cash-close>Закрыть</button><button class="app-modal-btn primary" data-cash-send disabled>Передать на кассу</button></div></section>`;
   document.body.appendChild(panel);lockScroll();
+  const cashDate=document.createElement('p');cashDate.className='cash-transfer-day';
+  cashDate.textContent='На Эвоторе выберите дату '+bill.date+' и нажмите «Обновить список».';
+  panel.querySelector('h3').after(cashDate);
   const status=panel.querySelector('[role=status]'),send=panel.querySelector('[data-cash-send]'),closeButton=panel.querySelector('[data-cash-close]');
   let loading=true,pending=false,remote=null,closed=false,stale=false,timer;
   const refresh=()=>{send.disabled=loading||pending||stale||!!(remote&&remote.state!=='queued');send.textContent=remote?.state==='queued'?'Обновить состав счёта':'Передать на кассу';closeButton.textContent=pending?'Скрыть окно':'Закрыть';};
