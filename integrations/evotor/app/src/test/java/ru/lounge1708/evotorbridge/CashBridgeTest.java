@@ -86,6 +86,25 @@ public class CashBridgeTest {
         assertThrows(IllegalStateException.class, () -> client.claim(bill(record), "one")); assertEquals(0, backend.writes);
         client.logout(); assertThrows(IllegalStateException.class, () -> client.get("config/evotor/v1/transfers/2026-11-12"));
     }
+    @Test public void clearedRecoveryIsConditionalAndIdempotentAfterLostAcknowledgement() throws Exception {
+        JSONObject original = fixture().put("state", "opened").put("nonce", "first").put("receiptUuid", "receipt-1");
+        Backend backend = new Backend(original); BridgeClient client = connected(backend); CashBill shown = bill(original);
+        backend.loseAck = true; assertThrows(IOException.class, () -> client.requeueCleared(shown));
+        assertEquals("cleared", backend.day.getJSONObject(shown.id).getString("state"));
+        client.requeueCleared(shown); assertEquals(1, backend.writes);
+        assertThrows(IllegalStateException.class, () -> client.claim(bill(backend.day.getJSONObject(shown.id)), "second"));
+        assertEquals(1, backend.writes);
+        JSONObject oldAck = new JSONObject().put("id", shown.id).put("date", shown.date).put("digest", shown.digest)
+                .put("nonce", "first").put("state", "opened").put("receiptUuid", "receipt-1");
+        client.report(oldAck); assertEquals("cleared", backend.day.getJSONObject(shown.id).getString("state"));
+    }
+    @Test public void recoveryConflictDoesNotUnlockOrModifyTheOriginalReceipt() throws Exception {
+        JSONObject original = fixture().put("state", "opened").put("nonce", "first").put("receiptUuid", "receipt-1");
+        Backend backend = new Backend(original); BridgeClient client = connected(backend); backend.race = true;
+        assertThrows(IllegalStateException.class, () -> client.requeueCleared(bill(original)));
+        assertEquals("opened", backend.day.getJSONObject(original.getString("id")).getString("state"));
+        assertFalse(backend.day.getJSONObject(original.getString("id")).has("clearedAttempts"));
+    }
     private static JSONObject sourceOrders(CashBill bill) throws Exception {
         JSONObject items = new JSONObject();
         for (CashBill.Line line : bill.lines) items.put(line.itemId, new JSONObject().put("name", line.name).put("qty", line.quantity).put("price", line.price()).put("menuItemId", line.productId));

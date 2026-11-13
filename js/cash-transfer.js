@@ -3,7 +3,7 @@ import{db,auth,ref,onValue,runTransaction}from'./firebase.js';
 import{esc,escAttr,lockScroll,unlockScroll,itemKey,itemExtraPrice}from'./utils.js';
 import{cashPath,buildCashBill,queueCashBill}from'./cash-bill.js';
 
-const labels={queued:'Передан — ожидает выбора на кассе',opening:'Касса выполняет открытие. Повторная отправка заблокирована',opened:'Открыт на кассе. Оплата подтверждается отдельно',unknown:'Результат открытия неизвестен. Проверьте текущий чек на кассе',rejected:'Касса отклонила открытие. Проверьте причину на Эвоторе'};
+const labels={queued:'Передан — ожидает выбора на кассе',cleared:'Прежний чек очищен на кассе. Обновите состав счёта перед повторным открытием.',opening:'Касса выполняет открытие. Повторная отправка заблокирована',opened:'Открыт на кассе. Оплата подтверждается отдельно',unknown:'Результат открытия неизвестен. Проверьте текущий чек на кассе',rejected:'Касса отклонила открытие. Проверьте причину на Эвоторе'};
 let active=null;
 function priceFor(name){
   const matches=S.BUILTIN_MENU_LIVE.flatMap(c=>c.items||[]).filter(i=>itemKey(i.name)===itemKey(name));
@@ -27,11 +27,11 @@ export async function openCashTransfer(date,table,sid){
   panel.querySelector('h3').after(cashDate);
   const status=panel.querySelector('[role=status]'),send=panel.querySelector('[data-cash-send]'),closeButton=panel.querySelector('[data-cash-close]');
   let loading=true,pending=false,remote=null,closed=false,stale=false,timer;
-  const refresh=()=>{send.disabled=loading||pending||stale||!!(remote&&remote.state!=='queued');send.textContent=remote?.state==='queued'?'Обновить состав счёта':'Передать на кассу';closeButton.textContent=pending?'Скрыть окно':'Закрыть';};
+  const refresh=()=>{send.disabled=loading||pending||stale||!!(remote&&!['queued','cleared'].includes(remote.state));send.textContent=['queued','cleared'].includes(remote?.state)?'Обновить состав счёта':'Передать на кассу';closeButton.textContent=pending?'Скрыть окно':'Закрыть';};
   // Hiding the window does not cancel a pending write. Retrying always reuses the same server slot.
   const close=()=>{closed=true;clearTimeout(timer);unsubscribe();panel.remove();active=null;unlockScroll();};
   const unsubscribe=onValue(ref(db,`${cashPath}/${date}/${bill.id}`),snapshot=>{
-    remote=snapshot.val();loading=false;if(!pending)status.textContent=remote?(labels[remote.state]||'Неизвестный статус. Проверьте кассу.'):'Счёт ещё не передан.';refresh();
+    remote=snapshot.val();loading=false;if(!pending)status.textContent=remote?.needsRefresh?'Прежний чек очищен на кассе. Обновите состав счёта перед повторным открытием.':remote?(labels[remote.state]||'Неизвестный статус. Проверьте кассу.'):'Счёт ещё не передан.';refresh();
   },()=>{loading=true;status.textContent='Нет доступа к состоянию передачи. Проверьте вход и соединение.';refresh();});
   active={close};panel.querySelector('[data-cash-close]').onclick=close;
   send.onclick=async()=>{

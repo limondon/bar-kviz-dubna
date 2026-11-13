@@ -117,4 +117,10 @@ final class BridgeClient {
         current.put("finishedAt", System.currentTimeMillis());
         replace(path, before, current);
     }
+    void requeueCleared(CashBill bill) throws Exception {
+        String path = ROOT + bill.date + "/" + bill.id;
+        Document before = get(path);
+        JSONObject next = ReceiptRecovery.requeue(before.object(), bill.record, System.currentTimeMillis());
+        if (next != null) replace(path, before, next);
+    }
 }
