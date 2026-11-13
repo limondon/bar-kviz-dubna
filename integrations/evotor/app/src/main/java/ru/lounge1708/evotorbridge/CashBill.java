@@ -63,9 +63,12 @@ final class CashBill {
         }
         if (total <= 0 || total > 100000000) throw new IllegalArgumentException("Недопустимая сумма счёта.");
     }
+    boolean isFresh(long now) {
+        long createdAt = record.optLong("createdAt", 0);
+        return createdAt > 0 && createdAt <= now + 60000 && createdAt >= now - MAX_AGE;
+    }
     void requireFresh(long now) throws Exception {
-        long createdAt = record.getLong("createdAt");
-        if (createdAt > now + 60000 || now - createdAt > MAX_AGE)
+        if (!isFresh(now))
             throw new IllegalStateException("Счёт старше 15 минут. Обновите состав на сайте.");
     }
     void verifyOrders(JSONObject orders) throws Exception {
