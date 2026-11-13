@@ -123,4 +123,21 @@ final class BridgeClient {
         JSONObject next = ReceiptRecovery.requeue(before.object(), bill.record, System.currentTimeMillis());
         if (next != null) replace(path, before, next);
     }
+    void requeuePostponed(CashBill bill) throws Exception {
+        String path = ROOT + bill.date + "/" + bill.id;
+        Document before = get(path);
+        JSONObject next = ReceiptRecovery.requeue(before.object(), bill.record, System.currentTimeMillis(), "postponed");
+        if (next != null) replace(path, before, next);
+    }
+    CashBill refreshPostponed(CashBill bill, JSONObject previous) throws Exception {
+        String path = ROOT + bill.date + "/" + bill.id;
+        Document before = get(path); JSONObject current = before.object();
+        if (!ReceiptRecovery.wasPostponed(previous, current)) throw new IllegalStateException("Нет подтверждения отложения этого счёта.");
+        if ("queued".equals(current.optString("state"))) return new CashBill(current, bill.id, bill.date);
+        if (!"cleared".equals(current.optString("state")) || !bill.digest.equals(current.optString("digest")))
+            throw new IllegalStateException("Счёт изменился. Выберите его заново из списка.");
+        current.put("state", "queued").put("createdAt", System.currentTimeMillis()); current.remove("needsRefresh");
+        replace(path, before, current);
+        return new CashBill(current, bill.id, bill.date);
+    }
 }

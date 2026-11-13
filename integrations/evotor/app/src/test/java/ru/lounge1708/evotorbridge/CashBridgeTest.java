@@ -112,6 +112,43 @@ public class CashBridgeTest {
         assertEquals("opened", backend.day.getJSONObject(original.getString("id")).getString("state"));
         assertFalse(backend.day.getJSONObject(original.getString("id")).has("clearedAttempts"));
     }
+    @Test public void oldPostponedSnapshotCanBeRefreshedOnceButLateOriginalAckCannotReplaceNewOpening() throws Exception {
+        JSONObject original = fixture().put("state", "opened").put("nonce", "first").put("receiptUuid", "receipt-1")
+                .put("createdAt", System.currentTimeMillis() - 3600000);
+        Backend backend = new Backend(original); BridgeClient client = connected(backend); CashBill shown = bill(original);
+        client.requeuePostponed(shown); assertEquals("cleared", backend.day.getJSONObject(shown.id).getString("state"));
+        CashBill fresh = client.refreshPostponed(shown, original); fresh.requireFresh(System.currentTimeMillis());
+        assertEquals(shown.record.getString("canonical"), fresh.record.getString("canonical"));
+        assertEquals(shown.digest, fresh.digest); assertTrue(ReceiptRecovery.wasPostponed(original, fresh.record));
+        assertFalse(fresh.record.has("needsRefresh")); assertEquals(2, backend.writes);
+        client.claim(fresh, "second");
+        assertThrows(IllegalStateException.class, () -> client.refreshPostponed(shown, original));
+        JSONObject ack = new JSONObject().put("id", shown.id).put("date", shown.date).put("digest", shown.digest).put("nonce", "first")
+                .put("receiptUuid", "receipt-1").put("state", "opened"); client.report(ack);
+        assertEquals("second", backend.day.getJSONObject(shown.id).getString("nonce"));
+        assertEquals("opening", backend.day.getJSONObject(shown.id).getString("state"));
+    }
+    @Test public void refreshPostponedIsIdempotentAfterLostAckAndConditionalOnTheServerVersion() throws Exception {
+        JSONObject original = fixture().put("state", "opened").put("nonce", "first").put("receiptUuid", "receipt-1");
+        Backend backend = new Backend(original); BridgeClient client = connected(backend); CashBill shown = bill(original); client.requeuePostponed(shown);
+        backend.race = true; assertThrows(IllegalStateException.class, () -> client.refreshPostponed(shown, original));
+        assertEquals("cleared", backend.day.getJSONObject(shown.id).getString("state"));
+        backend.loseAck = true; assertThrows(IOException.class, () -> client.refreshPostponed(shown, original));
+        int writes = backend.writes; assertEquals("queued", client.refreshPostponed(shown, original).record.getString("state"));
+        assertEquals(writes, backend.writes);
+        assertThrows(IllegalStateException.class, () -> client.refreshPostponed(shown, new JSONObject(original.toString()).put("receiptUuid", "wrong")));
+    }
+    @Test public void nativeResumeRequiresStoredUnchangedPricesRatherThanGuessingFromOldMenu() throws Exception {
+        JSONObject record = fixture(); JSONArray canonical = new JSONArray(record.getString("canonical"));
+        for (int i = 0; i < canonical.getJSONArray(4).length(); i++) canonical.getJSONArray(4).getJSONArray(i).put(6, false);
+        record.put("canonical", canonical.toString()).put("digest", CashBill.hash(canonical.toString()));
+        CashBill bill = bill(record); JSONObject orders = sourceOrders(bill); bill.verifyOrders(orders); bill.requireStoredPricesForResume(orders);
+        orders.getJSONObject("order-1").getJSONObject("items").getJSONObject("line-1").remove("price");
+        assertThrows(IllegalStateException.class, () -> bill.requireStoredPricesForResume(orders));
+        canonical.getJSONArray(4).getJSONArray(0).put(6, true);
+        record.put("canonical", canonical.toString()).put("digest", CashBill.hash(canonical.toString())); CashBill estimated = bill(record);
+        assertThrows(IllegalStateException.class, () -> estimated.requireStoredPricesForResume(sourceOrders(estimated)));
+    }
     private static JSONObject sourceOrders(CashBill bill) throws Exception {
         JSONObject items = new JSONObject();
         for (CashBill.Line line : bill.lines) items.put(line.itemId, new JSONObject().put("name", line.name).put("qty", line.quantity).put("price", line.price()).put("menuItemId", line.productId));

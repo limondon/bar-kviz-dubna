@@ -111,6 +111,17 @@ final class CashBill {
                 || ((String) value).matches("(?s).*[\\x00-\\x1f].*")) throw new IllegalArgumentException("Неверное поле счёта.");
         return (String) value;
     }
+    void requireStoredPricesForResume(JSONObject orders) throws Exception {
+        for (Line line : lines) {
+            if (line.estimated) throw new IllegalStateException("В старом счёте есть цены из меню. Обновите состав этого стола на сайте один раз, затем продолжите счёт.");
+            JSONObject order = orders.getJSONObject(line.orderId); Object raw = order.get("items");
+            JSONObject item = raw instanceof JSONObject ? ((JSONObject) raw).optJSONObject(line.itemId)
+                    : raw instanceof JSONArray && line.itemId.matches("[0-9]+") ? ((JSONArray) raw).optJSONObject(Integer.parseInt(line.itemId)) : null;
+            if (item == null || !item.has("price") || item.isNull("price") || item.optString("price").isEmpty()
+                    || new BigDecimal(item.get("price").toString()).compareTo(line.price()) != 0)
+                throw new IllegalStateException("Не подтверждена сохранённая цена заказа. Обновите состав на сайте.");
+        }
+    }
     static long integer(Object value) {
         if (!(value instanceof Number)) throw new IllegalArgumentException("Ожидалось число.");
         try { return new BigDecimal(value.toString()).longValueExact(); }
