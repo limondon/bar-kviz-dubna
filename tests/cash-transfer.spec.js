@@ -50,6 +50,32 @@ test('shared golden fixture is still produced by the website',async()=>{
   const bill=await helpers().buildCashBill({date,table,sid,orders:[...orders.values()],priceFor:()=>null});
   expect(bill.canonical).toBe(wire.canonical);expect(bill.digest).toBe(wire.digest);expect(bill.id).toBe(wire.id);
 });
+
+test('only a cleared receipt can be refreshed after an opening and its attempt history survives',async()=>{
+  const {buildCashBill,queueCashBill}=helpers();
+  const bill=await buildCashBill({date:date(),table:'1',sid:'session',orders:[order([{id:'a',name:'Чай',qty:1,price:500}])],priceFor:()=>null});
+  for(const state of ['opening','opened','unknown','rejected'])expect(queueCashBill({state},bill,1000)).toBeUndefined();
+  expect(queueCashBill({state:'cleared'},bill,1000)).toBeUndefined();
+  const history=[{nonce:'old-attempt',receiptUuid:'old-receipt',digest:'old-digest',clearedAt:10}];
+  const fresh=queueCashBill({state:'cleared',needsRefresh:true,clearedAttempts:history},bill,1000);
+  expect(fresh.state).toBe('queued');expect(fresh.createdAt).toBe(1000);expect(fresh.canonical).toBe(bill.canonical);
+  expect(fresh.clearedAttempts).toEqual(history);expect(fresh.needsRefresh).toBeUndefined();
+  expect(queueCashBill(fresh,bill,2000).clearedAttempts).toEqual(history);
+});
+
+test('a receipt cleared on the terminal can be refreshed from the website without losing history',async({page})=>{
+  const env=await setup(page,{orders:{one:order({a:{name:'Вода',qty:1,price:100}})}});await show(page);
+  await page.locator('[data-cash-send]').click();await expect(page.locator('.cash-transfer-status')).toContainText('Передан');
+  const [id,entry]=Object.entries(env.data().config.evotor.v1.transfers[date()])[0];
+  const history=[{nonce:'old-attempt',receiptUuid:'old-receipt',digest:entry.digest,clearedAt:Date.now()}];
+  await page.evaluate(({day,id,entry,history})=>window.__remoteSet(`config/evotor/v1/transfers/${day}/${id}`,{...entry,state:'cleared',needsRefresh:true,clearedAttempts:history}),{day:date(),id,entry,history});
+  await expect(page.locator('.cash-transfer-status')).toContainText('Прежний чек очищен');
+  await expect(page.locator('[data-cash-send]')).toBeEnabled();await page.locator('[data-cash-send]').click();
+  await expect(page.locator('.cash-transfer-status')).toContainText('Передан');
+  const fresh=env.data().config.evotor.v1.transfers[date()][id];
+  expect(fresh.state).toBe('queued');expect(fresh.clearedAttempts).toEqual(history);expect(fresh.needsRefresh).toBeUndefined();
+  expect(env.errors).toEqual([]);
+});
 test('a changed bill requires a new preview and a failed write can retry without a new id',async({page})=>{
   const env=await setup(page,{orders:{one:order({a:{name:'Вода',qty:1,price:100}})}});await show(page);
   await page.evaluate(()=>window.__remoteSet('orders/one/items/a/qty',2));

@@ -155,7 +155,9 @@ public final class TransferActivity extends Activity {
                     for (CashBill bill : bills) {
                         String state = bill.record.optString("state");
                         String label = "Стол " + bill.table + " · " + BigDecimal.valueOf(bill.total, 2).toPlainString() + " ₽ · " + stateLabel(state);
-                        if ("queued".equals(state)) button(list, label, () -> billView(bill)); else text(list, label, 17);
+                        if ("queued".equals(state) || "cleared".equals(state)) button(list, label, () -> billView(bill));
+                        else if ("opened".equals(state)) button(list, label + " · проверить чек", () -> openedBillView(bill));
+                        else text(list, label, 17);
                     }
                     status.setText(bills.isEmpty() ? "Нет переданных счетов за этот день. На сайте откройте стол и нажмите «Передать на кассу»." : "Выберите счёт. Передача не означает оплату.");
                 });
@@ -167,9 +169,66 @@ public final class TransferActivity extends Activity {
             case "queued": return "ожидает открытия";
             case "opening": return "открывается — повтор заблокирован";
             case "opened": return "чек открыт, оплата отдельно";
+            case "cleared": return "чек очищен — обновите состав на сайте";
             case "rejected": return "касса отклонила открытие";
             default: return "результат неизвестен — проверьте текущий чек";
         }
+    }
+    private void verifyClearedReceipt(String uuid) throws Exception {
+        if (uuid == null || uuid.isEmpty()) throw new IllegalStateException("Нет идентификатора прежнего чека. Повтор заблокирован.");
+        Receipt previous = ReceiptApi.getReceipt(this, uuid);
+        int fiscalCount;
+        // A failed/null provider lookup is not proof that a fiscal receipt is absent.
+        try (ru.evotor.query.Cursor<ru.evotor.framework.receipt.FiscalReceipt> fiscal = ReceiptApi.getFiscalReceipts(this, uuid)) {
+            if (fiscal == null) throw new IllegalStateException("Касса не подтвердила отсутствие фискального документа. Повтор заблокирован.");
+            fiscalCount = fiscal.getCount();
+        }
+        if (previous != null && !uuid.equals(previous.getHeader().getUuid()))
+            throw new IllegalStateException("Касса вернула другой чек. Повтор заблокирован.");
+        ReceiptRecovery.requireCleared(previous == null ? null : previous.getHeader().getNumber(),
+                previous == null ? 0 : previous.getPositions().size(), previous == null ? 0 : previous.getPayments().size(), fiscalCount);
+    }
+    private void openedBillView(CashBill bill) {
+        listing = false; page("Стол " + bill.table + " · ранее открытый чек");
+        status = text(body, "Проверяю прежний чек на этой кассе…", 16); busy = true;
+        worker.execute(() -> {
+            String problem = null;
+            try {
+                ReceiptRecovery.requireLocalMatch(journal().optJSONObject(bill.id), bill.record);
+                verifyClearedReceipt(bill.record.getString("receiptUuid"));
+            } catch (Exception e) {
+                problem = e instanceof IllegalStateException ? e.getMessage() : "Не удалось проверить прежний чек. Повторное создание заблокировано.";
+            }
+            String reason = problem;
+            post(() -> {
+                busy = false;
+                status.setText(reason == null ? "Прежний чек очищен: товаров, оплат и фискальных документов не найдено. Можно вернуть счёт в список для новой передачи с сайта." : reason);
+                if (reason == null) button(body, "Вернуть очищенный счёт в список", () -> new AlertDialog.Builder(this)
+                        .setTitle("Вернуть счёт стола " + bill.table + "?")
+                        .setMessage("Подтвердите, что вы очистили прежний чек и не принимали по нему оплату. Новый чек сейчас не создаётся. Затем обновите состав счёта на сайте.")
+                        .setNegativeButton("Отмена", null).setPositiveButton("Вернуть в список", (d, w) -> recoverCleared(bill)).show());
+                button(body, "Текущий чек кассы", this::receiptScreen);
+                button(body, "К списку счетов", this::listView);
+            });
+        });
+    }
+    private synchronized void rememberCleared(String id, JSONObject expected) throws Exception {
+        JSONObject local = journal().optJSONObject(id);
+        ReceiptRecovery.requireLocalMatch(local, expected);
+        local.put("state", "cleared").put("synced", true);
+        remember(local);
+    }
+    private void recoverCleared(CashBill bill) {
+        if (busy) return; busy = true; status.setText("Повторно проверяю чек и возвращаю счёт в список…");
+        worker.execute(() -> {
+            try {
+                ReceiptRecovery.requireLocalMatch(journal().optJSONObject(bill.id), bill.record);
+                verifyClearedReceipt(bill.record.getString("receiptUuid"));
+                client.requeueCleared(bill);
+                rememberCleared(bill.id, bill.record);
+                post(() -> { busy = false; listView(); });
+            } catch (Exception e) { post(() -> error(e)); }
+        });
     }
     private void billView(CashBill bill) {
         busy = true; status.setText("Получаю соответствия с сайта…");
@@ -184,7 +243,8 @@ public final class TransferActivity extends Activity {
     private void renderBill(CashBill bill, JSONObject settings, JSONObject catalog) {
         listing = false; page("Стол " + bill.table + " · " + BigDecimal.valueOf(bill.total, 2).toPlainString() + " ₽");
         text(body, "Соответствия получены из раздела «Касса Эвотор» на сайте. Проверьте состав ниже. После попытки открытия повтор этого посещения заблокирован, включая дозаказы.", 16);
-        boolean valid = true;
+        boolean valid = !bill.record.optBoolean("needsRefresh");
+        if (!valid) text(body, "Прежний чек был очищен. На сайте заново откройте передачу этого стола и нажмите «Обновить состав счёта», затем обновите список на кассе.", 17);
         for (CashBill.Line line : bill.lines) {
             text(body, line.name + " ×" + line.quantity + " · " + line.price().toPlainString() + " ₽/шт." + (line.estimated ? "\nЦена взята из текущего меню сайта." : ""), 18);
             try {
@@ -212,8 +272,18 @@ public final class TransferActivity extends Activity {
         if (busy) return; busy = true; status.setText("Проверяю состав, карточки и текущий чек…");
         worker.execute(() -> {
             try {
+                if (bill.record.optBoolean("needsRefresh")) throw new IllegalStateException("После очистки чека обновите состав счёта на сайте.");
                 bill.requireFresh(System.currentTimeMillis());
-                if (journal().has(bill.id)) throw new IllegalStateException("Этот счёт уже открывался или результат неизвестен. Проверьте текущий чек. Повтор заблокирован.");
+                JSONObject previous = journal().optJSONObject(bill.id);
+                if (previous != null) {
+                    if (!ReceiptRecovery.wasCleared(previous, bill.record))
+                        throw new IllegalStateException("Этот счёт уже открывался или результат неизвестен. Проверьте текущий чек. Повтор заблокирован.");
+                    // Recheck even after a restart or an acknowledged recovery. A missing ack cannot unlock an unknown attempt.
+                    if (!("opened".equals(previous.optString("state")) || "cleared".equals(previous.optString("state"))))
+                        throw new IllegalStateException("Нет подтверждённой очистки прежнего чека. Повтор заблокирован.");
+                    verifyClearedReceipt(previous.getString("receiptUuid"));
+                    rememberCleared(bill.id, previous);
+                }
                 JSONObject ledger = journal(); Iterator<String> ids = ledger.keys();
                 while (ids.hasNext()) {
                     String state = ledger.getJSONObject(ids.next()).optString("state");
@@ -264,19 +334,18 @@ public final class TransferActivity extends Activity {
                     if (result.getType() == IntegrationManagerFuture.Result.Type.OK) {
                         OpenReceiptCommandResult opened = OpenReceiptCommandResult.create(result.getData());
                         String uuid = opened == null ? "" : opened.getReceiptUuid();
-                        finishAttempt(attempt, uuid == null || uuid.isEmpty() ? "unknown" : "opened", uuid,
-                                "Касса ответила на открытие. Проверьте текущий чек. Тестовый чек не оплачивайте.");
-                        post(this::receiptScreen);
+                        if (finishAttempt(attempt, uuid == null || uuid.isEmpty() ? "unknown" : "opened", uuid,
+                                "Касса ответила на открытие. Проверьте текущий чек. Тестовый чек не оплачивайте.")) post(this::receiptScreen);
                     } else finishAttempt(attempt, "rejected", "", "Касса отклонила открытие. Проверьте текущий чек; повтор этого счёта заблокирован.");
                 } catch (Exception e) { finishAttempt(attempt, "unknown", "", "Не удалось разобрать ответ кассы. Проверьте текущий чек; повтор заблокирован."); }
             });
         } catch (Exception e) { finishAttempt(attempt, "unknown", "", "Результат неизвестен. Проверьте текущий чек; повтор заблокирован."); }
     }
-    private void finishAttempt(JSONObject attempt, String state, String receiptUuid, String message) {
+    private boolean finishAttempt(JSONObject attempt, String state, String receiptUuid, String message) {
         try {
             synchronized (this) {
                 JSONObject saved = journal().optJSONObject(attempt.getString("id"));
-                if (saved != null && "opened".equals(saved.optString("state"))) return; // A late timeout never downgrades success.
+                if (!ReceiptRecovery.acceptsResult(saved, attempt)) return false;
                 attempt = new JSONObject(attempt.toString()).put("state", state).put("synced", false).put("receiptUuid", receiptUuid == null ? "" : receiptUuid);
                 remember(attempt); activeNonce = null;
             }
@@ -285,7 +354,8 @@ public final class TransferActivity extends Activity {
                 try { client.report(ack); markSynced(ack); post(() -> { busy = false; status.setText(message); }); }
                 catch (Exception e) { post(() -> { busy = false; status.setText(message + " Сайт пока не получил подтверждение. Нажмите обновление списка для синхронизации."); }); }
             });
-        } catch (Exception e) { post(() -> { busy = false; status.setText("Не удалось сохранить результат. Проверьте текущий чек. Повтор заблокирован сервером."); }); }
+            return true;
+        } catch (Exception e) { post(() -> { busy = false; status.setText("Не удалось сохранить результат. Проверьте текущий чек. Повтор заблокирован сервером."); }); return false; }
     }
     private void receiptScreen() {
         try { startActivity(NavigationApi.createIntentForSellReceiptEdit(false)); }

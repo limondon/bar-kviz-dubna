@@ -41,6 +41,6 @@ export async function buildCashBill({date,table,sid,orders,priceFor}){
   return{schema:1,id:await cashBillId(date,table,sid),date,table,sid,canonical,digest:await cashHash(canonical),total,estimated,rows};
 }
 export function queueCashBill(current,bill,now){
-  if(current&&current.state!=='queued')return; // No replay, including changed bills after an attempt.
-  return{schema:1,id:bill.id,date:bill.date,table:bill.table,sid:bill.sid,canonical:bill.canonical,digest:bill.digest,state:'queued',createdAt:now};
+  if(current&&current.state!=='queued'&&!(current.state==='cleared'&&Array.isArray(current.clearedAttempts)&&current.clearedAttempts.length))return;
+  return{...(Array.isArray(current?.clearedAttempts)?{clearedAttempts:current.clearedAttempts}:{}),schema:1,id:bill.id,date:bill.date,table:bill.table,sid:bill.sid,canonical:bill.canonical,digest:bill.digest,state:'queued',createdAt:now};
 }
