@@ -1,6 +1,6 @@
 import{S}from'./state.js';
 import{auth,db,ref,onValue,runTransaction}from'./firebase.js';
-import{esc,escAttr,lockScroll,unlockScroll}from'./utils.js';
+import{esc,escAttr,lockScroll,unlockScroll,DEFAULT_ADDON_PRICE}from'./utils.js';
 import{cashDevicesPath,cashRuleKey,addonName,cashPartsTotal,cashRuleState,editCashRules,cashCatalogReady,cashSuggestion}from'./cash-rules.js';
 
 let opened=false;
@@ -31,9 +31,9 @@ export function openCashSettings(){
   const money=k=>(k/100).toLocaleString('ru-RU')+' ₽';
   const menuRows=()=>menu.flatMap(c=>(c.items||[]).filter(i=>i&&typeof i.name==='string').map(i=>({name:i.name,price:i.price,category:c.cat,group:i.group||''})));
   async function rows(){
-    const list=kind==='products'?menuRows():[];
-    const names=new Set(list.map(x=>x.name));
-    for(const rule of Object.values(settings()[kind]||{}))if(rule&&typeof rule.name==='string'&&!names.has(rule.name)){list.push({name:rule.name,price:rule.expectedKopecks/100,category:'Свои соответствия'});names.add(rule.name);}
+    const list=kind==='products'?menuRows():['Лимон','Мята','Чабрец'].map(name=>({name:addonName(name),price:DEFAULT_ADDON_PRICE,category:'Добавки к чаю'}));
+    const nameKey=name=>kind==='addons'?addonName(name):name,names=new Set(list.map(x=>nameKey(x.name)));
+    for(const rule of Object.values(settings()[kind]||{}))if(rule&&typeof rule.name==='string'&&!names.has(nameKey(rule.name))){list.push({name:rule.name,price:rule.expectedKopecks/100,category:'Свои соответствия'});names.add(nameKey(rule.name));}
     return Promise.all(list.map(async r=>({...r,key:await cashRuleKey(r.name,kind==='addons')})));
   }
   let renderToken=0;
@@ -48,6 +48,7 @@ export function openCashSettings(){
     const list=await rows();if(closed||editing||token!==renderToken)return;
     const cat=catalog(),current=settings();
     const filtered=list.filter(r=>(r.name+' '+r.category+' '+r.group).toLocaleLowerCase('ru').includes(query.toLocaleLowerCase('ru')));
+    const addonHelp=kind==='addons'?'<p class="cash-settings-note cash-addon-help">Настройте каждую добавку один раз: например, «лимон» → «Добавка лимон». Касса сама добавит её к выбранному чаю. Для чая с лимоном и мятой будут три позиции: чай, лимон и мята.</p>':'';
     content.innerHTML=`<div class="cash-settings-toolbar"><label>Касса<select data-device>${deviceOptions()}</select></label><button class="app-modal-btn" data-refresh${pending||!deviceId?' disabled':''}>Обновить каталог кассы</button></div>${cat?`<p class="cash-settings-note">Каталог от ${esc(new Date(cat.exportedAt).toLocaleString('ru-RU'))}. ${Object.keys(cat.items||{}).length} карточек.</p>`:'<p>Каталог ещё не получен. На Эвоторе откройте «Счета с сайта», войдите и нажмите «Обновить каталог для сайта».</p>'}<div class="cash-settings-tabs"><button class="app-modal-btn ${kind==='products'?'primary':''}" data-kind="products">Наши товары</button><button class="app-modal-btn ${kind==='addons'?'primary':''}" data-kind="addons">Добавки</button></div><div class="cash-settings-filter"><input data-search type="search" aria-label="Найти наш товар" placeholder="Название, категория или группа" value="${escAttr(query)}"><button class="app-modal-btn" data-new${!cat?' disabled':''}>Добавить соответствие</button></div><div class="cash-settings-bulk"><button class="app-modal-btn" data-select${!filtered.length?' disabled':''}>Выбрать найденные (${filtered.length})</button><button class="app-modal-btn primary" data-bulk${!selected.size||!cat?' disabled':''}>Назначить выбранным (${selected.size})</button></div><div class="cash-settings-list">${filtered.map(r=>{
       const rule=current[kind]?.[r.key],state=cashRuleState(rule,cat,Number(r.price));
       const suggestion=!rule&&list.filter(x=>x.name===r.name).length===1?cashSuggestion(r,cat):null;
@@ -55,6 +56,7 @@ export function openCashSettings(){
       return`<article class="cash-settings-row"><label><input type="checkbox" data-pick="${r.key}"${selected.has(r.key)?' checked':''}><span><b>${esc(r.name)}</b><small>${esc(r.category)} · ${money(Math.round(Number(r.price)*100))}</small></span></label><div><span class="cash-rule-state${state==='Настроено'?' good':''}">${suggestion?'Совпало название и цена':state}</span><p>${esc(target||'Выберите товар Эвотора')}${suggestion?' — проверьте и сохраните':''}</p></div><button class="app-modal-btn" data-edit="${r.key}"${!cat?' disabled':''}>${rule?'Изменить':'Настроить'}</button></article>`;
     }).join('')||'<p>Нет соответствий. Добавьте товар или добавку.</p>'}</div>`;
     if(wasWaiting)scrollBody.scrollTop=0;
+    if(addonHelp)content.querySelector('.cash-settings-tabs').insertAdjacentHTML('afterend',addonHelp);
     bindDeviceControls();
     content.querySelectorAll('[data-kind]').forEach(b=>b.onclick=()=>{kind=b.dataset.kind;selected.clear();query='';render();});
     content.querySelector('[data-search]').oninput=e=>{query=e.target.value;const start=e.target.selectionStart;render().then(()=>{const input=content.querySelector('[data-search]');input?.focus();if(input?.type!=='search')input?.setSelectionRange(start,start);});};
@@ -96,11 +98,12 @@ export function openCashSettings(){
     const suggestion=targets.length===1&&!parts.length?cashSuggestion(targets[0],cat):null;
     if(suggestion)parts=[suggestion];
     let advanced=parts.length>1||parts.some(p=>p.units!==1);
-    editing={};++renderToken;
+    editing={};++renderToken;message('');
     content.innerHTML=`<div class="cash-rule-editor">
       <h3 tabindex="-1">${targets.length?targets.length===1?esc(targets[0].name):'Одно соответствие для '+targets.length+' товаров':'Новое соответствие'}</h3>
       ${targets.length?`<p>На сайте: ${money(Math.round(Number(targets[0].price)*100))}${targets.length>1?' за каждый товар':''}</p>`:`<label>Название ${kind==='addons'?'добавки в заказе':'на сайте, точно как в заказе'}<input data-name maxlength="200" placeholder="${kind==='addons'?'лимон':'Название товара или варианта'}"></label><label>Цена на сайте, ₽<input data-price type="number" min="0" step="0.01"></label>`}
       ${suggestion?'<p class="cash-settings-note">Найдено единственное совпадение названия и цены. Проверьте товар и нажмите «Сохранить».</p>':''}
+      ${originalKind==='addons'?'<p class="cash-settings-note">Сохраните только саму добавку. Её соответствие будет использоваться для любого чая.</p>':targets.some(row=>/ча[йи]/i.test(row.category||''))?'<p class="cash-settings-note">Здесь выберите сам чай без добавок. Лимон, мята и чабрец настраиваются отдельно во вкладке «Добавки» и подставляются к чаю автоматически.</p>':''}
       <label>Найти товар на кассе<input data-find type="search" placeholder="Название или категория"></label>
       <label>Товар в Эвоторе<select data-card aria-label="Карточка Эвотора"></select></label>
       <div data-parts></div><button class="app-modal-btn" data-add>Добавить карточку</button><p data-total></p>
