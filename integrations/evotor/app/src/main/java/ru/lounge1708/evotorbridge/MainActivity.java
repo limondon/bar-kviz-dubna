@@ -52,6 +52,9 @@ public final class MainActivity extends Activity {
 
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
+        if (!getIntent().getBooleanExtra("diagnostic", false)) {
+            startActivity(new Intent(this, TransferActivity.class)); finish(); return;
+        }
         preferences = getSharedPreferences("draft-test", MODE_PRIVATE);
         ScrollView scroll = new ScrollView(this);
         LinearLayout body = new LinearLayout(this);
@@ -61,7 +64,7 @@ public final class MainActivity extends Activity {
         scroll.addView(body);
         setContentView(scroll);
         text(body, "1708 · Проверка кассы\n" + AppVersion.label(this), 24);
-        button(body, "Счета с сайта · тест", v -> startActivity(new Intent(this, TransferActivity.class)));
+        button(body, "К счетам", v -> finish());
         text(body, "Выбор существующего товара и открытие чека без оплаты. "
                 + "Проверку проводите вне обслуживания гостей. Для передачи со страницы стола откройте «Счета с сайта».", 16);
         search = input(body, "Название товара", "Пиво", InputType.TYPE_CLASS_TEXT);

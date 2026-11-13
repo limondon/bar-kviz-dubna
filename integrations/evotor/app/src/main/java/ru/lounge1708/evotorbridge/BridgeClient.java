@@ -140,4 +140,15 @@ final class BridgeClient {
         replace(path, before, current);
         return new CashBill(current, bill.id, bill.date);
     }
+    // Called only after source rows, stored prices and live cash cards have been validated.
+    CashBill refreshUnchanged(CashBill bill) throws Exception {
+        String path = ROOT + bill.date + "/" + bill.id;
+        Document before = get(path); JSONObject current = before.object();
+        if (!"queued".equals(current.optString("state")) || current.optBoolean("needsRefresh")
+                || !bill.digest.equals(current.optString("digest")))
+            throw new IllegalStateException("Состав или состояние счёта изменились. Обновите его на сайте и выберите заново.");
+        new CashBill(current, bill.id, bill.date);
+        current.put("createdAt", System.currentTimeMillis()); replace(path, before, current);
+        return new CashBill(current, bill.id, bill.date);
+    }
 }
