@@ -60,7 +60,7 @@ public final class MainActivity extends Activity {
         body.setPadding(pad, pad, pad, pad);
         scroll.addView(body);
         setContentView(scroll);
-        text(body, "1708 · Проверка кассы", 24);
+        text(body, "1708 · Проверка кассы\n" + AppVersion.label(this), 24);
         button(body, "Счета с сайта · тест", v -> startActivity(new Intent(this, TransferActivity.class)));
         text(body, "Выбор существующего товара и открытие чека без оплаты. "
                 + "Проверку проводите вне обслуживания гостей. Для передачи со страницы стола откройте «Счета с сайта».", 16);
@@ -259,8 +259,19 @@ public final class MainActivity extends Activity {
     }
 
     private void showExistingReceipt() {
-        try { startActivity(NavigationApi.createIntentForSellReceiptEdit(false)); }
-        catch (Exception error) { status.setText("Не удалось открыть экран чека: " + error.getMessage()); }
+        busy = true; updateControls();
+        worker.execute(() -> {
+            try {
+                Receipt current = ReceiptApi.getReceipt(this, Receipt.Type.SELL);
+                ReceiptNavigation.requireEditable(current == null ? null : current.getHeader().getUuid(),
+                        current == null ? 0 : current.getPositions().size(), current == null ? 0 : current.getPayments().size(), null);
+                post(() -> {
+                    busy = false; updateControls();
+                    try { startActivity(NavigationApi.createIntentForSellReceiptEdit(false)); }
+                    catch (Exception error) { failure(error); new AlertDialog.Builder(this).setTitle("Чек не открыт").setMessage("Не удалось перейти к заполненному чеку. Откройте «Продажа» на кассе вручную.").setPositiveButton("Понятно", null).show(); }
+                });
+            } catch (Exception error) { post(() -> { failure(error); new AlertDialog.Builder(this).setTitle("Чек не открыт").setMessage(error.getMessage()).setPositiveButton("Понятно", null).show(); }); }
+        });
     }
     @Override protected void onDestroy() { worker.shutdownNow(); super.onDestroy(); }
 }

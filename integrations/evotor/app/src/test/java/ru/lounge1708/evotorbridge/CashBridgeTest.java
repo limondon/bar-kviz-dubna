@@ -86,6 +86,13 @@ public class CashBridgeTest {
         assertThrows(IllegalStateException.class, () -> client.claim(bill(record), "one")); assertEquals(0, backend.writes);
         client.logout(); assertThrows(IllegalStateException.class, () -> client.get("config/evotor/v1/transfers/2026-11-12"));
     }
+    @Test public void visibleFreshnessCheckUsesTheSameBoundariesAsOpening() throws Exception {
+        long now = System.currentTimeMillis(); JSONObject record = fixture().put("createdAt", now - CashBill.MAX_AGE);
+        assertTrue(bill(record).isFresh(now)); bill(record).requireFresh(now);
+        record.put("createdAt", now - CashBill.MAX_AGE - 1); assertFalse(bill(record).isFresh(now));
+        record.put("createdAt", now + 60000); assertTrue(bill(record).isFresh(now));
+        record.put("createdAt", now + 60001); assertFalse(bill(record).isFresh(now));
+    }
     @Test public void clearedRecoveryIsConditionalAndIdempotentAfterLostAcknowledgement() throws Exception {
         JSONObject original = fixture().put("state", "opened").put("nonce", "first").put("receiptUuid", "receipt-1");
         Backend backend = new Backend(original); BridgeClient client = connected(backend); CashBill shown = bill(original);

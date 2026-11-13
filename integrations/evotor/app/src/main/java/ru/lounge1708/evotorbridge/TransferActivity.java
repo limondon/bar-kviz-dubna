@@ -40,8 +40,12 @@ public final class TransferActivity extends Activity {
     private final Handler ui = new Handler(Looper.getMainLooper());
     private final BridgeClient client = new BridgeClient();
     private SharedPreferences storage;
-    private LinearLayout body, list;
+    private LinearLayout body, list, actions;
     private TextView status;
+    private Button openBillButton;
+    private CashBill displayedBill;
+    private boolean mappingReady;
+    private String selectedDay;
     private EditText day;
     private boolean busy, listing, started;
     private volatile String activeNonce;
@@ -59,12 +63,18 @@ public final class TransferActivity extends Activity {
         loginView();
     }
     private void page(String title) {
+        openBillButton = null; displayedBill = null; mappingReady = false;
+        LinearLayout root = new LinearLayout(this); root.setOrientation(LinearLayout.VERTICAL);
+        int pad = (int) (16 * getResources().getDisplayMetrics().density); root.setPadding(pad, pad, pad, pad);
+        text(root, title, 21); text(root, AppVersion.label(this), 14);
+        status = text(root, "", 17); status.setAccessibilityLiveRegion(android.view.View.ACCESSIBILITY_LIVE_REGION_POLITE);
         ScrollView scroll = new ScrollView(this); body = new LinearLayout(this); body.setOrientation(LinearLayout.VERTICAL);
-        int pad = (int) (20 * getResources().getDisplayMetrics().density); body.setPadding(pad, pad, pad, pad);
-        scroll.addView(body); setContentView(scroll); text(body, title, 23);
+        scroll.addView(body); root.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1));
+        actions = new LinearLayout(this); actions.setOrientation(LinearLayout.VERTICAL); root.addView(actions);
+        setContentView(root);
     }
     private TextView text(LinearLayout parent, String value, int size) {
-        TextView view = new TextView(this); view.setText(value); view.setTextSize(size); view.setPadding(0, 12, 0, 12); parent.addView(view); return view;
+        TextView view = new TextView(this); view.setText(value); view.setTextSize(size); view.setTextColor(android.graphics.Color.rgb(35, 35, 35)); view.setPadding(0, 8, 0, 8); parent.addView(view); return view;
     }
     private Button button(LinearLayout parent, String value, Runnable action) {
         Button view = new Button(this); view.setAllCaps(false); view.setText(value); view.setMinHeight((int) (52 * getResources().getDisplayMetrics().density));
@@ -78,6 +88,13 @@ public final class TransferActivity extends Activity {
         busy = false;
         status.setText((error instanceof IllegalStateException || error instanceof IllegalArgumentException) && error.getMessage() != null
                 ? error.getMessage() : "Не удалось выполнить действие. Проверьте соединение и вход сотрудника.");
+        updateOpenButton();
+    }
+    private void updateOpenButton() {
+        if (openBillButton == null || displayedBill == null) return;
+        boolean fresh = displayedBill.isFresh(System.currentTimeMillis());
+        openBillButton.setEnabled(!busy && mappingReady && fresh);
+        openBillButton.setText(busy ? "Проверяю чек…" : fresh ? "Проверить и открыть тестовый чек" : "Сначала обновите счёт на сайте");
     }
     private void loginView() {
         listing = false; page("1708 · Счета с сайта · тест");
@@ -90,11 +107,11 @@ public final class TransferActivity extends Activity {
             busy = true; status.setText("Выполняю вход…");
             worker.execute(() -> { try { client.login(name, secret); post(() -> { busy = false; listView(); }); } catch (Exception e) { post(() -> error(e)); } });
         });
-        status = text(body, "Счёт открывается только после выбора товаров и вашего подтверждения. Тестовые чеки не оплачивайте.", 16);
+        status.setText("Счёт открывается только после проверки и вашего подтверждения. Тестовые чеки не оплачивайте.");
     }
     private void listView() {
         listing = true; page("Счета с сайта");
-        day = input(body, "Дата YYYY-MM-DD", new SimpleDateFormat("yyyy-MM-dd", Locale.ROOT).format(new java.util.Date()), InputType.TYPE_CLASS_DATETIME);
+        day = input(body, "Дата YYYY-MM-DD", selectedDay == null ? new SimpleDateFormat("yyyy-MM-dd", Locale.ROOT).format(new java.util.Date()) : selectedDay, InputType.TYPE_CLASS_DATETIME);
         button(body, "Обновить список", this::refresh);
         button(body, "Обновить каталог для сайта", () -> {
             busy = true; status.setText("Передаю каталог кассы на сайт…");
@@ -103,7 +120,7 @@ public final class TransferActivity extends Activity {
         button(body, "Текущий чек кассы", this::receiptScreen);
         button(body, "Выйти из аккаунта сайта", () -> { client.logout(); loginView(); });
         list = new LinearLayout(this); list.setOrientation(LinearLayout.VERTICAL); body.addView(list);
-        status = text(body, "Список обновляется каждые 10 секунд, пока открыт этот экран.", 16); refresh();
+        status.setText("Список обновляется каждые 10 секунд, пока открыт этот экран."); refresh();
     }
     private synchronized JSONObject journal() throws Exception { return new JSONObject(storage.getString("journal", "{}")); }
     private synchronized void remember(JSONObject entry) throws Exception {
@@ -143,6 +160,7 @@ public final class TransferActivity extends Activity {
         if (busy) return;
         String date = day.getText().toString().trim();
         if (!date.matches("[0-9]{4}-[0-9]{2}-[0-9]{2}")) { status.setText("Введите дату YYYY-MM-DD."); return; }
+        selectedDay = date;
         busy = true; status.setText("Проверяю передачи и подтверждения…");
         worker.execute(() -> {
             try {
@@ -190,7 +208,7 @@ public final class TransferActivity extends Activity {
     }
     private void openedBillView(CashBill bill) {
         listing = false; page("Стол " + bill.table + " · ранее открытый чек");
-        status = text(body, "Проверяю прежний чек на этой кассе…", 16); busy = true;
+        status.setText("Проверяю прежний чек на этой кассе…"); busy = true;
         worker.execute(() -> {
             String problem = null;
             try {
@@ -207,7 +225,7 @@ public final class TransferActivity extends Activity {
                         .setTitle("Вернуть счёт стола " + bill.table + "?")
                         .setMessage("Подтвердите, что вы очистили прежний чек и не принимали по нему оплату. Новый чек сейчас не создаётся. Затем обновите состав счёта на сайте.")
                         .setNegativeButton("Отмена", null).setPositiveButton("Вернуть в список", (d, w) -> recoverCleared(bill)).show());
-                button(body, "Текущий чек кассы", this::receiptScreen);
+                if (reason != null) button(body, "Продолжить прежний чек", () -> receiptScreen(bill.record.optString("receiptUuid")));
                 button(body, "К списку счетов", this::listView);
             });
         });
@@ -231,36 +249,47 @@ public final class TransferActivity extends Activity {
         });
     }
     private void billView(CashBill bill) {
-        busy = true; status.setText("Получаю соответствия с сайта…");
+        busy = true; updateOpenButton(); status.setText("Получаю свежий счёт и соответствия с сайта…");
         worker.execute(() -> {
             try {
+                CashBill fresh = new CashBill(client.get(BridgeClient.ROOT + bill.date + "/" + bill.id).object(), bill.id, bill.date);
                 JSONObject settings = client.get(BridgeClient.DEVICES + deviceId + "/settings").object();
                 JSONObject catalog = client.get(BridgeClient.DEVICES + deviceId + "/catalog").object();
-                post(() -> { busy = false; renderBill(bill, settings, catalog); });
+                post(() -> { busy = false; if ("opened".equals(fresh.record.optString("state"))) openedBillView(fresh); else renderBill(fresh, settings, catalog); });
             } catch (Exception e) { post(() -> error(e)); }
         });
     }
     private void renderBill(CashBill bill, JSONObject settings, JSONObject catalog) {
         listing = false; page("Стол " + bill.table + " · " + BigDecimal.valueOf(bill.total, 2).toPlainString() + " ₽");
-        text(body, "Соответствия получены из раздела «Касса Эвотор» на сайте. Проверьте состав ниже. После попытки открытия повтор этого посещения заблокирован, включая дозаказы.", 16);
-        boolean valid = !bill.record.optBoolean("needsRefresh");
-        if (!valid) text(body, "Прежний чек был очищен. На сайте заново откройте передачу этого стола и нажмите «Обновить состав счёта», затем обновите список на кассе.", 17);
-        for (CashBill.Line line : bill.lines) {
-            text(body, line.name + " ×" + line.quantity + " · " + line.price().toPlainString() + " ₽/шт." + (line.estimated ? "\nЦена взята из текущего меню сайта." : ""), 18);
-            try {
-                List<CashMappings.Part> parts = CashMappings.resolve(line.name, settings);
-                if (CashMappings.total(parts, catalog) != line.kopecks) throw new IllegalStateException("Цена кассы не совпадает с ценой этой позиции. Исправьте соответствие на сайте.");
-                for (CashMappings.Part part : parts) text(body, "    " + catalog.getJSONObject("items").getJSONObject(part.uuid).getString("name") + " ×" + Math.multiplyExact(part.units, line.quantity), 16);
-            } catch (Exception e) { valid = false; text(body, "Не готово: " + e.getMessage(), 16); }
-        }
-        Button openButton = button(body, "Проверить и открыть тестовый чек", () -> new AlertDialog.Builder(this).setTitle("Открыть счёт стола " + bill.table + "?")
-                .setMessage("Строк: " + bill.lines.size() + ". Сумма: " + BigDecimal.valueOf(bill.total, 2).toPlainString()
-                        + " ₽. Проверьте состав выше. Это тест: чек не оплачивайте. Стол на сайте не будет отмечен оплаченным.")
-                .setNegativeButton("Отмена", null).setPositiveButton("Открыть чек", (d, w) -> prepare(bill, settings)).show());
-        openButton.setEnabled(valid);
-        button(body, "Получить изменённые настройки", () -> billView(bill));
-        button(body, "К списку счетов", this::listView);
-        status = text(body, "Настраивайте товары и добавки на сайте. После изменения нажмите «Получить изменённые настройки».", 16);
+        displayedBill = bill;
+        List<CashReceiptPlan.Item> plan = null;
+        try {
+            plan = CashReceiptPlan.build(bill, settings, catalog);
+            mappingReady = "queued".equals(bill.record.optString("state")) && !bill.record.optBoolean("needsRefresh");
+            for (CashReceiptPlan.Item item : plan) {
+                text(body, item.name + " ×" + item.quantity + " · " + BigDecimal.valueOf(item.priceKopecks, 2).toPlainString()
+                        + " ₽/шт. = " + BigDecimal.valueOf(item.priceKopecks * item.quantity, 2).toPlainString() + " ₽", 19);
+                if (item.sourceNames.size() != 1 || !item.sourceNames.iterator().next().equalsIgnoreCase(item.name))
+                    text(body, "На сайте: " + android.text.TextUtils.join(", ", item.sourceNames), 14);
+                if (item.estimated) text(body, "Для части заказа цена взята из текущего меню сайта.", 14);
+            }
+            status.setText("Проверьте состав кассового чека. Товары, количества и сумма показаны один раз.");
+        } catch (Exception e) { mappingReady = false; status.setText("Не готово: " + e.getMessage()); }
+        if (bill.record.optBoolean("needsRefresh")) status.setText("Прежний чек очищен. На сайте нажмите «Обновить состав счёта», затем здесь — «Обновить счёт и настройки».");
+        else if (!bill.isFresh(System.currentTimeMillis())) status.setText("Счёт старше 15 минут. На сайте обновите состав этого стола, затем нажмите «Обновить счёт и настройки» здесь.");
+        else if (!"queued".equals(bill.record.optString("state"))) status.setText("Состояние передачи: " + stateLabel(bill.record.optString("state")) + ". Вернитесь к списку счетов.");
+        final int rowCount = plan == null ? 0 : plan.size();
+        openBillButton = button(actions, "Проверить и открыть тестовый чек", () -> {
+            try { bill.requireFresh(System.currentTimeMillis()); }
+            catch (Exception e) { error(e); return; }
+            new AlertDialog.Builder(this).setTitle("Открыть счёт стола " + bill.table + "?")
+                    .setMessage("Позиций в чеке: " + rowCount + ". Сумма: " + BigDecimal.valueOf(bill.total, 2).toPlainString()
+                            + " ₽. Проверьте состав выше. Это тест: чек не оплачивайте. Стол на сайте не будет отмечен оплаченным.")
+                    .setNegativeButton("Отмена", null).setPositiveButton("Открыть чек", (d, w) -> prepare(bill, settings)).show();
+        });
+        button(actions, "Обновить счёт и настройки", () -> billView(bill));
+        button(actions, "К списку счетов", this::listView);
+        updateOpenButton();
     }
     private void validateSources(CashBill bill) throws Exception {
         JSONObject meta = client.get("tables/" + bill.date + "_" + bill.table).object();
@@ -269,7 +298,7 @@ public final class TransferActivity extends Activity {
         bill.verifyOrders(client.dayOrders(bill.date));
     }
     private void prepare(CashBill bill, JSONObject shownSettings) {
-        if (busy) return; busy = true; status.setText("Проверяю состав, карточки и текущий чек…");
+        if (busy) return; busy = true; updateOpenButton(); status.setText("Проверяю состав, карточки и текущий чек…");
         worker.execute(() -> {
             try {
                 if (bill.record.optBoolean("needsRefresh")) throw new IllegalStateException("После очистки чека обновите состав счёта на сайте.");
@@ -296,20 +325,16 @@ public final class TransferActivity extends Activity {
                 List<PositionAdd> positions = new ArrayList<>();
                 JSONObject settings = client.get(BridgeClient.DEVICES + deviceId + "/settings").object();
                 if (settings.optLong("revision", -1) != shownSettings.optLong("revision", -2)) throw new IllegalStateException("Соответствия изменились после просмотра. Получите настройки заново и проверьте состав.");
-                for (CashBill.Line line : bill.lines) {
-                    List<CashMappings.Part> parts = CashMappings.resolve(line.name, settings);
-                    JSONObject freshCatalog = new JSONObject(), freshItems = new JSONObject();
-                    for (CashMappings.Part part : parts) freshItems.put(part.uuid, CashCatalog.describe(this, part.uuid));
-                    freshCatalog.put("items", freshItems);
-                    if (CashMappings.total(parts, freshCatalog) != line.kopecks) throw new IllegalStateException("Сумма карточек не совпадает с позицией «" + line.name + "».");
-                    for (CashMappings.Part part : parts) {
-                        int count = Math.multiplyExact(line.quantity, part.units);
-                        if (count > 100 || positions.size() >= 200) throw new IllegalStateException("Слишком много компонентов или количество больше 100.");
-                        ProductItem.Product product = CashCatalog.checked(this, part.uuid);
-                        if (product.getPrice().compareTo(BigDecimal.valueOf(freshItems.getJSONObject(part.uuid).getLong("priceKopecks"), 2)) != 0)
-                            throw new IllegalStateException("Цена карточки изменилась во время проверки.");
-                        positions.add(new PositionAdd(Position.Builder.newInstance(product, BigDecimal.valueOf(count)).build()));
-                    }
+                JSONObject freshItems = new JSONObject();
+                for (CashBill.Line line : bill.lines)
+                    for (CashMappings.Part part : CashMappings.resolve(line.name, settings))
+                        if (!freshItems.has(part.uuid)) freshItems.put(part.uuid, CashCatalog.describe(this, part.uuid));
+                List<CashReceiptPlan.Item> plan = CashReceiptPlan.build(bill, settings, new JSONObject().put("items", freshItems));
+                for (CashReceiptPlan.Item item : plan) {
+                    ProductItem.Product product = CashCatalog.checked(this, item.uuid);
+                    if (product.getPrice().compareTo(BigDecimal.valueOf(item.priceKopecks, 2)) != 0)
+                        throw new IllegalStateException("Цена карточки изменилась во время проверки.");
+                    positions.add(new PositionAdd(Position.Builder.newInstance(product, BigDecimal.valueOf(item.quantity)).build()));
                 }
                 validateSources(bill);
                 String nonce = UUID.randomUUID().toString(); client.claim(bill, nonce);
@@ -334,8 +359,9 @@ public final class TransferActivity extends Activity {
                     if (result.getType() == IntegrationManagerFuture.Result.Type.OK) {
                         OpenReceiptCommandResult opened = OpenReceiptCommandResult.create(result.getData());
                         String uuid = opened == null ? "" : opened.getReceiptUuid();
-                        if (finishAttempt(attempt, uuid == null || uuid.isEmpty() ? "unknown" : "opened", uuid,
-                                "Касса ответила на открытие. Проверьте текущий чек. Тестовый чек не оплачивайте.")) post(this::receiptScreen);
+                        boolean accepted = finishAttempt(attempt, uuid == null || uuid.isEmpty() ? "unknown" : "opened", uuid,
+                                uuid == null || uuid.isEmpty() ? "Касса не вернула идентификатор чека. Результат неизвестен, повтор заблокирован." : "Касса ответила на открытие. Проверьте текущий чек. Тестовый чек не оплачивайте.");
+                        if (accepted && uuid != null && !uuid.isEmpty()) post(() -> receiptScreen(uuid));
                     } else finishAttempt(attempt, "rejected", "", "Касса отклонила открытие. Проверьте текущий чек; повтор этого счёта заблокирован.");
                 } catch (Exception e) { finishAttempt(attempt, "unknown", "", "Не удалось разобрать ответ кассы. Проверьте текущий чек; повтор заблокирован."); }
             });
@@ -350,6 +376,7 @@ public final class TransferActivity extends Activity {
                 remember(attempt); activeNonce = null;
             }
             JSONObject ack = attempt;
+            post(() -> { mappingReady = false; updateOpenButton(); });
             if (!worker.isShutdown()) worker.execute(() -> {
                 try { client.report(ack); markSynced(ack); post(() -> { busy = false; status.setText(message); }); }
                 catch (Exception e) { post(() -> { busy = false; status.setText(message + " Сайт пока не получил подтверждение. Нажмите обновление списка для синхронизации."); }); }
@@ -357,9 +384,20 @@ public final class TransferActivity extends Activity {
             return true;
         } catch (Exception e) { post(() -> { busy = false; status.setText("Не удалось сохранить результат. Проверьте текущий чек. Повтор заблокирован сервером."); }); return false; }
     }
-    private void receiptScreen() {
-        try { startActivity(NavigationApi.createIntentForSellReceiptEdit(false)); }
-        catch (Exception e) { status.setText("Не удалось открыть экран чека. Откройте «Продажа» на кассе вручную."); }
+    private void receiptScreen() { receiptScreen(null); }
+    private void receiptScreen(String expectedUuid) {
+        busy = true; updateOpenButton(); status.setText("Проверяю заполненный чек перед переходом…");
+        worker.execute(() -> {
+            try {
+                Receipt current = ReceiptApi.getReceipt(this, Receipt.Type.SELL);
+                ReceiptNavigation.requireEditable(current == null ? null : current.getHeader().getUuid(),
+                        current == null ? 0 : current.getPositions().size(), current == null ? 0 : current.getPayments().size(), expectedUuid);
+                post(() -> {
+                    try { busy = false; updateOpenButton(); status.setText("Открываю заполненный чек кассы. Оплата выполняется отдельно."); startActivity(NavigationApi.createIntentForSellReceiptEdit(false)); }
+                    catch (Exception e) { error(new IllegalStateException("Не удалось открыть заполненный чек. Откройте «Продажа» на кассе вручную.")); }
+                });
+            } catch (Exception e) { post(() -> error(e)); }
+        });
     }
     @Override protected void onStart() { super.onStart(); started = true; ui.postDelayed(poll, 10000); }
     @Override protected void onStop() { started = false; ui.removeCallbacks(poll); super.onStop(); }
