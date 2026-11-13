@@ -100,7 +100,7 @@ test('group assignment persists, a newly added menu item appears, and cashier se
 test('custom modifiers and multiple cash cards can be configured without code',async({page})=>{
  const env=await open(page);await page.getByRole('button',{name:'Добавки',exact:true}).click();await page.getByRole('button',{name:'Добавить соответствие',exact:true}).click();
  await page.locator('[data-name]').fill('Лимон');await page.locator('[data-price]').fill('50');await addCard(page,'lemon');await page.getByRole('button',{name:'Сохранить',exact:true}).click();
- await expect(rows(page)).toContainText('лимон');
+ await expect(rows(page).filter({hasText:'лимон'})).toContainText('лимон');
  await page.getByRole('button',{name:'Наши товары',exact:true}).click();await page.getByRole('button',{name:'Добавить соответствие',exact:true}).click();
  await page.locator('[data-name]').fill('Сенча + лимон');await page.locator('[data-price]').fill('550');await addCard(page,'tea');await page.getByRole('button',{name:'Составить из нескольких товаров',exact:true}).click();await addCard(page,'lemon');
  await page.getByRole('button',{name:'Сохранить',exact:true}).click();
