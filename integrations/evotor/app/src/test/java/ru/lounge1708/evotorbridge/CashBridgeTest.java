@@ -149,6 +149,19 @@ public class CashBridgeTest {
         record.put("canonical", canonical.toString()).put("digest", CashBill.hash(canonical.toString())); CashBill estimated = bill(record);
         assertThrows(IllegalStateException.class, () -> estimated.requireStoredPricesForResume(sourceOrders(estimated)));
     }
+    @Test public void unchangedQueuedRefreshPreservesSourcesAndCannotUnlockAnAttemptOrOverwriteNewDigest() throws Exception {
+        JSONObject record = fixture().put("createdAt", System.currentTimeMillis() - CashBill.MAX_AGE - 1000);
+        Backend backend = new Backend(record); BridgeClient client = connected(backend); CashBill old = bill(record);
+        CashBill fresh = client.refreshUnchanged(old); fresh.requireFresh(System.currentTimeMillis());
+        assertEquals(old.digest, fresh.digest); assertEquals(old.date, fresh.date); assertEquals(old.record.getString("canonical"), fresh.record.getString("canonical"));
+        backend.race = true; assertThrows(IllegalStateException.class, () -> client.refreshUnchanged(fresh));
+        client.claim(fresh, "opening-now"); int writes = backend.writes;
+        assertThrows(IllegalStateException.class, () -> client.refreshUnchanged(old)); assertEquals(writes, backend.writes);
+        backend.day.getJSONObject(old.id).put("state", "queued").put("needsRefresh", true);
+        assertThrows(IllegalStateException.class, () -> client.refreshUnchanged(old));
+        backend.day.getJSONObject(old.id).remove("needsRefresh"); backend.day.getJSONObject(old.id).put("digest", "changed");
+        assertThrows(IllegalStateException.class, () -> client.refreshUnchanged(old)); assertEquals(writes, backend.writes);
+    }
     private static JSONObject sourceOrders(CashBill bill) throws Exception {
         JSONObject items = new JSONObject();
         for (CashBill.Line line : bill.lines) items.put(line.itemId, new JSONObject().put("name", line.name).put("qty", line.quantity).put("price", line.price()).put("menuItemId", line.productId));
