@@ -21,11 +21,12 @@ export function openCashSettings(){
     else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first?.focus();}
   });
   const content=overlay.querySelector('[data-content]'),status=overlay.querySelector('[role=status]'),scrollBody=overlay.querySelector('.cash-settings-body');
-  let devices={},devicesReady=false,deviceId='',query='',kind='products',editing=null,pending=false,closed=false,menu=S.BUILTIN_MENU_LIVE;
+  let devices={},devicesReady=false,deviceId='',deviceChosen=false,query='',kind='products',editing=null,pending=false,closed=false,menu=S.BUILTIN_MENU_LIVE;
   const selected=new Set();
   const device=()=>devices[deviceId]||{};
   const settings=()=>device().settings||{schema:1,revision:0};
   const catalog=()=>device().catalog;
+  const deviceOptions=()=>Object.entries(devices).map(([id,d])=>`<option value="${escAttr(id)}"${id===deviceId?' selected':''}>${esc(d.catalog?.deviceName||id)}${cashCatalogReady(d.catalog)?'':d.catalog?' — старый каталог':' — каталог не получен'}</option>`).join('');
   const message=s=>{status.textContent=s;};
   const money=k=>(k/100).toLocaleString('ru-RU')+' ₽';
   const menuRows=()=>menu.flatMap(c=>(c.items||[]).filter(i=>i&&typeof i.name==='string').map(i=>({name:i.name,price:i.price,category:c.cat,group:i.group||''})));
@@ -40,14 +41,14 @@ export function openCashSettings(){
     if(closed||editing||!devicesReady)return;const token=++renderToken;
     if(!cashCatalogReady(catalog())){
       selected.clear();
-      content.innerHTML=`<div class="cash-connect" role="region" aria-label="Подключение кассы"><h3>${catalog()?'Обновите приложение кассы':'Каталог ещё не получен'}</h3><p>${catalog()?'В каталоге версии 0.3 цены передавались с ошибкой: 250 ₽ отображались как 25 000 ₽. Цены товаров менять не нужно. Получите исправленный каталог.':'Сначала передайте товары с самого терминала Эвотор. После этого здесь можно будет настроить соответствия.'}</p><ol><li>На терминале обновите приложение «1708 — касса (тест)» до версии 0.4 или новее.</li><li>Откройте «Счета с сайта» и войдите с логином и паролем сотрудника нашего сайта.</li><li>Нажмите «Обновить каталог для сайта» и оставьте этот экран открытым на терминале.</li></ol><p class="cash-settings-note">Когда каталог поступит, список товаров появится здесь автоматически. Перезагружать страницу не нужно.</p></div>${Object.keys(devices).length?`<div class="cash-settings-toolbar"><label>Касса<select data-device>${Object.entries(devices).map(([id,d])=>`<option value="${escAttr(id)}"${id===deviceId?' selected':''}>${esc(d.catalog?.deviceName||id)}</option>`).join('')}</select></label><button class="app-modal-btn" data-refresh${pending?' disabled':''}>Обновить каталог кассы</button></div>`:''}`;
+      content.innerHTML=`<div class="cash-connect" role="region" aria-label="Подключение кассы"><h3>${catalog()?'Обновите приложение кассы':'Каталог ещё не получен'}</h3><p>${catalog()?'В каталоге версии 0.3 цены передавались с ошибкой: 250 ₽ отображались как 25 000 ₽. Цены товаров менять не нужно. Получите исправленный каталог.':'Сначала передайте товары с самого терминала Эвотор. После этого здесь можно будет настроить соответствия.'}</p><ol><li>На терминале обновите приложение «1708 — касса (тест)» до версии 0.4 или новее.</li><li>Откройте «Счета с сайта» и войдите с логином и паролем сотрудника нашего сайта.</li><li>Нажмите «Обновить каталог для сайта» и оставьте этот экран открытым на терминале.</li></ol><p class="cash-settings-note">Когда каталог поступит, список товаров появится здесь автоматически. Перезагружать страницу не нужно.</p></div>${Object.keys(devices).length?`<div class="cash-settings-toolbar"><label>Касса<select data-device>${deviceOptions()}</select></label><button class="app-modal-btn" data-refresh${pending?' disabled':''}>Обновить каталог кассы</button></div>`:''}`;
       bindDeviceControls();return;
     }
     const wasWaiting=!!content.querySelector('.cash-connect');
     const list=await rows();if(closed||editing||token!==renderToken)return;
     const cat=catalog(),current=settings();
     const filtered=list.filter(r=>(r.name+' '+r.category+' '+r.group).toLocaleLowerCase('ru').includes(query.toLocaleLowerCase('ru')));
-    content.innerHTML=`<div class="cash-settings-toolbar"><label>Касса<select data-device>${Object.entries(devices).map(([id,d])=>`<option value="${escAttr(id)}"${id===deviceId?' selected':''}>${esc(d.catalog?.deviceName||id)}</option>`).join('')}</select></label><button class="app-modal-btn" data-refresh${pending||!deviceId?' disabled':''}>Обновить каталог кассы</button></div>${cat?`<p class="cash-settings-note">Каталог от ${esc(new Date(cat.exportedAt).toLocaleString('ru-RU'))}. ${Object.keys(cat.items||{}).length} карточек.</p>`:'<p>Каталог ещё не получен. На Эвоторе откройте «Счета с сайта», войдите и нажмите «Обновить каталог для сайта».</p>'}<div class="cash-settings-tabs"><button class="app-modal-btn ${kind==='products'?'primary':''}" data-kind="products">Наши товары</button><button class="app-modal-btn ${kind==='addons'?'primary':''}" data-kind="addons">Добавки</button></div><div class="cash-settings-filter"><input data-search type="search" aria-label="Найти наш товар" placeholder="Название, категория или группа" value="${escAttr(query)}"><button class="app-modal-btn" data-new${!cat?' disabled':''}>Добавить соответствие</button></div><div class="cash-settings-bulk"><button class="app-modal-btn" data-select${!filtered.length?' disabled':''}>Выбрать найденные (${filtered.length})</button><button class="app-modal-btn primary" data-bulk${!selected.size||!cat?' disabled':''}>Назначить выбранным (${selected.size})</button></div><div class="cash-settings-list">${filtered.map(r=>{
+    content.innerHTML=`<div class="cash-settings-toolbar"><label>Касса<select data-device>${deviceOptions()}</select></label><button class="app-modal-btn" data-refresh${pending||!deviceId?' disabled':''}>Обновить каталог кассы</button></div>${cat?`<p class="cash-settings-note">Каталог от ${esc(new Date(cat.exportedAt).toLocaleString('ru-RU'))}. ${Object.keys(cat.items||{}).length} карточек.</p>`:'<p>Каталог ещё не получен. На Эвоторе откройте «Счета с сайта», войдите и нажмите «Обновить каталог для сайта».</p>'}<div class="cash-settings-tabs"><button class="app-modal-btn ${kind==='products'?'primary':''}" data-kind="products">Наши товары</button><button class="app-modal-btn ${kind==='addons'?'primary':''}" data-kind="addons">Добавки</button></div><div class="cash-settings-filter"><input data-search type="search" aria-label="Найти наш товар" placeholder="Название, категория или группа" value="${escAttr(query)}"><button class="app-modal-btn" data-new${!cat?' disabled':''}>Добавить соответствие</button></div><div class="cash-settings-bulk"><button class="app-modal-btn" data-select${!filtered.length?' disabled':''}>Выбрать найденные (${filtered.length})</button><button class="app-modal-btn primary" data-bulk${!selected.size||!cat?' disabled':''}>Назначить выбранным (${selected.size})</button></div><div class="cash-settings-list">${filtered.map(r=>{
       const rule=current[kind]?.[r.key],state=cashRuleState(rule,cat,Number(r.price));
       const suggestion=!rule&&list.filter(x=>x.name===r.name).length===1?cashSuggestion(r,cat):null;
       const target=(Array.isArray(rule?.parts)?rule.parts:suggestion?[suggestion]:[]).map(p=>`${cat?.items?.[p.uuid]?.name||'Карточка недоступна'}${p.units>1?' ×'+p.units:''}`).join(' + ');
@@ -76,7 +77,7 @@ export function openCashSettings(){
   }
   function bindDeviceControls(){
     const picker=content.querySelector('[data-device]'),refresh=content.querySelector('[data-refresh]');
-    if(picker)picker.onchange=e=>{deviceId=e.target.value;selected.clear();render();};
+    if(picker)picker.onchange=e=>{deviceId=e.target.value;deviceChosen=true;selected.clear();render();};
     if(refresh)refresh.onclick=requestCatalog;
   }
   async function requestCatalog(){
@@ -149,7 +150,11 @@ export function openCashSettings(){
   overlay.querySelector('[data-close]').onclick=()=>{closed=true;opened=false;unsubscribe();unsubscribeMenu();overlay.remove();unlockScroll();if(previousFocus?.isConnected)previousFocus.focus();};
   const unsubscribe=onValue(ref(db,cashDevicesPath),snapshot=>{
     devices=snapshot.val()||{};devicesReady=true;
-    if(!devices[deviceId])deviceId=Object.keys(devices)[0]||'';
+    if(!devices[deviceId]||(!deviceChosen&&!cashCatalogReady(catalog()))){
+      const ready=Object.entries(devices).filter(([,d])=>cashCatalogReady(d.catalog)).sort((a,b)=>(Number(b[1].catalog.exportedAt)||0)-(Number(a[1].catalog.exportedAt)||0));
+      const nextId=ready[0]?.[0]||(devices[deviceId]?deviceId:Object.keys(devices)[0]||'');
+      if(nextId!==deviceId){deviceId=nextId;selected.clear();}
+    }
     if(cashCatalogReady(catalog())&&device().catalog?.requestId&&device().catalog.requestId===device().refreshRequest?.id)message('Каталог кассы обновлён.');
     render();
   },()=>{message('Не удалось прочитать настройки. Проверьте вход сотрудника и соединение.');});
