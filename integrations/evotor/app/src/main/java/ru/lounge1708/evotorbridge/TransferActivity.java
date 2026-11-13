@@ -207,34 +207,104 @@ public final class TransferActivity extends Activity {
                 previous == null ? 0 : previous.getPositions().size(), previous == null ? 0 : previous.getPayments().size(), fiscalCount);
     }
     private void openedBillView(CashBill bill) {
-        listing = false; page("Стол " + bill.table + " · ранее открытый чек");
-        status.setText("Проверяю прежний чек на этой кассе…"); busy = true;
+        listing = false; page("Стол " + bill.table + " · сохранённый счёт");
+        status.setText("Проверяю, можно ли продолжить этот счёт…"); busy = true;
         worker.execute(() -> {
-            String problem = null;
             try {
-                ReceiptRecovery.requireLocalMatch(journal().optJSONObject(bill.id), bill.record);
-                verifyClearedReceipt(bill.record.getString("receiptUuid"));
+                CashBill fresh = new CashBill(client.get(BridgeClient.ROOT + bill.date + "/" + bill.id).object(), bill.id, bill.date);
+                if (!("opened".equals(fresh.record.optString("state")) || ("cleared".equals(fresh.record.optString("state")) && "postponed".equals(fresh.record.optString("recoveryKind"))))) {
+                    post(() -> { busy = false; billView(fresh); }); return;
+                }
+                JSONObject previous = journal().optJSONObject(fresh.id);
+                ReceiptRecovery.requireResumeContext(previous, fresh.record);
+                String uuid = previous.getString("receiptUuid");
+                ReceiptResume.State receiptState = inspectPreviousReceipt(uuid);
+                post(() -> renderSavedBill(fresh, uuid, receiptState));
             } catch (Exception e) {
-                problem = e instanceof IllegalStateException ? e.getMessage() : "Не удалось проверить прежний чек. Повторное создание заблокировано.";
+                post(() -> {
+                    error(e);
+                    button(actions, "Обновить состояние счёта", () -> openedBillView(bill));
+                    button(actions, "К списку счетов", this::listView);
+                });
             }
-            String reason = problem;
-            post(() -> {
-                busy = false;
-                status.setText(reason == null ? "Прежний чек очищен: товаров, оплат и фискальных документов не найдено. Можно вернуть счёт в список для новой передачи с сайта." : reason);
-                if (reason == null) button(body, "Вернуть очищенный счёт в список", () -> new AlertDialog.Builder(this)
-                        .setTitle("Вернуть счёт стола " + bill.table + "?")
-                        .setMessage("Подтвердите, что вы очистили прежний чек и не принимали по нему оплату. Новый чек сейчас не создаётся. Затем обновите состав счёта на сайте.")
-                        .setNegativeButton("Отмена", null).setPositiveButton("Вернуть в список", (d, w) -> recoverCleared(bill)).show());
-                if (reason != null) button(body, "Продолжить прежний чек", () -> receiptScreen(bill.record.optString("receiptUuid")));
-                button(body, "К списку счетов", this::listView);
-            });
         });
     }
+    private ReceiptResume.State inspectPreviousReceipt(String uuid) throws Exception {
+        CashBill.text(uuid);
+        Receipt previous = ReceiptApi.getReceipt(this, uuid);
+        if (previous != null && !uuid.equals(previous.getHeader().getUuid())) throw new IllegalStateException("Касса вернула другой прежний чек.");
+        int fiscalCount;
+        try (ru.evotor.query.Cursor<ru.evotor.framework.receipt.FiscalReceipt> fiscal = ReceiptApi.getFiscalReceipts(this, uuid)) {
+            if (fiscal == null) throw new IllegalStateException("Не удалось проверить фискальные документы. Продолжение заблокировано.");
+            fiscalCount = fiscal.getCount();
+        }
+        Receipt current = ReceiptApi.getReceipt(this, Receipt.Type.SELL);
+        return ReceiptResume.classify(uuid, previous == null ? 0 : previous.getPayments().size(), fiscalCount,
+                current == null ? null : current.getHeader().getUuid(), current == null ? 0 : current.getPositions().size(), current == null ? 0 : current.getPayments().size());
+    }
+    private void renderSavedBill(CashBill bill, String uuid, ReceiptResume.State receiptState) {
+        busy = false;
+        text(body, "Стол " + bill.table + " · " + BigDecimal.valueOf(bill.total, 2).toPlainString() + " ₽", 20);
+        if (receiptState == ReceiptResume.State.ACTIVE) {
+            status.setText("Этот неоплаченный счёт сейчас открыт на кассе. Можно продолжить его или отложить для расчёта другого стола.");
+            button(actions, "Продолжить счёт", () -> receiptScreen(uuid));
+            button(actions, "Отложить счёт", () -> new AlertDialog.Builder(this).setTitle("Отложить счёт стола " + bill.table + "?")
+                    .setMessage("Состав уже сохранён в нашем списке. На следующем экране кассы нажмите «Очистить», чтобы освободить кассу для другого стола. Позже выберите этот стол в нашем списке и нажмите «Продолжить счёт».")
+                    .setNegativeButton("Отмена", null).setPositiveButton("Перейти к чеку", (d, w) -> receiptScreen(uuid)).show());
+        } else if (receiptState == ReceiptResume.State.POSTPONED) {
+            status.setText("Этот счёт не оплачен и сейчас не открыт на кассе. Состав сохранён. Нажмите «Продолжить счёт», чтобы проверить и снова заполнить кассу.");
+            button(actions, "Продолжить счёт", () -> resumePostponed(bill));
+        } else if (receiptState == ReceiptResume.State.OTHER_ACTIVE) {
+            status.setText("На кассе сейчас другой заполненный чек. Завершите работу с ним или отложите его. Счёт этого стола остаётся сохранённым.");
+            button(actions, "Открыть текущий чек кассы", this::receiptScreen);
+        } else {
+            status.setText("По прежнему чеку найдена оплата или фискальный документ. Создавать этот счёт заново нельзя. Если оплата ещё не завершена, продолжите её в «Продажа».");
+        }
+        button(actions, "Обновить состояние счёта", () -> openedBillView(bill));
+        button(actions, "К списку счетов", this::listView);
+    }
     private synchronized void rememberCleared(String id, JSONObject expected) throws Exception {
+        rememberCleared(id, expected, "cleared");
+    }
+    private synchronized void rememberCleared(String id, JSONObject expected, String kind) throws Exception {
         JSONObject local = journal().optJSONObject(id);
         ReceiptRecovery.requireLocalMatch(local, expected);
-        local.put("state", "cleared").put("synced", true);
+        local.put("state", "cleared").put("synced", true).put("recoveryKind", kind);
         remember(local);
+    }
+    private void resumePostponed(CashBill bill) {
+        if (busy) return; busy = true; status.setText("Проверяю сохранённый счёт, оплату и актуальный состав…");
+        worker.execute(() -> {
+            boolean postponed = "cleared".equals(bill.record.optString("state"));
+            try {
+                JSONObject previous = journal().optJSONObject(bill.id);
+                ReceiptRecovery.requireResumeContext(previous, bill.record);
+                ReceiptResume.requirePostponed(inspectPreviousReceipt(previous.getString("receiptUuid")));
+                if ("opened".equals(bill.record.optString("state"))) client.requeuePostponed(bill);
+                postponed = true; rememberCleared(bill.id, previous, "postponed");
+                JSONObject orders = validateSources(bill); bill.requireStoredPricesForResume(orders);
+                JSONObject settings = client.get(BridgeClient.DEVICES + deviceId + "/settings").object();
+                JSONObject freshItems = new JSONObject();
+                for (CashBill.Line line : bill.lines)
+                    for (CashMappings.Part part : CashMappings.resolve(line.name, settings))
+                        if (!freshItems.has(part.uuid)) freshItems.put(part.uuid, CashCatalog.describe(this, part.uuid));
+                CashReceiptPlan.build(bill, settings, new JSONObject().put("items", freshItems));
+                ReceiptResume.requirePostponed(inspectPreviousReceipt(previous.getString("receiptUuid")));
+                CashBill fresh = client.refreshPostponed(bill, previous);
+                post(() -> { busy = false; billView(fresh); });
+            } catch (Exception e) {
+                boolean saved = postponed;
+                post(() -> {
+                    busy = false;
+                    if (!saved) { error(e); return; }
+                    page("Стол " + bill.table + " · счёт сохранён");
+                    error(e);
+                    text(body, "Счёт остаётся в списке. Если состав или цена изменились, на сайте обновите состав этого стола, затем нажмите кнопку ниже.", 16);
+                    button(actions, "Обновить счёт и настройки", () -> billView(bill));
+                    button(actions, "К списку счетов", this::listView);
+                });
+            }
+        });
     }
     private void recoverCleared(CashBill bill) {
         if (busy) return; busy = true; status.setText("Повторно проверяю чек и возвращаю счёт в список…");
@@ -255,7 +325,7 @@ public final class TransferActivity extends Activity {
                 CashBill fresh = new CashBill(client.get(BridgeClient.ROOT + bill.date + "/" + bill.id).object(), bill.id, bill.date);
                 JSONObject settings = client.get(BridgeClient.DEVICES + deviceId + "/settings").object();
                 JSONObject catalog = client.get(BridgeClient.DEVICES + deviceId + "/catalog").object();
-                post(() -> { busy = false; if ("opened".equals(fresh.record.optString("state"))) openedBillView(fresh); else renderBill(fresh, settings, catalog); });
+                post(() -> { busy = false; if ("opened".equals(fresh.record.optString("state")) || ("cleared".equals(fresh.record.optString("state")) && "postponed".equals(fresh.record.optString("recoveryKind")))) openedBillView(fresh); else renderBill(fresh, settings, catalog); });
             } catch (Exception e) { post(() -> error(e)); }
         });
     }
@@ -291,11 +361,11 @@ public final class TransferActivity extends Activity {
         button(actions, "К списку счетов", this::listView);
         updateOpenButton();
     }
-    private void validateSources(CashBill bill) throws Exception {
+    private JSONObject validateSources(CashBill bill) throws Exception {
         JSONObject meta = client.get("tables/" + bill.date + "_" + bill.table).object();
         if (!"open".equals(meta.optString("status")) || !bill.sid.equals(meta.optString("sid", "default")))
             throw new IllegalStateException("Посещение стола закрыто или изменилось. Открытие заблокировано.");
-        bill.verifyOrders(client.dayOrders(bill.date));
+        JSONObject orders = client.dayOrders(bill.date); bill.verifyOrders(orders); return orders;
     }
     private void prepare(CashBill bill, JSONObject shownSettings) {
         if (busy) return; busy = true; updateOpenButton(); status.setText("Проверяю состав, карточки и текущий чек…");
@@ -310,8 +380,10 @@ public final class TransferActivity extends Activity {
                     // Recheck even after a restart or an acknowledged recovery. A missing ack cannot unlock an unknown attempt.
                     if (!("opened".equals(previous.optString("state")) || "cleared".equals(previous.optString("state"))))
                         throw new IllegalStateException("Нет подтверждённой очистки прежнего чека. Повтор заблокирован.");
-                    verifyClearedReceipt(previous.getString("receiptUuid"));
-                    rememberCleared(bill.id, previous);
+                    boolean postponed = ReceiptRecovery.wasPostponed(previous, bill.record);
+                    if (postponed) ReceiptResume.requirePostponed(inspectPreviousReceipt(previous.getString("receiptUuid")));
+                    else verifyClearedReceipt(previous.getString("receiptUuid"));
+                    rememberCleared(bill.id, previous, postponed ? "postponed" : "cleared");
                 }
                 JSONObject ledger = journal(); Iterator<String> ids = ledger.keys();
                 while (ids.hasNext()) {

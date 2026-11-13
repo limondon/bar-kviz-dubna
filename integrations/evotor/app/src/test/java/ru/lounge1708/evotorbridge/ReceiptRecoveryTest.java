@@ -41,4 +41,13 @@ public class ReceiptRecoveryTest {
         assertTrue(ReceiptRecovery.acceptsResult(new JSONObject(old.toString()).put("state", "unknown"), old));
         assertFalse(ReceiptRecovery.acceptsResult(null, old));
     }
+    @Test public void postponedContextSurvivesAResetAcknowledgementLossButNotAnotherAttempt() throws Exception {
+        JSONObject old = opened(), postponed = ReceiptRecovery.requeue(old, old, 5000, "postponed");
+        assertTrue(ReceiptRecovery.wasPostponed(old, postponed)); ReceiptRecovery.requireResumeContext(old, postponed);
+        JSONObject localCleared = new JSONObject(old.toString()).put("state", "cleared");
+        ReceiptRecovery.requireResumeContext(localCleared, postponed);
+        assertThrows(IllegalStateException.class, () -> ReceiptRecovery.requireResumeContext(new JSONObject(old.toString()).put("nonce", "other"), postponed));
+        assertThrows(IllegalStateException.class, () -> ReceiptRecovery.requireResumeContext(old, new JSONObject(postponed.toString()).put("state", "opening")));
+        assertFalse(ReceiptRecovery.wasPostponed(old, ReceiptRecovery.requeue(old, old, 5000)));
+    }
 }

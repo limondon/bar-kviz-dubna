@@ -25,17 +25,27 @@ final class ReceiptRecovery {
     }
 
     static boolean wasCleared(JSONObject local, JSONObject record) {
+        return historyMatch(local, record, null);
+    }
+    static boolean wasPostponed(JSONObject local, JSONObject record) {
+        return historyMatch(local, record, "postponed");
+    }
+    private static boolean historyMatch(JSONObject local, JSONObject record, String kind) {
         if (local == null) return false;
         JSONArray history = record.optJSONArray("clearedAttempts");
         if (history == null) return false;
         for (int i = 0; i < history.length(); i++) {
             JSONObject previous = history.optJSONObject(i);
-            if (previous != null && sameAttempt(local, previous)) return true;
+            if (previous != null && sameAttempt(local, previous) && (kind == null || kind.equals(previous.optString("kind")))) return true;
         }
         return false;
     }
 
     static JSONObject requeue(JSONObject current, JSONObject expected, long now) throws Exception {
+        return requeue(current, expected, now, "cleared");
+    }
+    static JSONObject requeue(JSONObject current, JSONObject expected, long now, String kind) throws Exception {
+        if (!("cleared".equals(kind) || "postponed".equals(kind))) throw new IllegalArgumentException("Неверный тип восстановления.");
         if (("cleared".equals(current.optString("state")) || "queued".equals(current.optString("state"))) && wasCleared(expected, current)) return null;
         if (!"opened".equals(current.optString("state")) || !sameAttempt(current, expected)
                 || !current.getString("id").equals(expected.getString("id")))
@@ -45,11 +55,17 @@ final class ReceiptRecovery {
         if (history == null) history = new JSONArray();
         history.put(new JSONObject().put("nonce", current.getString("nonce"))
                 .put("receiptUuid", current.getString("receiptUuid")).put("digest", current.getString("digest"))
-                .put("clearedAt", now));
-        next.put("clearedAttempts", history).put("needsRefresh", true).put("state", "cleared");
+                .put("clearedAt", now).put("kind", kind));
+        next.put("clearedAttempts", history).put("needsRefresh", true).put("state", "cleared").put("recoveryKind", kind);
         for (String key : new String[]{"nonce", "receiptUuid", "startedAt", "finishedAt"}) next.remove(key);
         // Keep the original timestamp: recovery never pretends the old source snapshot is fresh.
         return next;
+    }
+    static void requireResumeContext(JSONObject local, JSONObject record) {
+        if ("opened".equals(record.optString("state"))) { requireLocalMatch(local, record); return; }
+        if (local != null && "cleared".equals(record.optString("state")) && wasPostponed(local, record)
+                && ("opened".equals(local.optString("state")) || "cleared".equals(local.optString("state")))) return;
+        throw new IllegalStateException("Состояние передачи изменилось. Вернитесь к списку и выберите счёт заново.");
     }
 
     static boolean acceptsResult(JSONObject saved, JSONObject attempt) {
