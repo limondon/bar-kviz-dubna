@@ -1,4 +1,4 @@
-const CACHE_NAME = 'bar-spark-v14-current-cash-catalog';
+const CACHE_NAME = 'bar-spark-v15-cash-mapping-navigation';
 const ASSETS = [
   './',
   'index.html',
