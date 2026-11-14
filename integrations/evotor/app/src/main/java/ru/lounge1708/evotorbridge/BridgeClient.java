@@ -13,9 +13,17 @@ import org.json.JSONTokener;
 /** Uses existing staff access. No guest access, stored passwords or automatic mutation retries. */
 final class BridgeClient {
     interface Transport { Document call(String url, String method, String body, String etag, boolean getEtag, String contentType) throws Exception; }
+    interface SessionStore { String load() throws Exception; void save(String refreshToken) throws Exception; void clear() throws Exception; }
+    static final class ServiceException extends IllegalStateException {
+        final int status;
+        ServiceException(int status) { super("Сервис отклонил запрос (HTTP " + status + "). Проверьте вход и соединение."); this.status = status; }
+    }
     private final Transport transport;
-    BridgeClient() { this(BridgeClient::request); }
-    BridgeClient(Transport transport) { this.transport = transport; }
+    private final SessionStore sessions;
+    BridgeClient() { this(BridgeClient::request, null); }
+    BridgeClient(SessionStore sessions) { this(BridgeClient::request, sessions); }
+    BridgeClient(Transport transport) { this(transport, null); }
+    BridgeClient(Transport transport, SessionStore sessions) { this.transport = transport; this.sessions = sessions; }
     private static final String API_KEY = "AIzaSyAdPAuuu7TRsJfI9jxyYkdscPvPObm-6h8";
     private static final String DATABASE = "https://project-3061022303410047846-default-rtdb.firebaseio.com/";
     static final String ROOT = "config/evotor/v1/transfers/";
@@ -42,7 +50,7 @@ final class BridgeClient {
             int code = connection.getResponseCode();
             // Never expose response bodies/URLs containing tokens or credential details in the UI/log.
             if (code == 412) throw new IllegalStateException("Счёт уже изменён или выбран другой кассой. Обновите список.");
-            if (code < 200 || code >= 300) throw new IllegalStateException("Сервис отклонил запрос (HTTP " + code + "). Проверьте вход и соединение.");
+            if (code < 200 || code >= 300) throw new ServiceException(code);
             ByteArrayOutputStream bytes = new ByteArrayOutputStream();
             try (InputStream in = connection.getInputStream()) {
                 byte[] buffer = new byte[4096]; int size;
@@ -55,25 +63,39 @@ final class BridgeClient {
             return new Document(value, connection.getHeaderField("ETag"));
         } finally { connection.disconnect(); }
     }
-    void login(String email, String password) throws Exception {
+    synchronized void login(String email, String password) throws Exception {
         logout();
         if (!"manager@1708.local".equals(email.trim())) throw new IllegalArgumentException("Нужен существующий вход сотрудника сайта.");
         JSONObject body = new JSONObject().put("email", email.trim()).put("password", password).put("returnSecureToken", true);
         JSONObject result = transport.call("https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=" + API_KEY,
                 "POST", body.toString(), null, false, "application/json").object();
-        token = result.getString("idToken"); refreshToken = result.getString("refreshToken");
-        expiresAt = System.currentTimeMillis() + result.getLong("expiresIn") * 1000 - 60000;
+        acceptSession(result.getString("idToken"), result.getString("refreshToken"), result.getLong("expiresIn"));
     }
-    void logout() { token = null; refreshToken = null; expiresAt = 0; }
-    private String databaseUrl(String path) throws Exception {
-        if (token == null) throw new IllegalStateException("Войдите с учётной записью сотрудника сайта.");
-        if (System.currentTimeMillis() >= expiresAt) {
+    synchronized void logout() throws Exception { token = null; refreshToken = null; expiresAt = 0; if (sessions != null) sessions.clear(); }
+    synchronized boolean restoreSession() throws Exception {
+        if (sessions == null) return false;
+        String saved = sessions.load(); if (saved == null || saved.isEmpty()) return false;
+        refreshToken = saved; renewSession(); return true;
+    }
+    private void acceptSession(String idToken, String refresh, long seconds) throws Exception {
+        if (idToken.isEmpty() || refresh.isEmpty() || seconds < 1) throw new IllegalStateException("Сервис не подтвердил вход. Повторите вход.");
+        if (sessions != null) sessions.save(refresh);
+        token = idToken; refreshToken = refresh; expiresAt = System.currentTimeMillis() + seconds * 1000 - 60000;
+    }
+    private void renewSession() throws Exception {
+        try {
             JSONObject result = transport.call("https://securetoken.googleapis.com/v1/token?key=" + API_KEY, "POST",
                     "grant_type=refresh_token&refresh_token=" + URLEncoder.encode(refreshToken, "UTF-8"), null, false,
                     "application/x-www-form-urlencoded").object();
-            token = result.getString("id_token"); refreshToken = result.getString("refresh_token");
-            expiresAt = System.currentTimeMillis() + result.getLong("expires_in") * 1000 - 60000;
+            acceptSession(result.getString("id_token"), result.getString("refresh_token"), result.getLong("expires_in"));
+        } catch (ServiceException e) {
+            if (e.status == 400 || e.status == 401 || e.status == 403) { logout(); throw new IllegalStateException("Сохранённый вход отозван или истёк. Введите пароль заново."); }
+            throw e;
         }
+    }
+    private synchronized String databaseUrl(String path) throws Exception {
+        if (token == null) throw new IllegalStateException("Войдите с учётной записью сотрудника сайта.");
+        if (System.currentTimeMillis() >= expiresAt) renewSession();
         return DATABASE + path + ".json?auth=" + URLEncoder.encode(token, "UTF-8");
     }
     Document get(String path) throws Exception { return transport.call(databaseUrl(path), "GET", null, null, true, "application/json"); }
