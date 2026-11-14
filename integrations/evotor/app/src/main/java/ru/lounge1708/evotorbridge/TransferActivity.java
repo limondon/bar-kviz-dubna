@@ -46,7 +46,7 @@ import ru.evotor.framework.receipt.ReceiptApi;
 public final class TransferActivity extends Activity {
     private final ExecutorService worker = Executors.newSingleThreadExecutor();
     private final Handler ui = new Handler(Looper.getMainLooper());
-    private final BridgeClient client = new BridgeClient();
+    private BridgeClient client;
     private SharedPreferences storage;
     private LinearLayout body, list, actions;
     private DeskUi design;
@@ -78,9 +78,22 @@ public final class TransferActivity extends Activity {
         design = new DeskUi(this);
         getWindow().setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_HIDDEN | WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
         storage = getSharedPreferences("cash-transfer-v1", MODE_PRIVATE);
+        client = new BridgeClient(new SessionVault(getApplicationContext()));
         deviceId = storage.getString("device-id", null);
         if (deviceId == null) { deviceId = UUID.randomUUID().toString(); if (!storage.edit().putString("device-id", deviceId).commit()) deviceId = null; }
-        loginView();
+        restoreLogin();
+    }
+    private void restoreLogin() {
+        listing = false; page("Счета с сайта"); busy = true; status.setText("Восстанавливаю сохранённый вход…");
+        worker.execute(() -> {
+            try {
+                boolean restored = client.restoreSession();
+                post(() -> { busy = false; signedIn = restored; if (restored) listView(); else loginView(); });
+            } catch (Exception e) { post(() -> {
+                busy = false; signedIn = false; loginView(); error(e);
+                button(actions, "Повторить сохранённый вход", this::restoreLogin);
+            }); }
+        });
     }
     private void page(String title) {
         pageId++;
@@ -129,7 +142,7 @@ public final class TransferActivity extends Activity {
     }
     private void loginView() {
         listing = false; page("1708 · Счета с сайта · тест");
-        text(body, "Войдите с существующей учётной записью сотрудника сайта. Пароль и сеанс входа на устройстве не сохраняются.", 16);
+        text(body, "Войдите один раз с учётной записью сотрудника сайта. Вход сохранится на этой кассе в зашифрованном виде. Пароль не сохраняется. Выйти можно в настройках.", 16);
         EditText email = input(body, "Email сотрудника", "manager@1708.local", InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS);
         EditText password = input(body, "Пароль сайта", "", InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
         password.setSaveEnabled(false);
@@ -183,6 +196,7 @@ public final class TransferActivity extends Activity {
     private void settingsView() {
         listing = false; page("Настройки кассы");
         design.heading(body, "Каталог и товары", 19);
+        text(body, "Вход сотрудника сохраняется на этой кассе. Возврат через главный экран не требует повторного ввода пароля.", 15);
         text(body, "Соответствия товаров и добавок редактируются на сайте: «Ещё → Касса Эвотор».", 16);
         button(body, "Передать каталог на сайт", () -> {
             busy = true; status.setText("Передаю каталог кассы на сайт…");
@@ -192,9 +206,21 @@ public final class TransferActivity extends Activity {
         text(body, "1. Выберите ранее открытый стол и нажмите «Отложить счёт».\n2. В «Продажа» очистите неоплаченный чек.\n3. Рассчитайте другой стол.\n4. Вернитесь к первому столу и нажмите «Продолжить счёт».", 16);
         text(body, "Приложение не принимает оплату и не отмечает стол оплаченным на сайте. Тестовые чеки не оплачивайте.", 15);
         button(body, "Проверка отдельного товара", () -> startActivity(new Intent(this, MainActivity.class).putExtra("diagnostic", true)));
+        button(body, "Диагностика доступа к чекам", () -> {
+            boolean fiscal = getPackageManager().resolveContentProvider(FiscalDocuments.AUTHORITY, 0) != null;
+            boolean receipts = getPackageManager().resolveContentProvider("ru.evotor.evotorpos.v2.receipt", 0) != null;
+            text(body, "Чеки кассы: " + (receipts ? "сервис виден" : "сервис недоступен")
+                    + "\nФискальные документы: " + (fiscal ? "сервис виден" : "сервис недоступен") + "\n" + AppVersion.label(this), 16);
+        });
         button(body, "Выйти из аккаунта", () -> new AlertDialog.Builder(this).setTitle("Выйти из аккаунта сайта?")
                 .setMessage("Сохранённые счета и защита от повторного открытия останутся на этой кассе.")
-                .setNegativeButton("Отмена", null).setPositiveButton("Выйти", (d, w) -> { signedIn = false; client.logout(); cachedBills.clear(); lastSync = 0; loginView(); }).show());
+                .setNegativeButton("Отмена", null).setPositiveButton("Выйти", (d, w) -> {
+                    busy = true; status.setText("Выхожу из аккаунта…");
+                    worker.execute(() -> {
+                        try { client.logout(); post(() -> { busy = false; signedIn = false; cachedBills.clear(); lastSync = 0; loginView(); }); }
+                        catch (Exception e) { post(() -> error(e)); }
+                    });
+                }).show());
         primary(actions, "К счетам", this::listView);
     }
     private synchronized JSONObject journal() throws Exception { return new JSONObject(storage.getString("journal", "{}")); }
@@ -270,7 +296,7 @@ public final class TransferActivity extends Activity {
         if (!listing || list == null) return;
         long now = System.currentTimeMillis(); int[] counts = new int[4]; counts[CashDesk.ALL] = cachedBills.size();
         for (CashBill bill : cachedBills) counts[CashDesk.group(bill, now)]++;
-        String[] labels = {"Все", "Новые", "Открывались", "Проверить"};
+        String[] labels = {"Все", "Новые", "Ранее", "Проверка"};
         for (int i = 0; i < filterButtons.size(); i++) {
             Button tab = filterButtons.get(i); tab.setText(labels[i] + "\n" + counts[i]); tab.setSelected(i == listFilter);
             tab.setBackground(design.background(i == listFilter ? DeskUi.AMBER : android.graphics.Color.WHITE, i == listFilter ? 0 : DeskUi.LINE));
@@ -322,12 +348,7 @@ public final class TransferActivity extends Activity {
     private void verifyClearedReceipt(String uuid) throws Exception {
         if (uuid == null || uuid.isEmpty()) throw new IllegalStateException("Нет идентификатора прежнего чека. Повтор заблокирован.");
         Receipt previous = ReceiptApi.getReceipt(this, uuid);
-        int fiscalCount;
-        // A failed/null provider lookup is not proof that a fiscal receipt is absent.
-        try (ru.evotor.query.Cursor<ru.evotor.framework.receipt.FiscalReceipt> fiscal = ReceiptApi.getFiscalReceipts(this, uuid)) {
-            if (fiscal == null) throw new IllegalStateException("Касса не подтвердила отсутствие фискального документа. Повтор заблокирован.");
-            fiscalCount = fiscal.getCount();
-        }
+        int fiscalCount = FiscalDocuments.count(this, uuid);
         if (previous != null && !uuid.equals(previous.getHeader().getUuid()))
             throw new IllegalStateException("Касса вернула другой чек. Повтор заблокирован.");
         ReceiptRecovery.requireCleared(previous == null ? null : previous.getHeader().getNumber(),
@@ -360,11 +381,7 @@ public final class TransferActivity extends Activity {
         CashBill.text(uuid);
         Receipt previous = ReceiptApi.getReceipt(this, uuid);
         if (previous != null && !uuid.equals(previous.getHeader().getUuid())) throw new IllegalStateException("Касса вернула другой прежний чек.");
-        int fiscalCount;
-        try (ru.evotor.query.Cursor<ru.evotor.framework.receipt.FiscalReceipt> fiscal = ReceiptApi.getFiscalReceipts(this, uuid)) {
-            if (fiscal == null) throw new IllegalStateException("Не удалось проверить фискальные документы. Продолжение заблокировано.");
-            fiscalCount = fiscal.getCount();
-        }
+        int fiscalCount = FiscalDocuments.count(this, uuid);
         Receipt current = ReceiptApi.getReceipt(this, Receipt.Type.SELL);
         return ReceiptResume.classify(uuid, previous == null ? 0 : previous.getPayments().size(), fiscalCount,
                 current == null ? null : current.getHeader().getUuid(), current == null ? 0 : current.getPositions().size(), current == null ? 0 : current.getPayments().size());
@@ -628,12 +645,12 @@ public final class TransferActivity extends Activity {
         }
     }
     @Override protected void onStop() { started = false; ui.removeCallbacks(poll); super.onStop(); }
-    @Override protected void onDestroy() { worker.shutdown(); client.logout(); super.onDestroy(); }
+    @Override protected void onDestroy() { worker.shutdown(); super.onDestroy(); }
     @Override public void onBackPressed() {
         if (busy) { status.setText("Дождитесь завершения действия. Повторять открытие не нужно."); return; }
         if (!listing && signedIn) { listView(); return; }
         if (listing) new AlertDialog.Builder(this).setTitle("Закрыть приложение?")
-                .setMessage("Счета и журнал попыток сохранятся. Для нового входа понадобится пароль сотрудника.")
+                .setMessage("Счета, журнал попыток и сохранённый вход останутся на этой кассе.")
                 .setNegativeButton("Остаться", null).setPositiveButton("Закрыть", (d, w) -> finish()).show();
         else super.onBackPressed();
     }

@@ -7,8 +7,8 @@ android {
         applicationId 'ru.lounge1708.evotorbridge'
         minSdk 23
         targetSdk 34
-        versionCode 8
-        versionName '0.8'
+        versionCode 9
+        versionName '0.9'
     }
     signingConfigs {
         debug {
@@ -19,7 +19,10 @@ android {
         sourceCompatibility JavaVersion.VERSION_1_8
         targetCompatibility JavaVersion.VERSION_1_8
     }
-    testOptions.unitTests.all { systemProperty 'cash.fixture', rootProject.file('fixtures/bill.json').absolutePath }
+    testOptions.unitTests.all {
+        systemProperty 'cash.fixture', rootProject.file('fixtures/bill.json').absolutePath
+        systemProperty 'cash.manifest', project.file('src/main/AndroidManifest.xml').absolutePath
+    }
 }
 
 dependencies {

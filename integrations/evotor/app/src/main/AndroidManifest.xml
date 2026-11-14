@@ -4,7 +4,7 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <queries>
         <package android:name="ru.atol.tabletpos" />
-        <provider android:authorities="ru.evotor.evotorpos.inventory;ru.evotor.evotorpos.v2.receipt" />
+        <provider android:authorities="ru.evotor.evotorpos.inventory;ru.evotor.evotorpos.v2.receipt;ru.evotor.framework.document.fiscal" />
         <intent><action android:name="evo.v2.receipt.sell.openReceipt" /></intent>
         <intent><action android:name="evotor.intent.action.edit.SELL" /></intent>
     </queries>
@@ -13,7 +13,7 @@
         android:icon="@drawable/ic_launcher" android:supportsRtl="true"
         android:theme="@android:style/Theme.Material.Light.NoActionBar">
         <meta-data android:name="app_uuid" android:value="5b7af3e5-b60e-4044-a437-8e22d355d804" />
-        <activity android:name=".TransferActivity" android:exported="false" />
+        <activity android:name=".TransferActivity" android:exported="false" android:launchMode="singleTask" />
         <activity android:name=".MainActivity" android:exported="true">
             <meta-data android:name="ru.evotor.launcher.BACKGROUND_COLOR" android:value="#D87715" />
             <intent-filter>

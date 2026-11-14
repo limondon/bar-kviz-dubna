@@ -53,7 +53,7 @@ public final class MainActivity extends Activity {
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
         if (!getIntent().getBooleanExtra("diagnostic", false)) {
-            startActivity(new Intent(this, TransferActivity.class)); finish(); return;
+            startActivity(new Intent(this, TransferActivity.class).addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP)); finish(); return;
         }
         preferences = getSharedPreferences("draft-test", MODE_PRIVATE);
         ScrollView scroll = new ScrollView(this);
