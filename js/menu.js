@@ -448,11 +448,13 @@ export function renderMenuPage(){
   const el=document.getElementById('menuPageContent');if(!el)return;
   el.innerHTML=`
     ${S.role==='admin'?`<div class="menu-admin-card">
-      <div class="menu-admin-title purple small">🎯 КВИЗ</div>
-      <div class="menu-admin-note">Генерирует QR-коды для всех столов для печати.</div>
+      <div class="menu-admin-title purple small">📱 ПОСТОЯННЫЕ QR-КОДЫ</div>
+      <div class="menu-admin-note">Распечатайте один раз. На каждом мероприятии включайте и выключайте доступ — сами коды не меняются.</div>
+      <div id="qrEventStatus" class="menu-admin-note" role="status">Загружаем состояние…</div>
       <div class="menu-admin-row">
-        <button onclick="prepareQuiz()" class="btn-sm menu-admin-quiz-btn">🎯 ПОДГОТОВИТЬ КВИЗ</button>
-        <button onclick="finishQuiz()" class="btn-sm menu-admin-quiz-btn danger">🏁 ЗАВЕРШИТЬ КВИЗ</button>
+        <button id="qrEnable" onclick="prepareQuiz()" class="btn-sm menu-admin-quiz-btn" disabled>▶ ВКЛЮЧИТЬ QR-ЗАКАЗЫ</button>
+        <button id="qrDisable" onclick="finishQuiz()" class="btn-sm menu-admin-quiz-btn danger" disabled>⏸ ВЫКЛЮЧИТЬ QR-ЗАКАЗЫ</button>
+        <button onclick="printAllQr()" class="btn-sm menu-admin-quiz-btn">🖨 QR ВСЕХ СТОЛОВ</button>
       </div>
     </div>`:''}
     <div class="menu-admin-card">
@@ -470,4 +472,5 @@ export function renderMenuPage(){
       <div id="menuEditorList"></div>
     </div>`;
   renderMenuEditor();
+  window.renderQrControls?.();
 }

@@ -105,7 +105,7 @@ body.modal-open{touch-action:none;}
   font-size:20px;
   cursor:pointer;
 }
-.qr-modal{max-width:340px;text-align:center;}
+.qr-modal{max-width:340px;text-align:center;max-height:calc(100dvh - 32px);overflow-y:auto;touch-action:pan-y;}
 .qr-title{margin-bottom:4px;}
 .qr-table-num{
   font-family:'Bebas Neue',sans-serif;
