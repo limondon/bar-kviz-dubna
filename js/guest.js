@@ -614,6 +614,7 @@ function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').repl
 function escAttr(s){return esc(s).replace(/"/g,'&quot;').replace(/'/g,'&#39;');}
 
 document.addEventListener('click',e=>{
+  if(e.target.closest('[data-action="reloadAccess"]')){location.reload();return;}
   if(!appReady)return;
   const el=e.target.closest('[data-action]');
   if(!el)return;
