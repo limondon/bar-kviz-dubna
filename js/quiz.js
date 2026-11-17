@@ -1,45 +1,38 @@
-import{db,ref,update,remove}from'./firebase.js';
-import{fl,showConfirm}from'./utils.js';
-import{genToken}from'./tables.js';
+import{db,ref,update,onValue}from'./firebase.js';
+import{fl}from'./utils.js';
+import{QR_TABLES,permanentQrTokens,printQrCards}from'./qr.js';
 
-const QUIZ_TABLES=[1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,'PS1','PS2'];
-
-export async function prepareQuiz(){
-  const ok=await showConfirm('🎯 Подготовить квиз?','Будут сгенерированы QR-коды для всех столов.','ПОДГОТОВИТЬ');
-  if(!ok)return;
+let qrEnabled=null,qrBusy=false,watching=false;
+export function renderQrControls(){
+  const status=document.getElementById('qrEventStatus');
+  if(status)status.textContent=qrEnabled===null?'Загружаем состояние…':qrEnabled?'🟢 QR-заказы включены':'⏸ QR-заказы выключены';
+  const on=document.getElementById('qrEnable'),off=document.getElementById('qrDisable');
+  if(on)on.disabled=qrBusy||qrEnabled===null||qrEnabled===true;
+  if(off)off.disabled=qrBusy||qrEnabled===null||qrEnabled===false;
+}
+export function watchQrControls(){
+  if(watching)return;watching=true;
+  onValue(ref(db,'quiz_tokens/_settings'),snap=>{
+    const settings=snap.val();
+    // Preserve legacy behaviour until the operator chooses the new mode.
+    qrEnabled=settings?settings.enabled===true:true;renderQrControls();
+  },()=>{qrEnabled=null;renderQrControls();});
+}
+async function setQrEnabled(enabled){
+  if(qrBusy)return;qrBusy=true;renderQrControls();
+  try{
+    await update(ref(db,'quiz_tokens/_settings'),{enabled,changedAt:Date.now()});
+    qrEnabled=enabled;
+    fl('fOk',enabled?'✅ QR-заказы включены — распечатанные коды работают':'⏸ QR-заказы выключены. Коды сохранены для следующего мероприятия');
+  }catch(e){console.error('QR mode',e);fl('fErr','Не удалось изменить режим QR. Проверьте связь и повторите.');}
+  finally{qrBusy=false;renderQrControls();}
+}
+export const prepareQuiz=()=>setQrEnabled(true);
+export const finishQuiz=()=>setQrEnabled(false);
+export async function printAllQr(){
   const win=window.open('','_blank');
   if(!win){fl('fInfo','Разрешите всплывающие окна для печати');return;}
-  const base=location.href.substring(0,location.href.lastIndexOf('/')+1);
-  const upd={};const tokens={};
-  QUIZ_TABLES.forEach(t=>{const tok=genToken();tokens[t]=tok;upd['quiz_tokens/'+tok]={table:String(t),createdAt:Date.now()};});
-  await update(ref(db),upd);
-  printQuizQR(win,tokens,base);
-  fl('fOk','✅ Квиз подготовлен — QR открываются для печати');
-}
-
-export async function finishQuiz(){
-  const ok=await showConfirm('🏁 Завершить квиз?','Все QR-коды квиза станут недействительными.','ЗАВЕРШИТЬ');
-  if(!ok)return;
-  await remove(ref(db,'quiz_tokens'));
-  fl('fOk','✅ Квиз завершён — все QR деактивированы');
-}
-
-function printQuizQR(win,tokens,base){
-  if(!win){fl('fInfo','Разрешите всплывающие окна для печати');return;}
-  const tables=Object.entries(tokens);
-  const html=`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>QR для квиза — 1708</title>
-  <style>
-    @page{margin:10mm;}
-    *{box-sizing:border-box;}
-    body{font-family:monospace;background:#fff;margin:0;padding:8mm;}
-    .grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8mm;width:100%;}
-    .card{border:2px solid #000;border-radius:6px;padding:8px;text-align:center;page-break-inside:avoid;break-inside:avoid;}
-    canvas{display:block;margin:0 auto 6px;max-width:100%;}
-    h2{margin:0;font-size:16px;font-family:monospace;}
-  </style>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"><\/script></head>
-  <body><div class="grid">${tables.map(([t,tok])=>`<div class="card"><h2>Стол ${t}</h2><div id="qr_${t}"></div></div>`).join('')}</div>
-  <script>const _tok=${JSON.stringify(Object.fromEntries(tables))};document.querySelectorAll('[id^="qr_"]').forEach(el=>{const t=el.id.replace('qr_','');const tok=_tok[t];if(tok)new QRCode(el,{text:'${base}guest.html?table='+encodeURIComponent(t)+'&token='+tok,width:150,height:150});});<\/script></body></html>`;
-  win.document.write(html);win.document.close();
-  setTimeout(()=>win.print(),1000);
+  win.document.write('<p>Готовим постоянные QR-коды…</p>');
+  try{const tokens=await permanentQrTokens(QR_TABLES);printQrCards(win,tokens);}
+  catch(e){console.error('print QR',e);win.close();fl('fErr','Не удалось подготовить QR-коды. Проверьте связь и повторите.');}
 }

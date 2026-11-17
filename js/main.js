@@ -13,7 +13,8 @@ import{barItemAction,waiterDeliverItem,waiterDeliverAll,reopenOrder,delOrder,ope
 import{closeTable,reopenTable,renameTable,doRenameTable,deleteTable,logTable,unlogTable,showQR,closeQrModal,openQrPicker,closeQrPicker,closeRenameModal,confirmRename,shiftDate,jumpDate,shiftClosedDate,jumpClosedDate,toggleBill as _toggleBill,openCorkagePicker,closeCorkageModal,confirmCorkage,corkageAdj,toggleDatesExpanded,toggleClosedDatesExpanded,toggleQuickCorkage,_quickCorkagePick,editTableNote,openDeliveryLog,renderDeliveryLogSidebar}from'./tables.js';
 import{sw,setQF,pickTable,openRoleModal,closeRoleModal,pickRole,confirmRole,applyRole,checkPassword,openPasswordModal,checkAuth,changePassword,buildTabs,toggleSettingsMenu,toggleBill}from'./ui.js';
 import{openMenuPicker,closeMenuPicker,confirmMenuPicker,switchPickerCat,pickerToggleGroup,openMenuEditor,closeMenuEditor,updateMenuCatItem,removeMenuCatItem,addMenuCatItem,addMenuCategory,removeMenuCategory,moveMenuCat,renderMenuEditor,updateMenuItem,removeMenuItem,addNewMenuItem,buildMenuButtons,updateMenuCat,toggleMenuCatHidden,restructureLemonades,openItemEditor,closeItemEditor,saveItemEditor}from'./menu.js';
-import{prepareQuiz,finishQuiz}from'./quiz.js';
+import{prepareQuiz,finishQuiz,printAllQr,watchQrControls,renderQrControls}from'./quiz.js';
+import{printTableQr}from'./tables.js';
 import{checkInCall,clearCalls}from'./calls.js';
 import{applyStockDeltas,deductMenuStock}from'./stock.js';
 import{buildQuickTableBtns}from'./render.js';
@@ -38,6 +39,7 @@ function _seedOrderCounter(){
 }
 
 async function loadAll(){
+  watchQrControls();
   const cutoffDate=(()=>{const d=new Date();d.setDate(d.getDate()-30);return d.getFullYear()+'-'+(d.getMonth()+1).toString().padStart(2,'0')+'-'+d.getDate().toString().padStart(2,'0');})();
 
   onValue(ref(db,'.info/connected'),snap=>setConnStatus(snap.val()===true));
@@ -183,7 +185,7 @@ Object.assign(window,{
   openMenuPicker,closeMenuPicker,confirmMenuPicker,switchPickerCat,pickerToggleGroup,
   showQR,closeQrModal,openQrPicker,closeQrPicker,openCorkagePicker,closeCorkageModal,confirmCorkage,corkageAdj,toggleDatesExpanded,toggleClosedDatesExpanded,toggleQuickCorkage,_quickCorkagePick,
   logTable,unlogTable,editTableNote,openDeliveryLog,renderDeliveryLogSidebar,
-  prepareQuiz,finishQuiz,
+  prepareQuiz,finishQuiz,printAllQr,printTableQr,renderQrControls,
   renderCalls,clearCalls,checkInCall,
   addEditItem,removeEditRow,updateEditRow,
   toggleSettingsMenu,restructureLemonades,

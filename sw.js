@@ -1,4 +1,4 @@
-const CACHE_NAME = 'bar-spark-v16-cleared-cash-receipt';
+const CACHE_NAME = 'bar-spark-v17-permanent-qr';
 const ASSETS = [
   './',
   'index.html',
@@ -26,6 +26,7 @@ const ASSETS = [
   'js/notifications.js',
   'js/calls.js',
   'js/quiz.js',
+  'js/qr.js',
   'js/menu-data.js',
 ];
 

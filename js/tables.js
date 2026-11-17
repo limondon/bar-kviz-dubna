@@ -4,6 +4,7 @@ import{todayStr,dateLbl,shiftDS,fmt,fmt2,esc,escAttr,pl,fl,showConfirm,lockScrol
 import{BUILTIN_MENU}from'./menu-data.js';
 import{nextOrderNum}from'./counters.js';
 import{applyStockDeltas}from'./stock.js';
+import{permanentQrTokens,qrUrl,printQrCards}from'./qr.js';
 
 // ─── DATE NAV STATE ──────────────────────────────────
 let _datesExpanded=false;
@@ -99,7 +100,7 @@ export async function reopenTable(date,tNum){
     },{applyLocally:false});
     if(!saved.committed)throw new Error('Table reopen was not committed');
     S.tablesMeta[key]=saved.snapshot.val();
-    renderTables();renderClosed();fl('fOk','↩ Стол '+tNum+' переоткрыт — новый QR готов');
+    renderTables();renderClosed();fl('fOk','↩ Стол '+tNum+' переоткрыт — постоянный QR тот же');
   }catch(e){console.error('reopenTable',e);fl('fErr','❌ Не удалось переоткрыть стол. Проверьте соединение и повторите.');}
 }
 
@@ -188,11 +189,10 @@ export function toggleBill(cardId){
 
 // ─── QR CODE ─────────────────────────────────────────
 export async function showQR(tNum){
-  const date=todayStr();const meta=getTMeta(date,tNum);
-  await fbUpdate('tables/'+date+'_'+tNum,meta);
-  const token=meta.token;
-  const base=location.href.substring(0,location.href.lastIndexOf('/')+1);
-  const guestUrl=`${base}guest.html?table=${encodeURIComponent(tNum)}&token=${token}`;
+  let tokens;
+  try{tokens=await permanentQrTokens([tNum]);}
+  catch(e){console.error('show QR',e);fl('fErr','Не удалось получить постоянный QR. Проверьте связь и повторите.');return;}
+  const guestUrl=qrUrl(tNum,tokens[String(tNum)]);
   document.getElementById('qrTableNum').textContent=tNum;
   document.getElementById('qrUrlText').textContent=guestUrl;
   const canvas=document.getElementById('qrCanvas');
@@ -202,12 +202,23 @@ export async function showQR(tNum){
     const size=220,cells=qr.getModuleCount();
     const cellSize=Math.floor((size-16)/cells);const offset=Math.floor((size-cells*cellSize)/2);
     ctx.fillStyle='#ffffff';ctx.fillRect(0,0,size,size);ctx.fillStyle='#1a1825';
-    for(let r=0;r<cells;r++)for(let c=0;c<cells;c++)if(qr.isDark(r,c))ctx.fillRect(offset+c*cellSize,offset+r*cellSize,cellSize-1,cellSize-1);
+    for(let r=0;r<cells;r++)for(let c=0;c<cells;c++)if(qr.isDark(r,c))ctx.fillRect(offset+c*cellSize,offset+r*cellSize,cellSize,cellSize);
   }catch(e){ctx.fillStyle='#fff';ctx.fillRect(0,0,220,220);ctx.fillStyle='#333';ctx.font='11px monospace';ctx.textAlign='center';ctx.fillText('QR недоступен',110,110);}
   document.getElementById('qrOverlay').classList.remove('hidden');
   lockScroll();
 }
 export function closeQrModal(){document.getElementById('qrOverlay').classList.add('hidden');unlockScroll();}
+export async function printTableQr(){
+  const table=document.getElementById('qrTableNum').textContent;
+  const input=document.getElementById('qrPrintCopies');
+  if(!input.checkValidity()){input.reportValidity();return;}
+  const copies=Number(input.value);
+  const win=window.open('','_blank');
+  if(!win){fl('fInfo','Разрешите всплывающие окна для печати');return;}
+  win.document.write('<p>Готовим QR-коды для печати…</p>');
+  try{const tokens=await permanentQrTokens([table]);printQrCards(win,tokens,copies);}
+  catch(e){console.error('print QR',e);win.close();fl('fErr','Не удалось подготовить QR-коды. Повторите попытку.');}
+}
 export function openQrPicker(){
   const TABLES=[1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,'PS1','PS2'];
   const overlay=document.getElementById('qrPickerOverlay');

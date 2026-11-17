@@ -16,7 +16,7 @@ const db=getDatabase(fbApp);
 const auth=getAuth(fbApp);
 
 ;(()=>{let _lt=0,_lx=0,_ly=0;document.addEventListener('touchend',e=>{const t=Date.now();const tc=e.changedTouches[0];const tag=e.target.tagName.toLowerCase();const skip=tag==='button'||tag==='input'||tag==='select'||tag==='textarea'||e.target.closest('button,[data-action]');const dx=tc.clientX-_lx,dy=tc.clientY-_ly;if(!skip&&t-_lt<300&&Math.sqrt(dx*dx+dy*dy)<20)e.preventDefault();_lt=t;_lx=tc.clientX;_ly=tc.clientY;},{passive:false});})();
-let tableNum=null, token=null, sessionId=null;
+let tableNum=null, token=null, sessionId=null,sessionDate=null;
 let menuData=[]; // [{cat, items:[{name,price,stock?,group?}]}]
 let cart={};     // {key: {name,price,qty,addons:{},option:null}}
 let activeCat=0;
@@ -84,6 +84,9 @@ async function recoverPendingOrder(){
     if(!connected)throw new Error('offline');
     const receipt=await get(ref(db,`guestReceipts/${auth.currentUser.uid}/${pending.orderId}`));
     if(receipt.exists()){showAcceptedOrder(pending);return'accepted';}
+    if((pending.sid&&pending.sid!==sessionId)||(pending.date&&pending.date!==sessionDate)){
+      clearPendingOrder();flash('Предыдущий визит завершён. Можно оформить новый заказ.');return'expired';
+    }
     pending.retryable=true;savePendingOrder(pending);restorePendingCart(pending);openCart();
     setSendStatus('Заказ не был принят. Корзина восстановлена — нажмите «Повторить отправку».');
     resetPlaceButton(false,'ПОВТОРИТЬ ОТПРАВКУ');return'missing';
@@ -107,35 +110,35 @@ async function recoverPendingOrder(){
     if(connected&&!wasConnected&&appReady&&readPendingOrder())setTimeout(()=>recoverPendingOrder(),0);
   });
   const today=todayStr();
+  sessionDate=today;
   const metaKey=today+'_'+tableNum;
   try{
-    const snap=await get(ref(db,'tables/'+metaKey));
-    const meta=snap.val();
-    const readQuizToken=async()=>{
-      const quizSnap=await get(ref(db,'quiz_tokens/'+token));
-      const qt=quizSnap.val();
-      return qt&&String(qt.table)===String(tableNum)?qt:null;
-    };
+    const settings=(await get(ref(db,'quiz_tokens/_settings'))).val();
+    if(settings&&settings.enabled!==true){showInvalid('disabled');return;}
+    const qt=(await get(ref(db,'quiz_tokens/'+token))).val();
+    const printed=qt&&String(qt.table)===String(tableNum);
+    // Permanent codes fail closed if their event switch is missing.
+    if(qt?.permanent===true&&settings?.enabled!==true){showInvalid('disabled');return;}
+    let meta=(await get(ref(db,'tables/'+metaKey))).val();
     if(!meta){
-      // Стол не существует — проверяем quiz_tokens (для печатных QR квиза)
-      const qt=await readQuizToken();
-      if(!qt||String(qt.table)!==String(tableNum)){showInvalid();return;}
-      // Токен валидный — автоматически открываем стол
-      const newSid=Date.now().toString(36);
-      await update(ref(db,'tables/'+metaKey),{status:'open',openedAt:Date.now(),date:today,tNum:tableNum,token,sid:newSid,autoOpened:true});
-      sessionId=newSid;
-    } else {
-      if(meta.status==='closed'){showInvalid('closed');return;}
-      if(meta.token!==token){
-        const qt=await readQuizToken();
-        if(!qt){showInvalid();return;}
-      }
-      sessionId=meta.sid||'default';
+      if(!printed){showInvalid();return;}
+      const openedAt=Date.now(),newSid=crypto.randomUUID();
+      // Simultaneous scans join one visit, never replace each other's session.
+      const opened=await runTransaction(ref(db,'tables/'+metaKey),current=>current?undefined:{status:'open',openedAt,date:today,tNum:tableNum,token,sid:newSid,autoOpened:true},{applyLocally:false});
+      meta=opened.snapshot.val();
     }
+    if(!meta){showInvalid();return;}
+    if(meta.status==='closed'){showInvalid('closed');return;}
+    if(meta.token!==token&&!printed){showInvalid();return;}
+    sessionId=meta.sid||'default';
     // Load menu once then subscribe
     await loadMenu();
     showApp();
     appReady=true;
+    onValue(ref(db,'quiz_tokens/_settings'),snap=>{
+      const mode=snap.val();
+      if((mode&&mode.enabled!==true)||(qt?.permanent===true&&mode?.enabled!==true))showInvalid('disabled');
+    },()=>showInvalid('unavailable'));
     await recoverPendingOrder();
     // Real-time menu updates (for stock)
     onValue(ref(db,'menu2'),snap=>{
@@ -149,7 +152,7 @@ async function recoverPendingOrder(){
     // Watch table status
     onValue(ref(db,'tables/'+metaKey),snap=>{
       const m=snap.val();
-      if(m&&m.status==='closed')showInvalid('closed');
+      if(!m||m.status==='closed'||(m.sid||'default')!==sessionId)showInvalid('closed');
     });
   }catch(e){console.error(e);showInvalid();}
 })();
@@ -451,7 +454,17 @@ function go(tid){
 }
 
 // ─── PLACE ORDER ────────────────────────────────────
+async function guestAccessOpen(){
+  if(!appReady)return false;
+  if(!connected){flash('Нет связи. Дождитесь подключения и повторите.',true);return false;}
+  const mode=(await get(ref(db,'quiz_tokens/_settings'))).val();
+  if(mode&&mode.enabled!==true){showInvalid('disabled');return false;}
+  const meta=(await get(ref(db,`tables/${sessionDate}_${tableNum}`))).val();
+  if(todayStr()!==sessionDate||!meta||meta.status!=='open'||(meta.sid||'default')!==sessionId){showInvalid('closed');return false;}
+  return true;
+}
 async function placeOrder(){
+  if(!appReady)return;
   const entries=Object.entries(cart).filter(([k,v])=>v.qty>0);
   if(!entries.length)return;
   const unresolved=readPendingOrder();
@@ -464,6 +477,7 @@ async function placeOrder(){
   setSendStatus('Отправляем заказ. Не закрывайте страницу и не нажимайте повторно.','pending');
   let slowTimer=setTimeout(()=>setSendStatus('Заказ всё ещё отправляется. Не закрывайте страницу и не нажимайте повторно.','pending'),7000);
   try{
+    if(!await guestAccessOpen())return;
     // Stock conflict check
     const conflicts=[];
     for(const [key,cartItem] of entries){
@@ -516,12 +530,13 @@ async function placeOrder(){
       items,note,priority:'normal',status:'new',
       createdAt,num:orderNum,date:today,sid:sessionId,source:'guest',total,createdByUid:auth.currentUser.uid
     };
-    const pending={orderId,orderNum,createdAt,table:tableNum,token,cart:JSON.parse(JSON.stringify(cart)),guestCups,note,total,retryable:false};
+    const pending={orderId,orderNum,createdAt,table:tableNum,token,sid:sessionId,date:sessionDate,cart:JSON.parse(JSON.stringify(cart)),guestCups,note,total,retryable:false};
     savePendingOrder(pending);
     const writes={
       [`orders/${orderId}`]:order,
       [`guestReceipts/${auth.currentUser.uid}/${orderId}`]:{orderId,orderNum,table:tableNum,createdAt}
     };
+    if(!await guestAccessOpen()){clearPendingOrder();return;}
     stockChanges.forEach(tx=>{writes[tx.path]=(Math.max(0,parseInt(tx.item.stock,10)||0)-tx.qty);});
     await update(ref(db),writes);
     stockChanges.forEach(tx=>{tx.item.stock=writes[tx.path];});
@@ -544,6 +559,7 @@ async function placeOrder(){
 // ─── CALL WAITER ────────────────────────────────────
 async function callWaiter(){
   try{
+    if(!await guestAccessOpen())return;
     const newRef=push(ref(db,'waiterCalls'));
     await update(ref(db,'waiterCalls/'+newRef.key),{table:tableNum,calledAt:Date.now(),date:todayStr(),status:'pending'});
     flash('🔔 Официант уже идёт!');
@@ -560,11 +576,21 @@ function newOrder(){cart={};guestCups=0;activeCat=0;updateCartBar();renderTabs()
 
 // ─── UI HELPERS ──────────────────────────────────────
 function showInvalid(reason){
+  appReady=false;
+  document.getElementById('app').style.display='none';
   document.getElementById('screen-loading').classList.add('hidden');
   document.getElementById('screen-invalid').classList.remove('hidden');
   if(reason==='closed'){
     document.getElementById('invalidTitle').textContent='Стол закрыт';
     document.getElementById('invalidBody').textContent='Этот стол уже закрыт. Попросите официанта открыть новую сессию.';
+  }
+  if(reason==='disabled'){
+    document.getElementById('invalidTitle').textContent='QR-заказы сейчас выключены';
+    document.getElementById('invalidBody').textContent='Мероприятие завершено или ещё не началось. Когда приём заказов включат, этот же QR-код снова заработает.';
+  }
+  if(reason==='unavailable'){
+    document.getElementById('invalidTitle').textContent='Не удалось проверить доступ';
+    document.getElementById('invalidBody').textContent='Проверьте интернет и обновите страницу.';
   }
 }
 function showApp(){
@@ -588,6 +614,7 @@ function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').repl
 function escAttr(s){return esc(s).replace(/"/g,'&quot;').replace(/'/g,'&#39;');}
 
 document.addEventListener('click',e=>{
+  if(!appReady)return;
   const el=e.target.closest('[data-action]');
   if(!el)return;
   const a=el.dataset.action;
