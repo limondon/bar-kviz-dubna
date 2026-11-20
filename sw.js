@@ -1,4 +1,4 @@
-const CACHE_NAME = 'bar-spark-v17-permanent-qr';
+const CACHE_NAME = 'bar-spark-v18-qr-activation';
 const ASSETS = [
   './',
   'index.html',

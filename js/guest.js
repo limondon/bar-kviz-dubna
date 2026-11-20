@@ -103,7 +103,7 @@ async function recoverPendingOrder(){
   tableNum=p.get('table'); token=p.get('token');
   if(!tableNum||!token){showInvalid();return;}
   setConn(false);
-  try{await signInAnonymously(auth);}catch(e){console.error(e);showInvalid();return;}
+  try{await signInAnonymously(auth);}catch(e){console.error(e);showInvalid('unavailable');return;}
   onValue(ref(db,'.info/connected'),snap=>{
     const wasConnected=connected;
     connected=snap.val()===true;setConn(connected);
@@ -154,7 +154,7 @@ async function recoverPendingOrder(){
       const m=snap.val();
       if(!m||m.status==='closed'||(m.sid||'default')!==sessionId)showInvalid('closed');
     });
-  }catch(e){console.error(e);showInvalid();}
+  }catch(e){console.error(e);showInvalid('unavailable');}
 })();
 
 // ─── MENU LOAD ───────────────────────────────────────
