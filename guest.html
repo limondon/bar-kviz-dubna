@@ -6,7 +6,10 @@
 <title>Кальянная 1708 — Меню</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,500;0,600;1,400;1,500&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="preconnect" href="https://www.gstatic.com" crossorigin>
+<link rel="preconnect" href="https://identitytoolkit.googleapis.com" crossorigin>
+<link rel="preconnect" href="https://project-3061022303410047846-default-rtdb.firebaseio.com" crossorigin>
+<link id="guestFonts" href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,500;0,600;1,400;1,500&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet" media="print">
 <link rel="stylesheet" href="guest.css">
 </head>
 <body>
@@ -17,7 +20,8 @@
 
 <div id="screen-loading">
   <div class="load-spinner"></div>
-  <div style="color:var(--muted);font-size:13px;">Загружаем меню…</div>
+  <div id="loadingStatus" role="status" aria-live="polite" style="color:var(--muted);font-size:13px;">Загружаем меню…</div>
+  <button id="loadingRetry" class="new-order-btn" data-action="reloadAccess" style="display:none;margin-top:24px;">Попробовать снова</button>
 </div>
 
 <div id="screen-invalid" class="hidden">

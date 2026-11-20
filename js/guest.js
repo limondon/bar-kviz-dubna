@@ -1,8 +1,11 @@
 import{initializeApp}from'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
-import{getDatabase,ref,onValue,push,update,get,runTransaction}from'https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js';
+import{getDatabase,ref,onValue,push,update,get,runTransaction,forceLongPolling,goOffline,goOnline}from'https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js';
 import{getAuth,signInAnonymously}from'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js';
 
 const BAR_NAME='Кальянная 1708';
+// Optional fonts must not delay the guest menu or Firebase module startup.
+const guestFonts=document.getElementById('guestFonts');
+if(guestFonts){if(guestFonts.sheet)guestFonts.media='all';else guestFonts.addEventListener('load',()=>{guestFonts.media='all';},{once:true});}
 const fbApp=initializeApp({
   apiKey:'AIzaSyAdPAuuu7TRsJfI9jxyYkdscPvPObm-6h8',
   authDomain:'project-3061022303410047846.firebaseapp.com',
@@ -23,6 +26,8 @@ let activeCat=0;
 let openGroups=new Set();
 let guestCups=0;
 let connected=false,appReady=false,recoveryBusy=false,pendingMemory=null;
+let everConnected=false,startupFinished=false;
+let offlineNoticeTimer=null,slowStartTimer=null,startupFallbackTimer=null;
 const PENDING_ORDER_KEY='bar_guest_pending_order';
 const G_TEA_ADDONS=['Чабрец','Лимон','Мята'];
 const G_ADDON_PRICE=50;
@@ -102,24 +107,41 @@ async function recoverPendingOrder(){
   const p=new URLSearchParams(location.search);
   tableNum=p.get('table'); token=p.get('token');
   if(!tableNum||!token){showInvalid();return;}
-  setConn(false);
+  setConn(null);
+  slowStartTimer=setTimeout(()=>{
+    if(startupFinished)return;
+    document.getElementById('loadingStatus').textContent='Подключение занимает больше обычного. Продолжаем загружать меню…';
+    document.getElementById('loadingRetry').style.display='';
+  },8000);
   try{await signInAnonymously(auth);}catch(e){console.error(e);showInvalid('unavailable');return;}
   onValue(ref(db,'.info/connected'),snap=>{
     const wasConnected=connected;
     connected=snap.val()===true;setConn(connected);
     if(connected&&!wasConnected&&appReady&&readPendingOrder())setTimeout(()=>recoverPendingOrder(),0);
   });
+  // Some mobile networks stall WebSockets until the SDK's 30 s health timeout.
+  // Give normal connections a chance, then reconnect once via supported HTTPS
+  // long polling. Pending SDK reads resume on that connection with the same auth.
+  startupFallbackTimer=setTimeout(()=>{
+    if(connected||startupFinished||navigator.onLine===false)return;
+    goOffline(db);forceLongPolling();goOnline(db);
+  },4000);
   const today=todayStr();
   sessionDate=today;
   const metaKey=today+'_'+tableNum;
   try{
-    const settings=(await get(ref(db,'quiz_tokens/_settings'))).val();
+    // These reads are independent; avoid four round trips in series on LTE.
+    const [settingsSnap,tokenSnap,metaSnap,menuSnap]=await Promise.all([
+      get(ref(db,'quiz_tokens/_settings')),get(ref(db,'quiz_tokens/'+token)),
+      get(ref(db,'tables/'+metaKey)),get(ref(db,'menu2'))
+    ]);
+    const settings=settingsSnap.val();
     if(settings&&settings.enabled!==true){showInvalid('disabled');return;}
-    const qt=(await get(ref(db,'quiz_tokens/'+token))).val();
+    const qt=tokenSnap.val();
     const printed=qt&&String(qt.table)===String(tableNum);
     // Permanent codes fail closed if their event switch is missing.
     if(qt?.permanent===true&&settings?.enabled!==true){showInvalid('disabled');return;}
-    let meta=(await get(ref(db,'tables/'+metaKey))).val();
+    let meta=metaSnap.val();
     if(!meta){
       if(!printed){showInvalid();return;}
       const openedAt=Date.now(),newSid=crypto.randomUUID();
@@ -132,7 +154,7 @@ async function recoverPendingOrder(){
     if(meta.token!==token&&!printed){showInvalid();return;}
     sessionId=meta.sid||'default';
     // Load menu once then subscribe
-    await loadMenu();
+    loadMenu(menuSnap.val());
     showApp();
     appReady=true;
     onValue(ref(db,'quiz_tokens/_settings'),snap=>{
@@ -158,9 +180,7 @@ async function recoverPendingOrder(){
 })();
 
 // ─── MENU LOAD ───────────────────────────────────────
-async function loadMenu(){
-  const snap=await get(ref(db,'menu2'));
-  const raw=snap.val();
+function loadMenu(raw){
   if(raw){
     const cats=Array.isArray(raw)?raw:Object.values(raw);
     menuData=cats.map(c=>({...c,items:Array.isArray(c.items)?c.items:Object.values(c.items||{})}));
@@ -576,6 +596,7 @@ function newOrder(){cart={};guestCups=0;activeCat=0;updateCartBar();renderTabs()
 
 // ─── UI HELPERS ──────────────────────────────────────
 function showInvalid(reason){
+  finishStartup();
   appReady=false;
   document.getElementById('app').style.display='none';
   document.getElementById('screen-loading').classList.add('hidden');
@@ -594,6 +615,7 @@ function showInvalid(reason){
   }
 }
 function showApp(){
+  finishStartup();
   document.getElementById('screen-loading').classList.add('hidden');
   document.getElementById('app').style.display='block';
   document.getElementById('tableLbl').textContent=tableNum;
@@ -601,7 +623,28 @@ function showApp(){
   if(sl)sl.textContent=tableNum;
   initStickyHeader();
 }
-function setConn(ok){document.getElementById('connDot').style.background=ok?'var(--green)':'var(--red)';document.getElementById('offlineBanner').style.display=ok?'none':'block';}
+function finishStartup(){
+  startupFinished=true;clearTimeout(slowStartTimer);clearTimeout(startupFallbackTimer);
+}
+function setConn(ok){
+  clearTimeout(offlineNoticeTimer);
+  if(ok)everConnected=true;
+  const banner=document.getElementById('offlineBanner');
+  banner.style.display='none';
+  document.getElementById('connDot').style.background=ok?'var(--green)':everConnected?'var(--red)':'var(--muted)';
+  if(navigator.onLine===false){
+    banner.textContent='Нет подключения к интернету. Проверьте Wi-Fi или мобильную сеть.';
+    banner.style.display='block';
+  }else if(!ok&&everConnected&&appReady){
+    offlineNoticeTimer=setTimeout(()=>{
+      if(connected||!appReady)return;
+      banner.textContent='Связь с сервером потеряна. Подключаемся снова…';
+      banner.style.display='block';
+    },1500);
+  }
+}
+window.addEventListener('offline',()=>{connected=false;setConn(false);});
+window.addEventListener('online',()=>setConn(connected));
 function flash(msg,isErr){
   const el=document.getElementById('flash');
   el.textContent=msg;el.classList.toggle('err',!!isErr);el.classList.add('show');
