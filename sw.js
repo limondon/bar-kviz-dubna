@@ -1,4 +1,4 @@
-const CACHE_NAME = 'bar-spark-v18-qr-activation';
+const CACHE_NAME = 'bar-spark-v19-guest-startup';
 const ASSETS = [
   './',
   'index.html',

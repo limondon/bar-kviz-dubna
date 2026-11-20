@@ -41,7 +41,21 @@ async function setup(page,{orders={},waiterCalls={},menu2,tables}={}){
       const manager={email:'manager@1708.local',uid:'staff'},auth={currentUser:manager};
       export const getAuth=()=>auth,signInAnonymously=async()=>{auth.currentUser={uid:'guest'};return{user:auth.currentUser};},signInWithEmailAndPassword=async()=>{auth.currentUser=manager;return{user:manager};};
       export function onAuthStateChanged(a,cb){queueMicrotask(()=>cb(a.currentUser));return ()=>{};}
-      export const get=async r=>snap(r.path),push=r=>({key:'order_'+Date.now()+'_'+(++counter)}),serverTimestamp=()=>Date.now();
+      const waitingReads=[],initialReads=[];
+      export const get=async r=>{
+        if(window.__waitForParallelBoot&&!window.__parallelBootReleased){
+          await new Promise(resolve=>{
+            initialReads.push(resolve);
+            if(initialReads.length===4){window.__parallelBootReleased=true;initialReads.splice(0).forEach(done=>done());}
+          });
+        }
+        if(window.__databaseReady===false)await new Promise(resolve=>waitingReads.push(resolve));
+        return snap(r.path);
+      };
+      export const push=r=>({key:'order_'+Date.now()+'_'+(++counter)}),serverTimestamp=()=>Date.now();
+      export function forceLongPolling(){window.__longPollingFallbacks=(window.__longPollingFallbacks||0)+1;}
+      export function goOffline(){window.__connected=false;emit();}
+      export function goOnline(){window.__connected=true;window.__databaseReady=true;waitingReads.splice(0).forEach(done=>done());emit();}
       export function onValue(r,cb){if(!listeners.has(r.path))listeners.set(r.path,new Set());listeners.get(r.path).add(cb);queueMicrotask(()=>cb(snap(r.path)));return ()=>listeners.get(r.path).delete(cb);}
       export async function update(r,values){
         const hasOrder=r.path===''&&Object.keys(values).some(key=>key.startsWith('orders/'));
