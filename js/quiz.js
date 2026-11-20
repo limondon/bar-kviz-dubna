@@ -14,8 +14,9 @@ export function watchQrControls(){
   if(watching)return;watching=true;
   onValue(ref(db,'quiz_tokens/_settings'),snap=>{
     const settings=snap.val();
-    // Preserve legacy behaviour until the operator chooses the new mode.
-    qrEnabled=settings?settings.enabled===true:true;renderQrControls();
+    // No saved switch means permanent QR access has not been activated yet.
+    // Do not display a fictitious enabled state or disable the activation button.
+    qrEnabled=settings?.enabled===true;renderQrControls();
   },()=>{qrEnabled=null;renderQrControls();});
 }
 async function setQrEnabled(enabled){
