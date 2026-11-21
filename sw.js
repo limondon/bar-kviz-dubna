@@ -1,4 +1,4 @@
-const CACHE_NAME = 'bar-spark-v19-guest-startup';
+const CACHE_NAME = 'bar-spark-v20-cash-mapping-workflow';
 const ASSETS = [
   './',
   'index.html',

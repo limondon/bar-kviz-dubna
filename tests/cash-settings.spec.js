@@ -136,3 +136,95 @@ test('settings are accessible through manager navigation and hidden for other ro
  await page.evaluate(()=>{pickRole('barman');confirmRole();toggleSettingsMenu();});await expect(page.locator('#settingsPopup')).not.toContainText('Касса Эвотор');
  await page.evaluate(()=>openCashSettings());await expect(page.getByRole('dialog')).toHaveCount(0);
 });
+
+const matchingMenu=[{cat:'Напитки и чай',items:[{name:'Вода',price:100},{name:'Сенча',price:500},{name:'Ассам',price:500}]}];
+const matchingCatalog={...catalog,items:{water:card('Вода',10000,'water-v1'),tea:card('Сенча',50000,'tea-v1')}};
+const keyFor=(page,name)=>page.evaluate(async name=>{const {cashRuleKey}=await import('/js/cash-rules.js');return cashRuleKey(name);},name);
+
+test('matching review saves only confirmed pairs, preserves existing rules and can show just remaining work',async({page},testInfo)=>{
+ const env=await open(page,true,matchingMenu),assamKey=await keyFor(page,'Ассам');
+ const assamRule={name:'Ассам',expectedKopecks:50000,parts:[{uuid:'tea',units:1,fingerprint:'tea-v1'}],updatedAt:1};
+ await page.evaluate(({c,key,rule})=>window.__remoteSet('config/evotor/v1/devices/terminal-test',{catalog:c,settings:{schema:1,revision:1,products:{[key]:rule}}}),{c:matchingCatalog,key:assamKey,rule:assamRule});
+ await expect(page.locator('.cash-settings-progress')).toContainText('Настроено 1 из 3');
+ await page.getByRole('button',{name:'Подобрать совпадения (2)',exact:true}).click();
+ await expect(page.locator('[data-match]')).toHaveCount(2);
+ expect(env.data().config.evotor.v1.devices['terminal-test'].settings.revision).toBe(1);
+ await page.getByRole('button',{name:'Назад',exact:true}).click();
+ expect(env.data().config.evotor.v1.devices['terminal-test'].settings.revision).toBe(1);
+ await page.getByRole('button',{name:'Подобрать совпадения (2)',exact:true}).click();
+ await page.locator('.cash-match-row').filter({hasText:'Вода'}).getByRole('checkbox').uncheck();
+ await expect(page.getByRole('button',{name:'Сохранить выбранные (1)',exact:true})).toBeInViewport();
+ await page.screenshot({path:testInfo.outputPath('cash-matches-review.png'),fullPage:true});
+ await page.getByRole('button',{name:'Сохранить выбранные (1)',exact:true}).click();
+ await expect(page.locator('.cash-settings-progress')).toContainText('Настроено 2 из 3');
+ const saved=env.data().config.evotor.v1.devices['terminal-test'].settings;
+ expect(saved.products[assamKey]).toEqual(assamRule);expect(Object.keys(saved.products)).toHaveLength(2);expect(saved.revision).toBe(2);
+ await page.getByRole('combobox',{name:'Показать соответствия',exact:true}).selectOption('attention');
+ await expect(rows(page)).toHaveCount(1);await expect(rows(page)).toContainText('Вода');
+ expect(env.errors).toEqual([]);
+});
+
+test('automatic matching excludes duplicate website names, ambiguous cash cards and unsupported goods',async({page})=>{
+ const env=await open(page,true,[{cat:'Чай',items:[{name:'Вода',price:100},{name:'Сенча',price:500},{name:'Сенча',price:500},{name:'Неподдерживаемый',price:100}]}]);
+ await page.evaluate(c=>window.__remoteSet('config/evotor/v1/devices/terminal-test/catalog',c),{...matchingCatalog,items:{...matchingCatalog.items,water2:card('Вода',10000,'water-v2'),bad:{...card('Неподдерживаемый',10000,'bad-v1'),supported:false}}});
+ await expect(page.getByRole('button',{name:'Подобрать совпадения (0)',exact:true})).toBeDisabled();
+ await page.getByRole('combobox',{name:'Показать соответствия',exact:true}).selectOption('suggested');
+ await expect(rows(page)).toHaveCount(0);
+ expect(env.data().config.evotor.v1.devices['terminal-test'].settings).toBeUndefined();expect(env.errors).toEqual([]);
+});
+
+test('a catalog change blocks the whole matching batch rather than saving only some pairs',async({page})=>{
+ const env=await open(page,true,matchingMenu);
+ await page.evaluate(c=>window.__remoteSet('config/evotor/v1/devices/terminal-test/catalog',c),matchingCatalog);
+ await page.getByRole('button',{name:'Подобрать совпадения (2)',exact:true}).click();
+ await page.evaluate(c=>window.__remoteSet('config/evotor/v1/devices/terminal-test/catalog/items/water',c),{...matchingCatalog.items.water,fingerprint:'water-changed'});
+ await page.getByRole('button',{name:'Сохранить выбранные (2)',exact:true}).click();
+ await expect(page.locator('[data-error]')).toContainText('Каталог кассы изменился');
+ await expect(page.locator('[data-match]')).toHaveCount(2);
+ expect(env.data().config.evotor.v1.devices['terminal-test'].settings).toBeUndefined();expect(env.errors).toEqual([]);
+});
+
+test('a matching batch cannot overwrite a rule another employee saved while the review was open',async({page})=>{
+ const env=await open(page,true,matchingMenu),waterKey=await keyFor(page,'Вода');
+ await page.evaluate(c=>window.__remoteSet('config/evotor/v1/devices/terminal-test/catalog',c),matchingCatalog);
+ await page.getByRole('button',{name:'Подобрать совпадения (2)',exact:true}).click();
+ const remote={name:'Вода',expectedKopecks:10000,parts:[{uuid:'water',units:1,fingerprint:'water-v1'}],updatedAt:777};
+ await page.evaluate(({key,rule})=>window.__remoteSet('config/evotor/v1/devices/terminal-test/settings',{schema:1,revision:1,products:{[key]:rule}}),{key:waterKey,rule:remote});
+ await page.getByRole('button',{name:'Сохранить выбранные (2)',exact:true}).click();
+ await expect(page.locator('[data-error]')).toContainText('другом устройстве');
+ const saved=env.data().config.evotor.v1.devices['terminal-test'].settings;
+ expect(saved.products[waterKey]).toEqual(remote);expect(Object.keys(saved.products)).toHaveLength(1);expect(saved.revision).toBe(1);expect(env.errors).toEqual([]);
+});
+
+test('remaining products can be assigned in sequence without returning to and scrolling the list',async({page})=>{
+ const env=await open(page);
+ await page.getByRole('combobox',{name:'Показать соответствия',exact:true}).selectOption('attention');
+ await page.getByRole('button',{name:'Настроить по очереди (2)',exact:true}).click();
+ await expect(page.locator('.cash-rule-editor h3')).toHaveText('Сенча');await addCard(page,'tea');
+ await expect(page.getByRole('button',{name:'Сохранить и следующий',exact:true})).toBeInViewport();
+ await page.getByRole('button',{name:'Сохранить и следующий',exact:true}).click();
+ await expect(page.locator('.cash-rule-editor h3')).toHaveText('Ассам');await addCard(page,'tea');
+ await page.getByRole('button',{name:'Сохранить',exact:true}).click();
+ await expect(page.locator('.cash-settings-progress')).toContainText('Настроено 2 из 2');await expect(rows(page)).toHaveCount(0);
+ expect(Object.keys(env.data().config.evotor.v1.devices['terminal-test'].settings.products)).toHaveLength(2);expect(env.errors).toEqual([]);
+});
+
+test('changed cash cards can be explicitly reconfirmed without assigning them again',async({page})=>{
+ const env=await open(page);
+ await rows(page).filter({hasText:'Сенча'}).getByRole('button',{name:'Настроить',exact:true}).click();await addCard(page,'tea');
+ await page.getByRole('button',{name:'Сохранить',exact:true}).click();
+ await page.evaluate(c=>window.__remoteSet('config/evotor/v1/devices/terminal-test/catalog/items/tea',c),{...catalog.items.tea,fingerprint:'tea-v2'});
+ await expect(rows(page).filter({hasText:'Сенча'})).toContainText('Нужно проверить');
+ await rows(page).filter({hasText:'Сенча'}).getByRole('button',{name:'Изменить',exact:true}).click();
+ await page.getByRole('button',{name:'Подтвердить обновлённую карточку',exact:true}).click();
+ await page.getByRole('button',{name:'Сохранить',exact:true}).click();
+ await expect(rows(page).filter({hasText:'Сенча'})).toContainText('Настроено');
+ expect(Object.values(env.data().config.evotor.v1.devices['terminal-test'].settings.products)[0].parts[0]).toEqual({uuid:'tea',units:1,fingerprint:'tea-v2'});
+ await page.evaluate(c=>window.__remoteSet('config/evotor/v1/devices/terminal-test/catalog/items/tea',c),{...catalog.items.tea,priceKopecks:60000,fingerprint:'tea-v3'});
+ await expect(rows(page).filter({hasText:'Сенча'})).toContainText('Нужно проверить');
+ await rows(page).filter({hasText:'Сенча'}).getByRole('button',{name:'Изменить',exact:true}).click();
+ await page.getByRole('button',{name:'Подтвердить обновлённую карточку',exact:true}).click();
+ await page.getByRole('button',{name:'Сохранить',exact:true}).click();
+ await expect(page.locator('[data-error]')).toContainText('Цена кассы не совпадает');
+ expect(Object.values(env.data().config.evotor.v1.devices['terminal-test'].settings.products)[0].parts[0].fingerprint).toBe('tea-v2');expect(env.errors).toEqual([]);
+});
