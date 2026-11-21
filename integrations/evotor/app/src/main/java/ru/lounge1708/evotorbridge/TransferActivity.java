@@ -68,6 +68,8 @@ public final class TransferActivity extends Activity {
     private boolean busy, listing, started, signedIn;
     private volatile String activeNonce;
     private String deviceId;
+    private String terminalKey;
+    private boolean identityResolved;
     private final Runnable poll = new Runnable() { public void run() {
         if (started && listing && !busy) refresh(true);
         if (started) ui.postDelayed(this, 10000);
@@ -80,7 +82,6 @@ public final class TransferActivity extends Activity {
         storage = getSharedPreferences("cash-transfer-v1", MODE_PRIVATE);
         client = new BridgeClient(new SessionVault(getApplicationContext()));
         deviceId = storage.getString("device-id", null);
-        if (deviceId == null) { deviceId = UUID.randomUUID().toString(); if (!storage.edit().putString("device-id", deviceId).commit()) deviceId = null; }
         restoreLogin();
     }
     private void restoreLogin() {
@@ -88,6 +89,7 @@ public final class TransferActivity extends Activity {
         worker.execute(() -> {
             try {
                 boolean restored = client.restoreSession();
+                if (restored) resolveTerminal();
                 post(() -> { busy = false; signedIn = restored; if (restored) listView(); else loginView(); });
             } catch (Exception e) { post(() -> {
                 busy = false; signedIn = false; loginView(); error(e);
@@ -149,7 +151,7 @@ public final class TransferActivity extends Activity {
         primary(actions, "Войти", () -> {
             String name = email.getText().toString(), secret = password.getText().toString(); password.setText("");
             busy = true; status.setText("Выполняю вход…");
-            worker.execute(() -> { try { client.login(name, secret); post(() -> { busy = false; signedIn = true; listView(); }); } catch (Exception e) { post(() -> error(e)); } });
+            worker.execute(() -> { try { client.login(name, secret); resolveTerminal(); post(() -> { busy = false; signedIn = true; listView(); }); } catch (Exception e) { post(() -> error(e)); } });
         });
         status.setText("Счёт открывается только после проверки и вашего подтверждения. Тестовые чеки не оплачивайте.");
     }
@@ -198,6 +200,8 @@ public final class TransferActivity extends Activity {
         design.heading(body, "Каталог и товары", 19);
         text(body, "Вход сотрудника сохраняется на этой кассе. Возврат через главный экран не требует повторного ввода пароля.", 15);
         text(body, "Соответствия товаров и добавок редактируются на сайте: «Ещё → Касса Эвотор».", 16);
+        text(body, "Регистрация кассы: " + (deviceId == null ? "не определена" : deviceId.substring(0, 8))
+                + (terminalKey == null ? "\nПостоянный идентификатор недоступен. Не удаляйте данные приложения." : "\nПривязана к этому терминалу. Соответствия сохраняются после переустановки приложения."), 15);
         button(body, "Передать каталог на сайт", () -> {
             busy = true; status.setText("Передаю каталог кассы на сайт…");
             worker.execute(() -> { try { syncCatalog(true); post(() -> { busy = false; status.setTextColor(DeskUi.GREEN); status.setText("Каталог передан. Теперь настройте товары на сайте."); }); } catch (Exception e) { post(() -> error(e)); } });
@@ -246,15 +250,26 @@ public final class TransferActivity extends Activity {
             if (!"opening".equals(entry.optString("state")) && !entry.optBoolean("synced", false)) { client.report(entry); markSynced(entry); }
         }
     }
+    private void resolveTerminal() throws Exception {
+        if (identityResolved) return;
+        terminalKey = TerminalIdentity.key(android.provider.Settings.Secure.getString(getContentResolver(), android.provider.Settings.Secure.ANDROID_ID));
+        String resolved = client.resolveDevice(terminalKey, deviceId);
+        SharedPreferences.Editor editor = storage.edit().putString("device-id", resolved);
+        if (!resolved.equals(deviceId)) editor.putBoolean("catalog-exported", false);
+        if (!editor.commit()) throw new IllegalStateException("Не удалось сохранить привязку кассы. Повторите вход.");
+        deviceId = resolved; identityResolved = true;
+    }
     private void syncCatalog(boolean force) throws Exception {
+        resolveTerminal();
         if (deviceId == null) throw new IllegalStateException("Не удалось сохранить идентификатор кассы.");
         JSONObject request = client.get(BridgeClient.DEVICES + deviceId + "/refreshRequest").object();
         String id = request.optString("id");
-        if (!force && CashCatalog.MONEY_FORMAT.equals(storage.getString("catalog-money-format", "")) && storage.getBoolean("catalog-exported", false) && id.equals(storage.getString("catalog-request", ""))) return;
+        if (!force && "0.10".equals(storage.getString("catalog-app-version", "")) && CashCatalog.MONEY_FORMAT.equals(storage.getString("catalog-money-format", "")) && storage.getBoolean("catalog-exported", false) && id.equals(storage.getString("catalog-request", ""))) return;
         String label = android.os.Build.MODEL + " · " + deviceId.substring(0, 8);
         JSONObject catalog = CashCatalog.export(this, deviceId, label, id);
         client.saveCatalog(deviceId, catalog);
-        if (!storage.edit().putBoolean("catalog-exported", true).putString("catalog-money-format", CashCatalog.MONEY_FORMAT).putString("catalog-request", id).commit())
+        client.identifyDevice(deviceId, terminalKey, "0.10");
+        if (!storage.edit().putString("catalog-app-version", "0.10").putBoolean("catalog-exported", true).putString("catalog-money-format", CashCatalog.MONEY_FORMAT).putString("catalog-request", id).commit())
             throw new IllegalStateException("Каталог отправлен, но не удалось сохранить отметку обновления.");
     }
     private void refresh() { refresh(false); }

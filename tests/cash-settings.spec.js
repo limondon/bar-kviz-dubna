@@ -229,3 +229,25 @@ test('changed cash cards can be explicitly reconfirmed without assigning them ag
  await expect(page.locator('[data-error]')).toContainText('Цена кассы не совпадает');
  expect(Object.values(env.data().config.evotor.v1.devices['terminal-test'].settings.products)[0].parts[0].fingerprint).toBe('tea-v2');expect(env.errors).toEqual([]);
 });
+
+test('archived registrations stay out of the picker and can be restored without losing mappings',async({page})=>{
+ const env=await open(page);
+ const old={catalog:{...catalog,deviceId:'terminal-old',deviceName:'Прежняя регистрация'},settings:{schema:1,revision:7,products:{keep:{name:'Сенча',expectedKopecks:50000,parts:[{uuid:'tea',units:1,fingerprint:'tea-v1'}]}}},registration:{archived:true,note:'preserve'}};
+ await page.evaluate(d=>window.__remoteSet('config/evotor/v1/devices/terminal-old',d),old);
+ const picker=page.locator('[data-device]');
+ await expect(picker.locator('option')).toHaveCount(1);
+ await expect(page.getByLabel('Показать архив (1)')).not.toBeChecked();
+ await page.getByLabel('Показать архив (1)').check();await expect(picker.locator('option')).toHaveCount(2);
+ await picker.selectOption('terminal-old');await expect(page.getByRole('dialog')).toContainText('Это архивная регистрация');
+ await page.getByRole('button',{name:'Вернуть из архива',exact:true}).click();
+ await expect(page.locator('.cash-settings-status')).toContainText('возвращена');
+ await page.getByLabel('Показать архив (0)').uncheck();await expect(picker.locator('option')).toHaveCount(2);
+ expect(env.data().config.evotor.v1.devices['terminal-old'].settings).toEqual(old.settings);
+ expect(env.data().config.evotor.v1.devices['terminal-old'].catalog).toEqual(old.catalog);
+ expect(env.data().config.evotor.v1.devices['terminal-old'].registration.note).toBe('preserve');
+ await page.getByRole('button',{name:'Убрать в архив',exact:true}).click();
+ await expect(page.locator('.cash-settings-status')).toContainText('убрана в архив');
+ await expect(picker).toHaveValue('terminal-test');await expect(picker.locator('option')).toHaveCount(1);
+ expect(env.data().config.evotor.v1.devices['terminal-old'].settings).toEqual(old.settings);
+ expect(env.errors).toEqual([]);
+});
