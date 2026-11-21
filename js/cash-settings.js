@@ -146,7 +146,9 @@ export function openCashSettings(){
   }
   async function edit(targets,sequence=[],returnState=null){
     if(closed||editing||!cashCatalogReady(catalog()))return;
-    const returnTo=returnState||{top:scrollBody.scrollTop,key:targets[0]?.key||''};
+    // After a group assignment show the overview and progress. Focusing its
+    // first product would scroll the newly expanded toolbar out of view on iOS.
+    const returnTo=returnState||{top:targets.length>1?0:scrollBody.scrollTop,key:targets.length===1?targets[0].key:''};
     const index=targets.length===1?sequence.indexOf(targets[0].key):-1,nextKey=index>=0?sequence[index+1]:null;
     const originalDevice=deviceId,originalKind=kind,cat=structuredClone(catalog());
     const baseline=structuredClone(settings()),originalTargets=targets;
