@@ -213,6 +213,7 @@ test('changed cash cards can be explicitly reconfirmed without assigning them ag
  const env=await open(page);
  await rows(page).filter({hasText:'Сенча'}).getByRole('button',{name:'Настроить',exact:true}).click();await addCard(page,'tea');
  await page.getByRole('button',{name:'Сохранить',exact:true}).click();
+ await expect(rows(page).filter({hasText:'Сенча'})).toContainText('Настроено');
  await page.evaluate(c=>window.__remoteSet('config/evotor/v1/devices/terminal-test/catalog/items/tea',c),{...catalog.items.tea,fingerprint:'tea-v2'});
  await expect(rows(page).filter({hasText:'Сенча'})).toContainText('Нужно проверить');
  await rows(page).filter({hasText:'Сенча'}).getByRole('button',{name:'Изменить',exact:true}).click();
