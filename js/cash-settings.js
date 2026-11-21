@@ -21,7 +21,7 @@ export function openCashSettings(){
     else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first?.focus();}
   });
   const content=overlay.querySelector('[data-content]'),status=overlay.querySelector('[role=status]'),scrollBody=overlay.querySelector('.cash-settings-body'),editorActions=overlay.querySelector('[data-editor-actions]');
-  let devices={},devicesReady=false,deviceId='',deviceChosen=false,query='',kind='products',editing=null,pending=false,closed=false,menu=S.BUILTIN_MENU_LIVE;
+  let devices={},devicesReady=false,deviceId='',deviceChosen=false,query='',view='all',kind='products',editing=null,pending=false,closed=false,menu=S.BUILTIN_MENU_LIVE;
   const selected=new Set();
   const device=()=>devices[deviceId]||{};
   const settings=()=>device().settings||{schema:1,revision:0};
@@ -47,17 +47,27 @@ export function openCashSettings(){
     const wasWaiting=!!content.querySelector('.cash-connect');
     const list=await rows();if(closed||editing||token!==renderToken)return;
     const cat=catalog(),current=settings();
-    const filtered=list.filter(r=>(r.name+' '+r.category+' '+r.group).toLocaleLowerCase('ru').includes(query.toLocaleLowerCase('ru')));
+    const keyCounts=new Map();list.forEach(r=>keyCounts.set(r.key,(keyCounts.get(r.key)||0)+1));
+    const stateFor=r=>cashRuleState(current[kind]?.[r.key],cat,Number(r.price));
+    const suggestionFor=r=>!current[kind]?.[r.key]&&keyCounts.get(r.key)===1?cashSuggestion(r,cat):null;
+    const configured=list.filter(r=>stateFor(r)==='Настроено').length;
+    const filtered=list.filter(r=>(r.name+' '+r.category+' '+r.group).toLocaleLowerCase('ru').includes(query.toLocaleLowerCase('ru'))&&(view==='all'||view==='attention'&&stateFor(r)!=='Настроено'||view==='suggested'&&suggestionFor(r)));
+    const suggestions=filtered.map(r=>({...r,part:suggestionFor(r)})).filter(r=>r.part);
+    const remaining=[...new Map(filtered.filter(r=>stateFor(r)!=='Настроено').map(r=>[r.key,r])).values()];
     const addonHelp=kind==='addons'?'<p class="cash-settings-note cash-addon-help">Настройте каждую добавку один раз: например, «лимон» → «Добавка лимон». Касса сама добавит её к выбранному чаю. Для чая с лимоном и мятой будут три позиции: чай, лимон и мята.</p>':'';
     content.innerHTML=`<div class="cash-settings-toolbar"><label>Касса<select data-device>${deviceOptions()}</select></label><button class="app-modal-btn" data-refresh${pending||!deviceId?' disabled':''}>Обновить каталог кассы</button></div>${cat?`<p class="cash-settings-note">Каталог от ${esc(new Date(cat.exportedAt).toLocaleString('ru-RU'))}. ${Object.keys(cat.items||{}).length} карточек.</p>`:'<p>Каталог ещё не получен. На Эвоторе откройте «Счета с сайта», войдите и нажмите «Обновить каталог для сайта».</p>'}<div class="cash-settings-tabs"><button class="app-modal-btn ${kind==='products'?'primary':''}" data-kind="products">Наши товары</button><button class="app-modal-btn ${kind==='addons'?'primary':''}" data-kind="addons">Добавки</button></div><div class="cash-settings-filter"><input data-search type="search" aria-label="Найти наш товар" placeholder="Название, категория или группа" value="${escAttr(query)}"><button class="app-modal-btn" data-new${!cat?' disabled':''}>Добавить соответствие</button></div><div class="cash-settings-bulk"><button class="app-modal-btn" data-select${!filtered.length?' disabled':''}>Выбрать найденные (${filtered.length})</button><button class="app-modal-btn primary" data-bulk${!selected.size||!cat?' disabled':''}>Назначить выбранным (${selected.size})</button></div><div class="cash-settings-list">${filtered.map(r=>{
       const rule=current[kind]?.[r.key],state=cashRuleState(rule,cat,Number(r.price));
-      const suggestion=!rule&&list.filter(x=>x.name===r.name).length===1?cashSuggestion(r,cat):null;
+      const suggestion=suggestionFor(r);
       const target=(Array.isArray(rule?.parts)?rule.parts:suggestion?[suggestion]:[]).map(p=>`${cat?.items?.[p.uuid]?.name||'Карточка недоступна'}${p.units>1?' ×'+p.units:''}`).join(' + ');
       return`<article class="cash-settings-row"><label><input type="checkbox" data-pick="${r.key}"${selected.has(r.key)?' checked':''}><span><b>${esc(r.name)}</b><small>${esc(r.category)} · ${money(Math.round(Number(r.price)*100))}</small></span></label><div><span class="cash-rule-state${state==='Настроено'?' good':''}">${suggestion?'Совпало название и цена':state}</span><p>${esc(target||'Выберите товар Эвотора')}${suggestion?' — проверьте и сохраните':''}</p></div><button class="app-modal-btn" data-edit="${r.key}"${!cat?' disabled':''}>${rule?'Изменить':'Настроить'}</button></article>`;
-    }).join('')||'<p>Нет соответствий. Добавьте товар или добавку.</p>'}</div>`;
+    }).join('')||'<p>По этим условиям товаров нет. Измените поиск или выберите другой фильтр.</p>'}</div>`;
+    content.querySelector('.cash-settings-filter').insertAdjacentHTML('beforebegin',`<div class="cash-settings-progress"><p><b>Настроено ${configured} из ${list.length}</b><span>Требуют настройки: ${list.length-configured}</span></p><label>Показать<select data-view aria-label="Показать соответствия"><option value="all"${view==='all'?' selected':''}>Все товары</option><option value="attention"${view==='attention'?' selected':''}>Требуют настройки</option><option value="suggested"${view==='suggested'?' selected':''}>Есть точное совпадение</option></select></label></div><div class="cash-settings-shortcuts"><button class="app-modal-btn" data-auto${!suggestions.length||pending?' disabled':''}>Подобрать совпадения (${suggestions.length})</button><button class="app-modal-btn" data-sequence${!remaining.length||pending?' disabled':''}>Настроить по очереди (${remaining.length})</button></div>`);
     if(wasWaiting)scrollBody.scrollTop=0;
     if(addonHelp)content.querySelector('.cash-settings-tabs').insertAdjacentHTML('afterend',addonHelp);
     bindDeviceControls();
+    content.querySelector('[data-view]').onchange=e=>{view=e.target.value;selected.clear();render();};
+    content.querySelector('[data-auto]').onclick=()=>reviewSuggestions(suggestions);
+    content.querySelector('[data-sequence]').onclick=()=>{if(remaining.length)edit([remaining[0]],remaining.map(r=>r.key));};
     content.querySelectorAll('[data-kind]').forEach(b=>b.onclick=()=>{kind=b.dataset.kind;selected.clear();query='';render();});
     content.querySelector('[data-search]').oninput=e=>{query=e.target.value;const start=e.target.selectionStart;render().then(()=>{const input=content.querySelector('[data-search]');input?.focus();if(input?.type!=='search')input?.setSelectionRange(start,start);});};
     function updateSelection(input){
@@ -88,6 +98,52 @@ export function openCashSettings(){
     try{await runTransaction(ref(db,`${cashDevicesPath}/${deviceId}/refreshRequest`),()=>({id,at:Date.now()}),{applyLocally:false});message('Откройте «Счета с сайта» на Эвоторе. Каталог обновится, пока этот экран открыт.');}
     catch{message('Не удалось запросить каталог. Проверьте соединение.');}finally{pending=false;render();}
   }
+  function reviewSuggestions(candidates){
+    if(closed||editing||pending||!candidates.length)return;
+    const originalDevice=deviceId,originalKind=kind,baseline=structuredClone(settings()),cat=structuredClone(catalog()),returnTop=scrollBody.scrollTop;
+    if(candidates.some(row=>{
+      const fresh=cashSuggestion(row,cat);
+      return baseline[originalKind]?.[row.key]||!fresh||fresh.uuid!==row.part.uuid||fresh.fingerprint!==row.part.fingerprint;
+    })){message('Данные изменились. Повторите подбор по обновлённому списку.');render();return;}
+    const chosen=new Set(candidates.map(r=>r.key));
+    editing={review:true};++renderToken;message('');
+    content.innerHTML=`<section class="cash-match-review"><h3 tabindex="-1">Проверить совпадения</h3><p class="cash-settings-note">Совпали название и цена. Проверьте пары и снимите галочки с тех, которые не хотите сохранять. Уже настроенные товары сюда не входят.</p><div class="cash-match-list">${candidates.map(row=>`<article class="cash-match-row"><label><input type="checkbox" data-match="${row.key}" checked><span><b>${esc(row.name)}</b><small>На сайте · ${esc(row.category)} · ${money(Math.round(Number(row.price)*100))}</small><span class="cash-match-target">На кассе: ${esc(cat.items[row.part.uuid].name)} · ${money(cat.items[row.part.uuid].priceKopecks)}</span><small>${esc(cat.items[row.part.uuid].category||'Без категории')} · карточка …${esc(row.part.uuid.slice(-8))}</small></span></label></article>`).join('')}</div></section>`;
+    editorActions.innerHTML='<p data-error role="alert"></p><div class="app-modal-actions"><button class="app-modal-btn" data-back>Назад</button><button class="app-modal-btn primary" data-save-matches></button></div>';
+    editorActions.hidden=false;scrollBody.scrollTop=0;content.querySelector('h3').focus({preventScroll:true});
+    const error=editorActions.querySelector('[data-error]'),save=editorActions.querySelector('[data-save-matches]');
+    const paint=()=>{save.textContent=`Сохранить выбранные (${chosen.size})`;save.disabled=!chosen.size||pending;};
+    content.querySelectorAll('[data-match]').forEach(input=>input.onchange=()=>{input.checked?chosen.add(input.dataset.match):chosen.delete(input.dataset.match);paint();});
+    const finish=async()=>{
+      if(pending)return;editing=null;editorActions.hidden=true;editorActions.replaceChildren();await render();
+      if(!closed&&!editing){scrollBody.scrollTop=returnTop;(content.querySelector('[data-auto]:not(:disabled)')||content.querySelector('[data-view]'))?.focus({preventScroll:true});}
+    };
+    editorActions.querySelector('[data-back]').onclick=finish;
+    save.onclick=async()=>{
+      if(pending||!chosen.size)return;
+      pending=true;error.textContent='';
+      const controls=[...content.querySelectorAll('input,button,select'),...editorActions.querySelectorAll('button')].map(el=>[el,el.disabled]);
+      controls.forEach(([el])=>{el.disabled=true;});overlay.querySelector('[data-close]').textContent='Скрыть окно';
+      try{
+        const liveCatalog=devices[originalDevice]?.catalog,liveMenu=menuRows();
+        const changes=candidates.filter(row=>chosen.has(row.key)).map(row=>{
+          if(originalKind==='products'){
+            const matching=liveMenu.filter(r=>r.name.trim()===row.name.trim());
+            if(matching.length!==1||Number(matching[0].price)!==Number(row.price))throw Error('Товар или цена на сайте изменились. Вернитесь и повторите подбор.');
+          }else if(Number(row.price)!==DEFAULT_ADDON_PRICE)throw Error('Цена добавки изменилась. Повторите подбор.');
+          const fresh=cashSuggestion(row,liveCatalog);
+          if(!fresh||fresh.uuid!==row.part.uuid||fresh.fingerprint!==row.part.fingerprint)throw Error('Каталог кассы изменился. Вернитесь и повторите подбор.');
+          if(cashPartsTotal([row.part],liveCatalog)!==Math.round(Number(row.price)*100))throw Error('Цена кассы изменилась. Повторите подбор.');
+          return{kind:originalKind,key:row.key,before:baseline[originalKind]?.[row.key]||null,rule:{name:row.name,expectedKopecks:Math.round(Number(row.price)*100),parts:[row.part]}};
+        });
+        const result=await runTransaction(ref(db,`${cashDevicesPath}/${originalDevice}/settings`),current=>editCashRules(current,changes,Date.now()),{applyLocally:false});
+        if(!result.committed)throw Error('Соответствие изменилось на другом устройстве. Вернитесь и повторите подбор.');
+        selected.clear();message(`Сохранено соответствий: ${changes.length}. Касса получит настройки при следующем выборе счёта.`);
+        pending=false;await finish();
+      }catch(e){error.textContent=e.message;message('Настройки не сохранены.');}
+      finally{pending=false;controls.forEach(([el,disabled])=>{el.disabled=disabled;});overlay.querySelector('[data-close]').textContent='Закрыть';paint();}
+    };
+    paint();
+  }
   async function edit(targets,sequence=[],returnState=null){
     if(closed||editing||!cashCatalogReady(catalog()))return;
     const returnTo=returnState||{top:scrollBody.scrollTop,key:targets[0]?.key||''};
@@ -106,6 +162,7 @@ export function openCashSettings(){
       ${originalKind==='addons'?'<p class="cash-settings-note">Сохраните только саму добавку. Её соответствие будет использоваться для любого чая.</p>':targets.some(row=>/ча[йи]/i.test(row.category||''))?'<p class="cash-settings-note">Здесь выберите сам чай без добавок. Лимон, мята и чабрец настраиваются отдельно во вкладке «Добавки» и подставляются к чаю автоматически.</p>':''}
       <label>Найти товар на кассе<input data-find type="search" placeholder="Название или категория"></label>
       <label>Товар в Эвоторе<select data-card aria-label="Карточка Эвотора"></select></label>
+      <button class="app-modal-btn" data-confirm-card hidden>Подтвердить обновлённую карточку</button>
       <div data-parts></div><button class="app-modal-btn" data-add>Добавить карточку</button><p data-total></p>
       <button class="app-modal-btn" data-mode></button><p data-mode-note class="cash-settings-note"></p>
       <button class="app-modal-btn" data-delete${targets.length!==1||!baseline[kind]?.[targets[0]?.key]?' disabled':''}>Удалить соответствие</button>
@@ -133,6 +190,8 @@ export function openCashSettings(){
       content.querySelector('[data-card]').value=chosen||'';
     }
     function paint(){
+      const changedCard=parts.length===1?cat.items[parts[0].uuid]:null;
+      content.querySelector('[data-confirm-card]').hidden=advanced||!changedCard||changedCard.supported!==true||changedCard.fingerprint===parts[0].fingerprint;
       content.querySelector('[data-parts]').hidden=!advanced;content.querySelector('[data-add]').hidden=!advanced;
       content.querySelector('[data-mode]').textContent=advanced?'Один товар кассы':'Составить из нескольких товаров';
       content.querySelector('[data-mode-note]').textContent=advanced?'Добавьте все составляющие на одну позицию сайта. Например, чай и лимон.':'Выберите один товар Эвотора и сохраните. Количество в заказе перенесётся автоматически.';
@@ -143,6 +202,7 @@ export function openCashSettings(){
     function sum(){try{content.querySelector('[data-total]').textContent='На кассе: '+money(cashPartsTotal(parts,cat));}catch(e){content.querySelector('[data-total]').textContent=e.message;}}
     content.querySelector('[data-find]').oninput=cards;
     content.querySelector('[data-card]').onchange=e=>{if(!advanced){const uuid=e.target.value;parts=uuid?[{uuid,units:1,fingerprint:cat.items[uuid].fingerprint}]:[];paint();}};
+    content.querySelector('[data-confirm-card]').onclick=()=>{const uuid=parts[0]?.uuid;if(!advanced&&cat.items[uuid]?.supported===true){parts=[{uuid,units:1,fingerprint:cat.items[uuid].fingerprint}];paint();}};
     content.querySelector('[data-mode]').onclick=()=>{advanced=!advanced;if(!advanced)parts=parts.length?[{...parts[0],units:1}]:[];cards();paint();};
     content.querySelector('[data-add]').onclick=()=>{const uuid=content.querySelector('[data-card]').value;if(!uuid||parts.length>=12)return;parts.push({uuid,units:1,fingerprint:cat.items[uuid].fingerprint});paint();};
     async function persist(remove=false,goNext=false){
