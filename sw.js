@@ -1,4 +1,4 @@
-const CACHE_NAME = 'bar-spark-v20-cash-mapping-workflow';
+const CACHE_NAME = 'bar-spark-v21-stable-cash-register';
 const ASSETS = [
   './',
   'index.html',

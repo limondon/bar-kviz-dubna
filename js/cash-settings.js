@@ -26,7 +26,17 @@ export function openCashSettings(){
   const device=()=>devices[deviceId]||{};
   const settings=()=>device().settings||{schema:1,revision:0};
   const catalog=()=>device().catalog;
-  const deviceOptions=()=>Object.entries(devices).map(([id,d])=>`<option value="${escAttr(id)}"${id===deviceId?' selected':''}>${esc(d.catalog?.deviceName||id)}${cashCatalogReady(d.catalog)?'':d.catalog?' — старый каталог':' — каталог не получен'}</option>`).join('');
+  let showArchived=false;
+  const visibleDevices=()=>Object.entries(devices).filter(([,d])=>showArchived||d.registration?.archived!==true);
+  const deviceOptions=()=>visibleDevices().map(([id,d])=>`<option value="${escAttr(id)}"${id===deviceId?' selected':''}>${esc(d.catalog?.deviceName||id)}${d.registration?.archived===true?' — архив':''}${cashCatalogReady(d.catalog)?'':d.catalog?' — старый каталог':' — каталог не получен'}</option>`).join('');
+  function chooseDevice(){
+    const visible=visibleDevices();
+    if(!visible.some(([id])=>id===deviceId)||(!deviceChosen&&!cashCatalogReady(catalog()))){
+      const ready=visible.filter(([,d])=>cashCatalogReady(d.catalog)).sort((a,b)=>(Number(b[1].catalog.exportedAt)||0)-(Number(a[1].catalog.exportedAt)||0));
+      const nextId=ready[0]?.[0]||visible[0]?.[0]||'';
+      if(nextId!==deviceId){deviceId=nextId;selected.clear();}
+    }
+  }
   const message=s=>{status.textContent=s;};
   const money=k=>(k/100).toLocaleString('ru-RU')+' ₽';
   const menuRows=()=>menu.flatMap(c=>(c.items||[]).filter(i=>i&&typeof i.name==='string').map(i=>({name:i.name,price:i.price,category:c.cat,group:i.group||''})));
@@ -89,8 +99,26 @@ export function openCashSettings(){
   }
   function bindDeviceControls(){
     const picker=content.querySelector('[data-device]'),refresh=content.querySelector('[data-refresh]');
+    const archived=Object.values(devices).filter(d=>d.registration?.archived===true).length;
+    const toolbar=picker?.closest('.cash-settings-toolbar');
+    if(toolbar){
+      toolbar.insertAdjacentHTML('afterend',`<div class="cash-settings-archive"><label><input type="checkbox" data-show-archive${showArchived?' checked':''}${pending?' disabled':''}> Показать архив (${archived})</label>${deviceId?`<button class="app-modal-btn" data-archive${pending?' disabled':''}>${device().registration?.archived===true?'Вернуть из архива':'Убрать в архив'}</button>`:''}</div>${device().registration?.appVersion?`<p class="cash-settings-note">Приложение кассы: ${esc(device().registration.appVersion)}${device().registration.identityKey?' · постоянная привязка':''}.</p>`:''}${device().registration?.archived===true?'<p class="cash-settings-note">Это архивная регистрация. Каталог и соответствия сохранены. Верните её из архива, если касса ещё используется.</p>':''}`);
+      content.querySelector('[data-show-archive]').onchange=e=>{showArchived=e.target.checked;chooseDevice();render();};
+      const archive=content.querySelector('[data-archive]');if(archive)archive.onclick=archiveDevice;
+    }
+    if(picker)picker.disabled=pending;
     if(picker)picker.onchange=e=>{deviceId=e.target.value;deviceChosen=true;selected.clear();render();};
     if(refresh)refresh.onclick=requestCatalog;
+  }
+  async function archiveDevice(){
+    if(pending||!deviceId)return;
+    const originalDevice=deviceId,archived=device().registration?.archived!==true;
+    pending=true;render();
+    try{
+      await runTransaction(ref(db,`${cashDevicesPath}/${originalDevice}/registration`),current=>({...current,archived,archivedAt:archived?Date.now():null}),{applyLocally:false});
+      message(archived?'Регистрация убрана в архив. Каталог и соответствия сохранены.':'Регистрация возвращена из архива.');
+      chooseDevice();
+    }catch{message('Не удалось изменить архив. Проверьте соединение.');}finally{pending=false;render();}
   }
   async function requestCatalog(){
     if(pending||!deviceId)return;
@@ -249,11 +277,7 @@ export function openCashSettings(){
   overlay.querySelector('[data-close]').onclick=()=>{closed=true;opened=false;unsubscribe();unsubscribeMenu();overlay.remove();unlockScroll();if(previousFocus?.isConnected)previousFocus.focus();};
   const unsubscribe=onValue(ref(db,cashDevicesPath),snapshot=>{
     devices=snapshot.val()||{};devicesReady=true;
-    if(!devices[deviceId]||(!deviceChosen&&!cashCatalogReady(catalog()))){
-      const ready=Object.entries(devices).filter(([,d])=>cashCatalogReady(d.catalog)).sort((a,b)=>(Number(b[1].catalog.exportedAt)||0)-(Number(a[1].catalog.exportedAt)||0));
-      const nextId=ready[0]?.[0]||(devices[deviceId]?deviceId:Object.keys(devices)[0]||'');
-      if(nextId!==deviceId){deviceId=nextId;selected.clear();}
-    }
+    chooseDevice();
     if(cashCatalogReady(catalog())&&device().catalog?.requestId&&device().catalog.requestId===device().refreshRequest?.id)message('Каталог кассы обновлён.');
     render();
   },()=>{message('Не удалось прочитать настройки. Проверьте вход сотрудника и соединение.');});

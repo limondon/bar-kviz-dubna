@@ -112,6 +112,30 @@ final class BridgeClient {
         if (!deviceId.matches("[a-zA-Z0-9-]{10,80}") || !deviceId.equals(catalog.getString("deviceId"))) throw new IllegalArgumentException("Неверная касса.");
         String path = DEVICES + deviceId + "/catalog"; replace(path, get(path), catalog);
     }
+    String resolveDevice(String identityKey, String preferredId) throws Exception {
+        if (identityKey == null) {
+            if (TerminalIdentity.validDeviceId(preferredId)) return preferredId;
+            throw new IllegalStateException("Не удалось определить терминал. Новая регистрация не создана. Повторите вход на кассе.");
+        }
+        if (!identityKey.matches("android-[0-9a-f]{64}")) throw new IllegalArgumentException("Неверный идентификатор терминала.");
+        String path = "config/evotor/v1/terminalLinks/" + identityKey;
+        Document before = get(path);
+        if (before.value != null && before.value != JSONObject.NULL) {
+            String linked = before.object().optString("deviceId");
+            if (!TerminalIdentity.validDeviceId(linked)) throw new IllegalStateException("Повреждена привязка кассы. Обратитесь к администратору сайта.");
+            return linked;
+        }
+        String selected = TerminalIdentity.validDeviceId(preferredId) ? preferredId : java.util.UUID.randomUUID().toString();
+        replace(path, before, new JSONObject().put("schema", 1).put("deviceId", selected));
+        return selected;
+    }
+    void identifyDevice(String deviceId, String identityKey, String appVersion) throws Exception {
+        String path = DEVICES + deviceId + "/registration";
+        Document before = get(path); JSONObject registration = before.object();
+        registration.put("schema", 1).put("archived", false).put("appVersion", appVersion).put("lastSeenAt", System.currentTimeMillis());
+        if (identityKey != null) registration.put("identityKey", identityKey);
+        replace(path, before, registration);
+    }
     void claim(CashBill bill, String nonce) throws Exception {
         // Reserve at day scope: a renamed table must not create a second receipt from the same order rows.
         String path = ROOT + bill.date;

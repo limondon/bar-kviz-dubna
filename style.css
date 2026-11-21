@@ -1696,6 +1696,8 @@ textarea{resize:vertical;min-height:clamp(70px,18vw,100px);}
 .cash-settings-row small{display:block;color:#bcb8af;margin-top:5px}
 .cash-settings-row p{margin:5px 0}
 .cash-rule-state{color:#f5c66d;font-size:14px}.cash-rule-state.good{color:#86cf8a}
+.cash-settings-archive{display:flex;flex-wrap:wrap;gap:10px;justify-content:space-between;align-items:center;margin:12px 0}
+.cash-settings-archive label{display:flex;flex-direction:row;gap:8px;align-items:center}
 .cash-rule-editor label{margin:14px 0}.cash-rule-editor>select{margin-bottom:12px}
 .cash-rule-editor>p{margin:10px 0}.cash-rule-editor h3:focus{outline:none}
 .cash-rule-part{display:grid;grid-template-columns:minmax(0,1fr) 95px auto;gap:12px;align-items:center;border-bottom:1px solid var(--border);padding:8px 0;overflow-wrap:anywhere}
