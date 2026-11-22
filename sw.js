@@ -1,4 +1,4 @@
-const CACHE_NAME = 'bar-spark-v22-staff-bill-prices';
+const CACHE_NAME = 'bar-spark-v23-guest-retry';
 const ASSETS = [
   './',
   'index.html',

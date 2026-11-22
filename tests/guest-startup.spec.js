@@ -1,6 +1,22 @@
 const {test,expect}=require('@playwright/test');
 const {setup,guest}=require('./spark-fixture.cjs');
 
+test('retry remains usable when the guest module cannot load',async({page})=>{
+  await setup(page);
+  await page.route('**/js/guest.js',route=>route.abort());
+  await page.goto('https://bar.test/guest.html?table=1&token=test-token');
+  await page.locator('#loadingRetry').click({timeout:12000});
+  await expect(page).toHaveURL(/table=1&token=test-token&connection=https$/);
+});
+
+test('HTTPS retry starts on long polling and opens the same table',async({page})=>{
+  const env=await setup(page);
+  await page.goto('https://bar.test/guest.html?table=1&token=test-token&connection=https');
+  await expect(page.locator('[data-action=addItem]').first()).toBeVisible();
+  expect(await page.evaluate(()=>window.__longPollingFallbacks)).toBe(1);
+  expect(env.data().orders).toEqual({});
+});
+
 test('startup waits for connection without a false offline warning and falls back before 30 seconds',async({page})=>{
   const env=await setup(page);
   await page.addInitScript(()=>{window.__connected=false;window.__databaseReady=false;});

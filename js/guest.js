@@ -15,6 +15,9 @@ const fbApp=initializeApp({
   messagingSenderId:'21905205682',
   appId:'1:21905205682:web:c2d6935c9b9848a7291cab'
 });
+const bootParams=new URLSearchParams(location.search);
+const useHttps=bootParams.get('connection')==='https';
+if(useHttps)forceLongPolling();
 const db=getDatabase(fbApp);
 const auth=getAuth(fbApp);
 
@@ -27,7 +30,7 @@ let openGroups=new Set();
 let guestCups=0;
 let connected=false,appReady=false,recoveryBusy=false,pendingMemory=null;
 let everConnected=false,startupFinished=false;
-let offlineNoticeTimer=null,slowStartTimer=null,startupFallbackTimer=null;
+let offlineNoticeTimer=null,startupFallbackTimer=null;
 const PENDING_ORDER_KEY='bar_guest_pending_order';
 const G_TEA_ADDONS=['Чабрец','Лимон','Мята'];
 const G_ADDON_PRICE=50;
@@ -104,15 +107,9 @@ async function recoverPendingOrder(){
 
 // ─── BOOT ───────────────────────────────────────────
 (async()=>{
-  const p=new URLSearchParams(location.search);
-  tableNum=p.get('table'); token=p.get('token');
+  tableNum=bootParams.get('table'); token=bootParams.get('token');
   if(!tableNum||!token){showInvalid();return;}
   setConn(null);
-  slowStartTimer=setTimeout(()=>{
-    if(startupFinished)return;
-    document.getElementById('loadingStatus').textContent='Подключение занимает больше обычного. Продолжаем загружать меню…';
-    document.getElementById('loadingRetry').style.display='';
-  },8000);
   try{await signInAnonymously(auth);}catch(e){console.error(e);showInvalid('unavailable');return;}
   onValue(ref(db,'.info/connected'),snap=>{
     const wasConnected=connected;
@@ -122,7 +119,7 @@ async function recoverPendingOrder(){
   // Some mobile networks stall WebSockets until the SDK's 30 s health timeout.
   // Give normal connections a chance, then reconnect once via supported HTTPS
   // long polling. Pending SDK reads resume on that connection with the same auth.
-  startupFallbackTimer=setTimeout(()=>{
+  if(!useHttps)startupFallbackTimer=setTimeout(()=>{
     if(connected||startupFinished||navigator.onLine===false)return;
     goOffline(db);forceLongPolling();goOnline(db);
   },4000);
@@ -624,7 +621,7 @@ function showApp(){
   initStickyHeader();
 }
 function finishStartup(){
-  startupFinished=true;clearTimeout(slowStartTimer);clearTimeout(startupFallbackTimer);
+  startupFinished=true;clearTimeout(startupFallbackTimer);
 }
 function setConn(ok){
   clearTimeout(offlineNoticeTimer);
