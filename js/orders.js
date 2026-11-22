@@ -11,6 +11,12 @@ import{applyStockDeltas,deductMenuStock}from'./stock.js';
 import{getTMeta}from'./tables.js';
 import{buildQuickTableBtns,isInstantItem,renderAll}from'./render.js';
 import{nextOrderNum}from'./counters.js';
+import{savedMenuPrice}from'./menu.js';
+
+function withOrderPrice(item){
+  const price=savedMenuPrice(item.name);
+  return price===null?item:{...item,price};
+}
 
 // ─── ADD ORDER ────────────────────────────────────────
 const staffDraftKey='bar_staff_order_draft';
@@ -46,7 +52,7 @@ export async function addOrder(){
     if(!tableRaw){fl('fInfo','Укажите номер стола!');}
     else if(!rawItems){fl('fInfo','Введите позиции!');}
     else{
-      const tNum=tableRaw;const items=parseItems(rawItems);
+      const tNum=tableRaw;const items=parseItems(rawItems).map(withOrderPrice);
       if(!items.length){fl('fInfo','Не удалось распознать позиции!');}
       else{
         const num=await nextOrderNum();
@@ -334,7 +340,8 @@ export async function saveEditOrder(){
       if(billMode)changed.doneAt=Date.now();
       return changed;
     }
-    return billMode?{...it,status:'done',doneAt:Date.now()}:it;
+    const added=withOrderPrice(it);
+    return billMode?{...added,status:'done',doneAt:Date.now()}:added;
   });
   let mergedItems,stockDeltas;
   if(billMode){
