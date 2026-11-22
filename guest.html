@@ -21,7 +21,7 @@
 <div id="screen-loading">
   <div class="load-spinner"></div>
   <div id="loadingStatus" role="status" aria-live="polite" style="color:var(--muted);font-size:13px;">Загружаем меню…</div>
-  <button id="loadingRetry" class="new-order-btn" data-action="reloadAccess" style="display:none;margin-top:24px;">Попробовать снова</button>
+  <button id="loadingRetry" class="new-order-btn" style="display:none;margin-top:24px;">Попробовать снова</button>
 </div>
 
 <div id="screen-invalid" class="hidden">
@@ -103,6 +103,24 @@
 
 <div class="flash" id="flash"></div>
 
+<script>
+{
+  const loading=document.getElementById('screen-loading');
+  const status=document.getElementById('loadingStatus');
+  const retry=document.getElementById('loadingRetry');
+  function showRetry(){
+    if(loading.classList.contains('hidden'))return;
+    status.textContent='Меню пока не открылось. Попробуйте ещё раз или откройте эту же ссылку в Chrome.';
+    retry.style.display='';
+  }
+  setTimeout(showRetry,8000);
+  retry.addEventListener('click',()=>{
+    const url=new URL(location.href);
+    url.searchParams.set('connection','https');
+    location.replace(url.href);
+  });
+}
+</script>
 <script type="module" src="js/guest.js"></script>
 </body>
 </html>
