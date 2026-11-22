@@ -51,6 +51,29 @@ test('shared golden fixture is still produced by the website',async()=>{
   expect(bill.canonical).toBe(wire.canonical);expect(bill.digest).toBe(wire.digest);expect(bill.id).toBe(wire.id);
 });
 
+test('staff tea with an addon keeps its price across a menu change and a later order',async({page})=>{
+  const env=await setup(page);await staff(page);
+  async function addTea(quantity){
+    await page.locator('#inpTable').fill('1');
+    await page.locator('#inpItems').fill(quantity+' Сенча + лимон');
+    await page.locator('.btn-add').click();
+    await expect(page.locator('#inpItems')).toHaveValue('');
+  }
+  await addTea(2);
+  await page.evaluate(()=>window.__remoteSet('menu2/1/items/0/price',350));
+  await addTea(1);
+  const prices=Object.values(env.data().orders).map(o=>Object.values(o.items)[0].price);
+  expect(prices.sort()).toEqual([350,400]);
+  await page.evaluate(()=>sw('tables'));await page.locator('.tb-header').click();
+  await expect(page.locator('.sum-total .sum-tot')).toHaveText('1100₽');
+  await page.locator('[data-action=cashTransfer]').click();
+  await expect(page.locator('.cash-transfer-lines p')).toHaveText(['Сенча + лимон ×2 — 700 ₽','Сенча + лимон ×1 — 400 ₽']);
+  await page.locator('[data-cash-send]').click();
+  await expect(page.locator('.cash-transfer-status')).toContainText('Передан');
+  const [record]=Object.values(env.data().config.evotor.v1.transfers[date()]);
+  expect(JSON.parse(record.canonical)[4].map(row=>row[6])).toEqual([false,false]);
+});
+
 test('only a cleared receipt can be refreshed after an opening and its attempt history survives',async()=>{
   const {buildCashBill,queueCashBill}=helpers();
   const bill=await buildCashBill({date:date(),table:'1',sid:'session',orders:[order([{id:'a',name:'Чай',qty:1,price:500}])],priceFor:()=>null});
@@ -101,6 +124,7 @@ test('opening/unknown/opened states synchronize and block replay including later
   await page.evaluate(()=>window.__remoteSet('orders/one/items/b',{name:'Вода',qty:2,price:100}));
   await page.locator('[data-cash-close]').click();await page.locator('.tb-header').click();await page.locator('[data-action=cashTransfer]').click();
   await expect(page.locator('[data-cash-send]')).toBeDisabled();await expect(page.locator('.cash-transfer-status')).toContainText('Открыт на кассе');
+  await expect(page.locator('.cash-transfer-status')).toContainText('отличается от последней передачи');
   expect(Object.keys(env.data().config.evotor.v1.transfers[date()])).toHaveLength(1);expect(env.errors).toEqual([]);
 });
 test('an unacknowledged transfer can be hidden without blocking the rest of the app',async({page})=>{

@@ -43,6 +43,19 @@ export function getItemPrice(name){
 }
 
 // ─── TABLE ACTIONS ────────────────────────────────────
+export function summarizeTableItems(items){
+  const groups=new Map();
+  for(const item of items){
+    const unitPrice=Number(item.price??getItemPrice(item.name));
+    const key=JSON.stringify([item.menuItemId??item.productId??'',item.name.trim().toLowerCase(),unitPrice]);
+    const row=groups.get(key)||{name:item.name,qty:0,kopecks:0};
+    const qty=Number(item.qty);
+    row.qty+=qty;
+    row.kopecks+=Math.round(unitPrice*100)*qty;
+    groups.set(key,row);
+  }
+  return [...groups.values()].sort((a,b)=>a.name.localeCompare(b.name));
+}
 const TABLE_OPEN_LIMIT=12*60*60*1000;
 const autoClosing=new Set();
 // Free Spark: staff clients check expiry; the transaction arbitrates concurrent clients.
@@ -498,11 +511,9 @@ export function renderTables(){
     const tOrders=tOrdersRaw.sort((a,b)=>a.createdAt-b.createdAt);
     const isCurrentSession=meta.sid===sid||(!meta.sid&&sid==='default');
     const isOpen=isCurrentSession&&meta.status!=='closed';
-    const sumMap={};
-    tOrders.forEach(o=>(o.items||[]).forEach(it=>{const k=it.name.trim().toLowerCase();if(!sumMap[k])sumMap[k]={name:it.name,qty:0,price:it.price??getItemPrice(it.name)};sumMap[k].qty+=it.qty;}));
-    const sumItems=Object.values(sumMap).sort((a,b)=>a.name.localeCompare(b.name));
-    const totalSum=sumItems.reduce((s,x)=>s+(x.price*x.qty),0);
-    const sumLines=sumItems.map(x=>`<div class="sum-line"><span class="sum-item">${esc(shortItemName(x.name))}</span><span class="sum-qty">${x.qty} шт.</span><span class="sum-tot">${x.price?x.price*x.qty+'₽':'—'}</span></div>`).join('')+(totalSum?`<div class="sum-line sum-total"><span class="sum-item">ИТОГО</span><span class="sum-qty"></span><span class="sum-tot">${totalSum}₽</span></div>`:'');
+    const sumItems=summarizeTableItems(tOrders.flatMap(o=>o.items||[]));
+    const totalSum=sumItems.reduce((sum,row)=>sum+row.kopecks,0)/100;
+    const sumLines=sumItems.map(x=>`<div class="sum-line"><span class="sum-item">${esc(shortItemName(x.name))}</span><span class="sum-qty">${x.qty} шт.</span><span class="sum-tot">${x.kopecks?x.kopecks/100+'₽':'—'}</span></div>`).join('')+(totalSum?`<div class="sum-line sum-total"><span class="sum-item">ИТОГО</span><span class="sum-qty"></span><span class="sum-tot">${totalSum}₽</span></div>`:'');
     const loggedAt=meta.loggedAt||null;
     const ordersHtml=(()=>{
       const before=loggedAt?tOrders.filter(o=>o.createdAt<=loggedAt):tOrders;
@@ -559,11 +570,16 @@ export function renderClosed(){
     const closedSessionHist=(meta.closedSessions||[]).find(s=>s.sid===sid);
     const closedAt=isCurrent?meta.closedAt:closedSessionHist?.closedAt;
     const autoClosed=isCurrent?meta.autoClosed:closedSessionHist?.autoClosed;
-    const sumMap={},pendingMap={};
-    tOrders.forEach(o=>(o.items||[]).forEach(it=>{const k=it.name.trim().toLowerCase();if(it.status==='done'){if(!sumMap[k])sumMap[k]={name:it.name,qty:0,price:it.price??getItemPrice(it.name)};sumMap[k].qty+=it.qty;}else{if(!pendingMap[k])pendingMap[k]={name:it.name,qty:0};pendingMap[k].qty+=it.qty;}}));
-    const doneItems=Object.values(sumMap).sort((a,b)=>a.name.localeCompare(b.name));
-    const totalSum=doneItems.reduce((s,x)=>s+(x.price*x.qty),0);
-    const sumLines=[...doneItems.map(x=>`<div class="sum-line"><span class="sum-item">${esc(shortItemName(x.name))}</span><span class="sum-qty">${x.qty} шт.</span><span class="sum-tot">${x.price?x.price*x.qty+'₽':'—'}</span></div>`),...Object.values(pendingMap).sort((a,b)=>a.name.localeCompare(b.name)).map(x=>`<div class="sum-line muted"><span class="sum-item strike">${esc(shortItemName(x.name))}</span><span class="sum-qty">${x.qty}</span><span class="sum-tot">не отдано</span></div>`),totalSum?`<div class="sum-line sum-total"><span class="sum-item">ИТОГО</span><span class="sum-qty"></span><span class="sum-tot">${totalSum}₽</span></div>`:''].join('');
+    const items=tOrders.flatMap(o=>o.items||[]);
+    const pendingMap=Object.create(null);
+    for(const item of items.filter(item=>item.status!=='done')){
+      const key=item.name.trim().toLowerCase();
+      pendingMap[key]??={name:item.name,qty:0};
+      pendingMap[key].qty+=Number(item.qty);
+    }
+    const doneItems=summarizeTableItems(items.filter(item=>item.status==='done'));
+    const totalSum=doneItems.reduce((sum,row)=>sum+row.kopecks,0)/100;
+    const sumLines=[...doneItems.map(x=>`<div class="sum-line"><span class="sum-item">${esc(shortItemName(x.name))}</span><span class="sum-qty">${x.qty} шт.</span><span class="sum-tot">${x.kopecks?x.kopecks/100+'₽':'—'}</span></div>`),...Object.values(pendingMap).sort((a,b)=>a.name.localeCompare(b.name)).map(x=>`<div class="sum-line muted"><span class="sum-item strike">${esc(shortItemName(x.name))}</span><span class="sum-qty">${x.qty}</span><span class="sum-tot">не отдано</span></div>`),totalSum?`<div class="sum-line sum-total"><span class="sum-item">ИТОГО</span><span class="sum-qty"></span><span class="sum-tot">${totalSum}₽</span></div>`:''].join('');
     const ordersHtml=tOrders.map(o=>{const sico={new:'🕐',making:'🍹',ready:'🟢',done:'✅'}[o.status]||'';const note=o.note?`<div class="tbo-note">💬 ${esc(o.note)}</div>`:'';const lines=(o.items||[]).map(it=>`<div class="tbo-line${it.status==='done'?' tl-done':''}"><span class="tl-name">${esc(shortItemName(it.name))}</span><span class="tl-qty">${it.qty} шт.</span></div>`).join('');return`<div class="tbo-item"><div class="tbo-hdr"><span class="tbo-num">#${esc(o.num)} ${sico}</span><span class="tbo-time">${fmt(o.createdAt)}</span><button class="btn-edit tbo-edit-btn" data-action="edit" data-oid="${escAttr(o.id)}" data-bill="1">✏️</button></div><div class="tbo-lines">${lines}</div>${note}</div>`;}).join('');
     const totalItems=tOrders.reduce((s,o)=>s+(o.items?o.items.reduce((a,i)=>a+i.qty,0):0),0);
     const safeDate=escAttr(S.closedViewDate),safeT=escAttr(tNum),safeSid=escAttr(sid);

@@ -1,7 +1,7 @@
 import{S}from'./state.js';
 import{db,ref,update,runTransaction}from'./firebase.js';
 import{BUILTIN_MENU}from'./menu-data.js';
-import{esc,escAttr,fl,showConfirm,parseItems,lockScroll,unlockScroll,pl}from'./utils.js';
+import{esc,escAttr,fl,showConfirm,parseItems,lockScroll,unlockScroll,pl,baseItemName,itemExtraPrice}from'./utils.js';
 
 // ─── PICKER STATE ─────────────────────────────────────
 let pickerState={};
@@ -173,6 +173,18 @@ document.addEventListener('click',e=>{
 export function buildMenuButtons(){const el=document.getElementById('menuBtns');if(el)el.innerHTML='';}
 
 let menuSnapshot=null,menuSaving=false;
+export function savedMenuPrice(name){
+  const items=(menuSnapshot||[]).flatMap(category=>category.items||[]).filter(Boolean);
+  const full=name.trim().toLowerCase();
+  const exact=items.filter(item=>item.name?.trim().toLowerCase()===full);
+  const base=baseItemName(name).toLowerCase();
+  const matches=exact.length?exact:items.filter(item=>item.name?.trim().toLowerCase()===base);
+  if(matches.length!==1)return null;
+  const raw=matches[0].price;
+  if(raw==null||typeof raw==='boolean'||String(raw).trim()==='')return null;
+  const price=Number(raw)+(exact.length?0:itemExtraPrice(name));
+  return Number.isFinite(price)&&Number(raw)>=0&&Math.abs(price*100-Math.round(price*100))<0.00001?price:null;
+}
 const copyMenu=value=>JSON.parse(JSON.stringify(value));
 const normalizeMenu=raw=>(Array.isArray(raw)?raw:Object.values(raw||{})).filter(Boolean).map(cat=>({...cat,items:Array.isArray(cat.items)?cat.items:Object.values(cat.items||{})}));
 const canonical=value=>JSON.stringify(value,(_,v)=>v&&typeof v==='object'&&!Array.isArray(v)?Object.fromEntries(Object.keys(v).sort().map(k=>[k,v[k]])):v);

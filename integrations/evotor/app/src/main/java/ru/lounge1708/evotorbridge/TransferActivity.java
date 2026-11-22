@@ -63,6 +63,7 @@ public final class TransferActivity extends Activity {
     private Button openBillButton;
     private CashBill displayedBill;
     private CashBill receiptReturnBill;
+    private String postponingReceipt;
     private boolean mappingReady;
     private String selectedDay;
     private boolean busy, listing, started, signedIn;
@@ -264,12 +265,13 @@ public final class TransferActivity extends Activity {
         if (deviceId == null) throw new IllegalStateException("Не удалось сохранить идентификатор кассы.");
         JSONObject request = client.get(BridgeClient.DEVICES + deviceId + "/refreshRequest").object();
         String id = request.optString("id");
-        if (!force && "0.10".equals(storage.getString("catalog-app-version", "")) && CashCatalog.MONEY_FORMAT.equals(storage.getString("catalog-money-format", "")) && storage.getBoolean("catalog-exported", false) && id.equals(storage.getString("catalog-request", ""))) return;
+        String installedVersion = getPackageManager().getPackageInfo(getPackageName(), 0).versionName;
+        if (!force && installedVersion.equals(storage.getString("catalog-app-version", "")) && CashCatalog.MONEY_FORMAT.equals(storage.getString("catalog-money-format", "")) && storage.getBoolean("catalog-exported", false) && id.equals(storage.getString("catalog-request", ""))) return;
         String label = android.os.Build.MODEL + " · " + deviceId.substring(0, 8);
         JSONObject catalog = CashCatalog.export(this, deviceId, label, id);
         client.saveCatalog(deviceId, catalog);
-        client.identifyDevice(deviceId, terminalKey, "0.10");
-        if (!storage.edit().putString("catalog-app-version", "0.10").putBoolean("catalog-exported", true).putString("catalog-money-format", CashCatalog.MONEY_FORMAT).putString("catalog-request", id).commit())
+        client.identifyDevice(deviceId, terminalKey, installedVersion);
+        if (!storage.edit().putString("catalog-app-version", installedVersion).putBoolean("catalog-exported", true).putString("catalog-money-format", CashCatalog.MONEY_FORMAT).putString("catalog-request", id).commit())
             throw new IllegalStateException("Каталог отправлен, но не удалось сохранить отметку обновления.");
     }
     private void refresh() { refresh(false); }
@@ -343,7 +345,7 @@ public final class TransferActivity extends Activity {
             TextView contents = text(card, CashDesk.contents(bill), 14); contents.setMaxLines(2); contents.setEllipsize(android.text.TextUtils.TruncateAt.END);
             String stateName = bill.record.optString("state");
             if ("queued".equals(stateName) || "cleared".equals(stateName) || "opened".equals(stateName)) {
-                Runnable open = () -> { listScrollY = scroll.getScrollY(); if ("opened".equals(stateName)) openedBillView(bill); else billView(bill); };
+                Runnable open = () -> { listScrollY = scroll.getScrollY(); if (CashDesk.group(bill, now) == CashDesk.SAVED) openedBillView(bill); else billView(bill); };
                 primary(card, CashDesk.group(bill, now) == CashDesk.SAVED ? "Продолжить / проверить" : "Открыть состав", open);
                 card.setOnClickListener(v -> { if (!busy) open.run(); });
             } else button(card, "Проверить текущий чек", this::receiptScreen);
@@ -403,6 +405,8 @@ public final class TransferActivity extends Activity {
     }
     private void renderSavedBill(CashBill bill, String uuid, ReceiptResume.State receiptState) {
         busy = false;
+        boolean requestedPostpone = uuid.equals(postponingReceipt);
+        postponingReceipt = null;
         displayedBill = bill;
         design.heading(body, CashDesk.money(bill.total), 30);
         text(body, CashDesk.dayLabel(bill.date, System.currentTimeMillis()) + " · " + bill.date, 14).setTextColor(DeskUi.MUTED);
@@ -410,11 +414,13 @@ public final class TransferActivity extends Activity {
             status.setText("Этот неоплаченный счёт сейчас открыт на кассе. Можно продолжить его или отложить для расчёта другого стола.");
             primary(actions, "Продолжить счёт", () -> receiptScreen(uuid));
             button(body, "Отложить счёт", () -> new AlertDialog.Builder(this).setTitle("Отложить счёт стола " + bill.table + "?")
-                    .setMessage("Состав уже сохранён в нашем списке. На следующем экране кассы нажмите «Очистить», чтобы освободить кассу для другого стола. Позже выберите этот стол в нашем списке и нажмите «Продолжить счёт».")
-                    .setNegativeButton("Отмена", null).setPositiveButton("Перейти к чеку", (d, w) -> receiptScreen(uuid)).show());
+                    .setMessage("В «Продажа» очистите неоплаченный чек. При возврате приложение проверит его и покажет список столов.")
+                    .setNegativeButton("Отмена", null).setPositiveButton("Перейти к чеку", (d, w) -> receiptScreen(uuid, true)).show());
         } else if (receiptState == ReceiptResume.State.POSTPONED) {
             status.setText("Этот счёт не оплачен и сейчас не открыт на кассе. Состав сохранён. Нажмите «Продолжить счёт», чтобы проверить и снова заполнить кассу.");
             primary(actions, "Продолжить счёт", () -> resumePostponed(bill));
+            if ("opened".equals(bill.record.optString("state")))
+                button(actions, "Отложить и выбрать другой стол", () -> postponeAndList(bill));
         } else if (receiptState == ReceiptResume.State.OTHER_ACTIVE) {
             status.setText("На кассе сейчас другой заполненный чек. Завершите работу с ним или отложите его. Счёт этого стола остаётся сохранённым.");
             button(actions, "Открыть текущий чек кассы", this::receiptScreen);
@@ -422,6 +428,23 @@ public final class TransferActivity extends Activity {
             status.setText("По прежнему чеку найдена оплата или фискальный документ. Создавать этот счёт заново нельзя. Если оплата ещё не завершена, продолжите её в «Продажа».");
         }
         secondaryActions("Обновить состояние", () -> openedBillView(bill), "К счетам", this::listView);
+        if (requestedPostpone && receiptState == ReceiptResume.State.POSTPONED && "opened".equals(bill.record.optString("state")))
+            postponeAndList(bill);
+    }
+    private void postponeAndList(CashBill bill) {
+        if (busy) return;
+        busy = true;
+        status.setText("Сохраняю отложенный стол…");
+        worker.execute(() -> {
+            try {
+                JSONObject previous = journal().optJSONObject(bill.id);
+                ReceiptRecovery.requireResumeContext(previous, bill.record);
+                ReceiptResume.requirePostponed(inspectPreviousReceipt(previous.getString("receiptUuid")));
+                client.requeuePostponed(bill);
+                rememberCleared(bill.id, previous, "postponed");
+                post(() -> { busy = false; listView(); });
+            } catch (Exception e) { post(() -> error(e)); }
+        });
     }
     private synchronized void rememberCleared(String id, JSONObject expected) throws Exception {
         rememberCleared(id, expected, "cleared");
@@ -635,7 +658,8 @@ public final class TransferActivity extends Activity {
         } catch (Exception e) { post(() -> { busy = false; status.setText("Не удалось сохранить результат. Проверьте текущий чек. Повтор заблокирован сервером."); }); return false; }
     }
     private void receiptScreen() { receiptScreen(null); }
-    private void receiptScreen(String expectedUuid) {
+    private void receiptScreen(String expectedUuid) { receiptScreen(expectedUuid, false); }
+    private void receiptScreen(String expectedUuid, boolean postponeOnReturn) {
         busy = true; updateOpenButton(); status.setText("Проверяю заполненный чек перед переходом…");
         worker.execute(() -> {
             try {
@@ -646,8 +670,9 @@ public final class TransferActivity extends Activity {
                     try {
                         busy = false; updateOpenButton(); status.setText("Открываю заполненный чек кассы. Оплата выполняется отдельно.");
                         receiptReturnBill = expectedUuid == null ? null : displayedBill;
+                        postponingReceipt = postponeOnReturn ? expectedUuid : null;
                         startActivity(NavigationApi.createIntentForSellReceiptEdit(false));
-                    } catch (Exception e) { receiptReturnBill = null; error(new IllegalStateException("Не удалось открыть заполненный чек. Откройте «Продажа» на кассе вручную.")); }
+                    } catch (Exception e) { receiptReturnBill = null; postponingReceipt = null; error(new IllegalStateException("Не удалось открыть заполненный чек. Откройте «Продажа» на кассе вручную.")); }
                 });
             } catch (Exception e) { post(() -> error(e)); }
         });

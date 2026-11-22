@@ -1,4 +1,4 @@
-const CACHE_NAME = 'bar-spark-v21-stable-cash-register';
+const CACHE_NAME = 'bar-spark-v22-staff-bill-prices';
 const ASSETS = [
   './',
   'index.html',
