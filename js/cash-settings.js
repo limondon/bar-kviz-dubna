@@ -1,3 +1,4 @@
+import{staffOrderMenu}from'./menu-data.js';
 import{S}from'./state.js';
 import{auth,db,ref,onValue,runTransaction}from'./firebase.js';
 import{esc,escAttr,lockScroll,unlockScroll,DEFAULT_ADDON_PRICE}from'./utils.js';
@@ -39,7 +40,7 @@ export function openCashSettings(){
   }
   const message=s=>{status.textContent=s;};
   const money=k=>(k/100).toLocaleString('ru-RU')+' ₽';
-  const menuRows=()=>menu.flatMap(c=>(c.items||[]).filter(i=>i&&typeof i.name==='string').map(i=>({name:i.name,price:i.price,category:c.cat,group:i.group||''})));
+  const menuRows=()=>staffOrderMenu(menu).filter(category=>menu.includes(category)||category.items.some(item=>Object.values(catalog()?.items||{}).some(card=>card.name===item.name))).flatMap(c=>(c.items||[]).filter(i=>i&&typeof i.name==='string').map(i=>({name:i.name,price:i.price,category:c.cat,group:i.group||''})));
   async function rows(){
     const list=kind==='products'?menuRows():['Лимон','Мята','Чабрец'].map(name=>({name:addonName(name),price:DEFAULT_ADDON_PRICE,category:'Добавки к чаю'}));
     const nameKey=name=>kind==='addons'?addonName(name):name,names=new Set(list.map(x=>nameKey(x.name)));

@@ -1,7 +1,9 @@
 import{S}from'./state.js';
 import{db,ref,update,runTransaction}from'./firebase.js';
-import{BUILTIN_MENU}from'./menu-data.js';
+import{BUILTIN_MENU,staffOrderMenu}from'./menu-data.js';
 import{esc,escAttr,fl,showConfirm,parseItems,lockScroll,unlockScroll,pl,baseItemName,itemExtraPrice}from'./utils.js';
+
+const pickerMenu=()=>staffOrderMenu(S.BUILTIN_MENU_LIVE.length?S.BUILTIN_MENU_LIVE:BUILTIN_MENU).filter(c=>!c.hidden);
 
 // ─── PICKER STATE ─────────────────────────────────────
 let pickerState={};
@@ -11,7 +13,6 @@ let pickerCups=0;
 
 export function openMenuPicker(){
   pickerState={};pickerCat=0;pickerOpenGroups=new Set();pickerCups=0;
-  const menu=S.BUILTIN_MENU_LIVE.length?S.BUILTIN_MENU_LIVE:BUILTIN_MENU;
   const ta=document.getElementById('inpItems');
   if(ta&&ta.value.trim()){
     parseItems(ta.value).forEach(it=>{pickerState[it.name]={qty:it.qty,note:'',addons:{},option:null};});
@@ -27,7 +28,7 @@ export function closeMenuPicker(){
 
 export function renderPickerTabs(){
   const el=document.getElementById('menuPickerTabs');if(!el)return;
-  const menu=(S.BUILTIN_MENU_LIVE.length?S.BUILTIN_MENU_LIVE:BUILTIN_MENU).filter(c=>!c.hidden);
+  const menu=pickerMenu();
   el.innerHTML=menu.map((cat,i)=>`
     <button class="menu-picker-tab${i===pickerCat?' active':''}" data-picker-cat="${i}" type="button">${esc(cat.cat)}</button>
   `).join('');
@@ -46,7 +47,7 @@ export function pickerToggleGroup(group){
 const TEA_ADDONS=['Чабрец','Лимон','Мята'];
 export function renderPickerList(){
   const el=document.getElementById('menuPickerList');if(!el)return;
-  const menu=(S.BUILTIN_MENU_LIVE.length?S.BUILTIN_MENU_LIVE:BUILTIN_MENU).filter(c=>!c.hidden);
+  const menu=pickerMenu();
   const cat=menu[pickerCat];if(!cat)return;
   const isLeafTea=cat.cat.toLowerCase().includes('лист');
   const isTea=cat.cat.toLowerCase().includes('чай');
@@ -95,7 +96,7 @@ export function updatePickerBtn(){
 
 export function confirmMenuPicker(){
   const lines=[];
-  const menu=S.BUILTIN_MENU_LIVE.length?S.BUILTIN_MENU_LIVE:BUILTIN_MENU;
+  const menu=pickerMenu();
   menu.forEach(cat=>{
     const isLeafTea=cat.cat.toLowerCase().includes('лист');
     cat.items.forEach(item=>{
@@ -123,7 +124,7 @@ function _handlePickerAction(btn){
   if(action==='plus'){
     const limitStr=btn.dataset.stockLimit;const limit=limitStr!==undefined&&limitStr!==''?parseInt(limitStr):null;
     if(limit!==null&&pickerState[itemName].qty>=limit)return;
-    pickerState[itemName].qty++;const _menu=S.BUILTIN_MENU_LIVE.length?S.BUILTIN_MENU_LIVE:BUILTIN_MENU;const _isTea=_menu[pickerCat]?.cat?.toLowerCase().includes('чай');if(pickerCups===0&&_isTea){pickerCups++;triggerCupsBar=true;}
+    pickerState[itemName].qty++;const _menu=pickerMenu();const _isTea=_menu[pickerCat]?.cat?.toLowerCase().includes('чай');if(pickerCups===0&&_isTea){pickerCups++;triggerCupsBar=true;}
   }
   if(action==='minus'){pickerState[itemName].qty=Math.max(0,pickerState[itemName].qty-1);if(pickerState[itemName].qty===0){pickerState[itemName].addons={};pickerState[itemName].option=null;}}
   const pill=[...document.querySelectorAll('.picker-pill')].find(p=>p.dataset.pill===itemName);
@@ -174,7 +175,7 @@ export function buildMenuButtons(){const el=document.getElementById('menuBtns');
 
 let menuSnapshot=null,menuSaving=false;
 export function savedMenuPrice(name){
-  const items=(menuSnapshot||[]).flatMap(category=>category.items||[]).filter(Boolean);
+  const items=staffOrderMenu(menuSnapshot||[]).flatMap(category=>category.items||[]).filter(Boolean);
   const full=name.trim().toLowerCase();
   const exact=items.filter(item=>item.name?.trim().toLowerCase()===full);
   const base=baseItemName(name).toLowerCase();

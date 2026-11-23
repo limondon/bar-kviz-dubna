@@ -1,3 +1,4 @@
+import{db,ref,query,orderByChild,equalTo,onValue}from'./firebase.js';
 import{S}from'./state.js';
 import{groupQueueItems,isQueueOrderActive}from'./queue-items.js';
 import{esc,escAttr,fmt,dateLbl,empty,setBadge,setEl,todayStr,shiftDS,aggStatus,itemKey,pl,normalizeOrder}from'./utils.js';
@@ -204,24 +205,26 @@ export function renderAll(){
   setBadge('bQ',visibleActive.length);setBadge('bR',hasReady.length);setBadge('bT',openTablesSet.size);
   setBadge('bD',closedTablesSet.size);
   setEl('sN',visibleActive.length);setEl('sNew',newCnt);setEl('sP',inProgress);setEl('sR',readyCnt);
-  const tables=[...new Set(visibleActive.filter(o=>o.table!=null&&o.table!==''&&o.table!=='undefined').map(o=>String(o.table)))].sort((a,b)=>{const an=parseInt(a),bn=parseInt(b);if(!isNaN(an)&&!isNaN(bn))return an-bn;if(!isNaN(an))return-1;if(!isNaN(bn))return 1;return a.localeCompare(b);});
-  const qfEl=document.getElementById('qFilters');
-  if(qfEl)qfEl.innerHTML=mkFb('all','Все')+mkFb('new','🆕 Новые')+mkFb('making','🍹 В работе')+mkFb('ready','🟢 Готово')+tables.map(t=>mkFb('t'+t,'Стол '+t)).join('');
-  const ql=document.getElementById('qList');
-  document.querySelectorAll('[data-queue-view]').forEach(button=>{const selected=button.dataset.queueView===S.queueView;button.classList.toggle('active',selected);button.setAttribute('aria-pressed',String(selected));});
-  document.getElementById('queueItemsHint')?.classList.toggle('hidden',S.queueView!=='items');
-  if(ql)ql.classList.toggle('queue-items-view',S.queueView==='items');
-  if(ql&&S.queueView==='items'){
-    const groups=groupQueueItems(S.orders,S.tablesMeta,S.BUILTIN_MENU_LIVE.length?S.BUILTIN_MENU_LIVE:BUILTIN_MENU,S.qf,S.pendingItemActions);
-    renderQueuePanel(ql,groups.length?groups.map(queueItemCard).join(''):empty('📭','Нет позиций в очереди'));
-  }else if(ql){
-    let list=S.orders.filter(o=>o.status!=='done'||hasFeedback(o)).sort((a,b)=>{if(a.priority==='urgent'&&b.priority!=='urgent')return -1;if(b.priority==='urgent'&&a.priority!=='urgent')return 1;return a.createdAt-b.createdAt;});
-    if(['new','making','ready'].includes(S.qf))list=list.filter(o=>o.status===S.qf||[...(S.pendingItemActions.get(o.id)?.values()||[])].some(action=>action.orderStatus===S.qf));
-    if(S.qf.startsWith('t'))list=list.filter(o=>String(o.table)===S.qf.slice(1));
-    renderQueuePanel(ql,list.length?list.map(o=>orderCard(o,false)).join(''):empty('📭','Нет заказов в очереди'));
+  if(S.activeTab==='queue'){
+    const tables=[...new Set(visibleActive.filter(o=>o.table!=null&&o.table!==''&&o.table!=='undefined').map(o=>String(o.table)))].sort((a,b)=>{const an=parseInt(a),bn=parseInt(b);if(!isNaN(an)&&!isNaN(bn))return an-bn;if(!isNaN(an))return-1;if(!isNaN(bn))return 1;return a.localeCompare(b);});
+    const qfEl=document.getElementById('qFilters');
+    if(qfEl)qfEl.innerHTML=mkFb('all','Все')+mkFb('new','🆕 Новые')+mkFb('making','🍹 В работе')+mkFb('ready','🟢 Готово')+tables.map(t=>mkFb('t'+t,'Стол '+t)).join('');
+    const ql=document.getElementById('qList');
+    document.querySelectorAll('[data-queue-view]').forEach(button=>{const selected=button.dataset.queueView===S.queueView;button.classList.toggle('active',selected);button.setAttribute('aria-pressed',String(selected));});
+    document.getElementById('queueItemsHint')?.classList.toggle('hidden',S.queueView!=='items');
+    if(ql)ql.classList.toggle('queue-items-view',S.queueView==='items');
+    if(ql&&S.queueView==='items'){
+      const groups=groupQueueItems(S.orders,S.tablesMeta,S.BUILTIN_MENU_LIVE.length?S.BUILTIN_MENU_LIVE:BUILTIN_MENU,S.qf,S.pendingItemActions);
+      renderQueuePanel(ql,groups.length?groups.map(queueItemCard).join(''):empty('📭','Нет позиций в очереди'));
+    }else if(ql){
+      let list=S.orders.filter(o=>o.status!=='done'||hasFeedback(o)).sort((a,b)=>{if(a.priority==='urgent'&&b.priority!=='urgent')return -1;if(b.priority==='urgent'&&a.priority!=='urgent')return 1;return a.createdAt-b.createdAt;});
+      if(['new','making','ready'].includes(S.qf))list=list.filter(o=>o.status===S.qf||[...(S.pendingItemActions.get(o.id)?.values()||[])].some(action=>action.orderStatus===S.qf));
+      if(S.qf.startsWith('t'))list=list.filter(o=>String(o.table)===S.qf.slice(1));
+      renderQueuePanel(ql,list.length?list.map(o=>orderCard(o,false)).join(''):empty('📭','Нет заказов в очереди'));
+    }
   }
   const rl=document.getElementById('rList');
-  if(rl){const rs=S.orders.filter(o=>hasReady.includes(o)||[...(S.pendingItemActions.get(o.id)?.values()||[])].some(action=>action.fromStatus==='ready')).sort((a,b)=>a.createdAt-b.createdAt);renderQueuePanel(rl,rs.length?rs.map(o=>orderCard(o,false)).join(''):empty('⏳','Нет готовых позиций'));}
+  if(rl&&S.activeTab==='ready'){const rs=S.orders.filter(o=>hasReady.includes(o)||[...(S.pendingItemActions.get(o.id)?.values()||[])].some(action=>action.fromStatus==='ready')).sort((a,b)=>a.createdAt-b.createdAt);renderQueuePanel(rl,rs.length?rs.map(o=>orderCard(o,false)).join(''):empty('⏳','Нет готовых позиций'));}
   if(S.activeTab==='tables')renderTables();
   if(S.activeTab==='done')renderClosed();
   if(S.activeTab==='stats')renderStats();
@@ -281,11 +284,31 @@ function statsDayDetails(date,history){
     ${orders.length?`<div class="stats-day-subtitle">ЗАКАЗЫ</div>${orders.map(o=>`<div class="stats-day-order"><div><b>Стол ${esc(o.table)} · #${esc(o.num??'—')}</b><span>${fmt(o.createdAt)} · ${esc(labels[o.status]||o.status)}</span></div><p>${(o.items||[]).map(it=>`${esc(it.name)} ×${esc(it.qty)}`).join(', ')}</p></div>`).join('')}`:''}
   </section>`;
 }
+let archiveDate='',archiveOrders=[],archiveStatus='',stopArchive=null;
+export function stopStatsArchive(){
+  stopArchive?.();stopArchive=null;archiveDate='';archiveOrders=[];archiveStatus='';
+}
+function watchStatsDate(date){
+  if(date===archiveDate)return;
+  stopStatsArchive();
+  if(!date)return;
+  archiveDate=date;
+  archiveStatus='Загружаем заказы за выбранный день…';
+  stopArchive=onValue(query(ref(db,'orders'),orderByChild('date'),equalTo(date)),snapshot=>{
+    if(archiveDate!==date)return;
+    archiveOrders=Object.entries(snapshot.val()||{}).filter(([,o])=>o?.table&&o.table!=='undefined').map(([id,o])=>normalizeOrder({...o,id}));
+    archiveStatus='';renderStats();
+  },()=>{
+    if(archiveDate!==date)return;
+    archiveStatus='Не удалось загрузить день. Откройте дату повторно.';renderStats();
+  });
+}
 export function renderStats(){
   const el=document.getElementById('statsContent');if(!el)return;
   const today=todayStr();
   statsRenderedDay=today;
-  const history=[...S.orders,...S.statsOlderOrders.map(([id,o])=>normalizeOrder({...o,id}))];
+  watchStatsDate(S.statsDate&&S.statsDate<S.ordersCutoff?S.statsDate:'');
+  const history=S.orders;
   const revenue=statsRevenue(today,history);
   const todayOrders=history.filter(o=>o.date===today);
   const todayDone=todayOrders.filter(o=>o.status==='done');
@@ -315,7 +338,7 @@ export function renderStats(){
       <p class="stats-chart-hint">Нажмите на день, чтобы увидеть подробности</p>
       <label class="stats-date-picker">Другой день <input type="date" id="statsDatePicker" aria-label="Дата выручки" max="${today}" value="${escAttr(S.statsDate||'')}"></label>
     </div>
-    ${/^\d{4}-\d{2}-\d{2}$/.test(S.statsDate||'')&&S.statsDate<=today?statsDayDetails(S.statsDate,history):''}
+    ${/^\d{4}-\d{2}-\d{2}$/.test(S.statsDate||'')&&S.statsDate<=today?(archiveStatus?`<p role="status">${archiveStatus}</p>`:statsDayDetails(S.statsDate,archiveDate?archiveOrders:history)):''}
     <div class="stats-card">
       <div class="stats-card-title">🏆 ТОП ПОЗИЦИЙ (${days} дней)</div>
       <div class="stats-periods" role="group" aria-label="Период топа позиций">${[7,14,30].map(n=>`<button type="button" data-stats-days="${n}" aria-pressed="${days===n}" class="${days===n?'selected':''}">${n===30?'Месяц':n+' дней'}</button>`).join('')}</div>

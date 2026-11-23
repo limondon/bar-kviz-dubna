@@ -7,6 +7,7 @@
         "items": {
           "$itemId": {
             "stock": {
+              ".validate": "!newData.isNumber() || newData.val() >= 0",
               ".write": "auth != null && (auth.token.email === 'manager@1708.local' || (data.isNumber() && newData.isNumber() && newData.val() >= 0 && newData.val() < data.val()))"
             }
           }
@@ -24,10 +25,39 @@
       }
     },
     "orders": {
-      ".indexOn": ["date"],
+      ".indexOn": [
+        "date"
+      ],
       ".read": "auth != null && auth.token.email === 'manager@1708.local'",
       "$orderId": {
         ".write": "auth != null && (auth.token.email === 'manager@1708.local' || (!data.exists() && newData.child('source').val() === 'guest' && newData.child('status').val() === 'new' && (!newData.child('createdByUid').exists() || newData.child('createdByUid').val() === auth.uid)))"
+      }
+    },
+    "staffReceipts": {
+      "$id": {
+        ".read": "auth != null && auth.token.email === 'manager@1708.local'",
+        ".write": "auth != null && auth.token.email === 'manager@1708.local' && !data.exists()",
+        ".validate": "newData.hasChildren(['tableKey','sid','num','previousStatus','previousSid','previousOpenedAt']) && newData.parent().parent().child('orders').child($id).child('sid').val() === newData.child('sid').val()",
+        "stockRows": {
+          "$row": {
+            ".validate": "root.child('menu2').child(newData.child('category').val()).child('items').child(newData.child('item').val()).child('name').val() === newData.child('name').val()"
+          }
+        },
+        "tableKey": {
+          ".validate": "newData.isString() && newData.parent().parent().parent().child('tables').child(newData.parent().child('tableKey').val()).child('status').val() === 'open'"
+        },
+        "sid": {
+          ".validate": "newData.val() === newData.parent().parent().parent().child('tables').child(newData.parent().child('tableKey').val()).child('sid').val() || (!newData.parent().parent().parent().child('tables').child(newData.parent().child('tableKey').val()).child('sid').exists() && newData.val() === 'default')"
+        },
+        "previousOpenedAt": {
+          ".validate": "newData.val() === root.child('tables').child(newData.parent().child('tableKey').val()).child('openedAt').val() || (!root.child('tables').child(newData.parent().child('tableKey').val()).child('openedAt').exists() && newData.val() === 0)"
+        },
+        "previousStatus": {
+          ".validate": "newData.val() === root.child('tables').child(newData.parent().child('tableKey').val()).child('status').val() || (!root.child('tables').child(newData.parent().child('tableKey').val()).child('status').exists() && newData.val() === 'missing')"
+        },
+        "previousSid": {
+          ".validate": "newData.val() === root.child('tables').child(newData.parent().child('tableKey').val()).child('sid').val() || (!root.child('tables').child(newData.parent().child('tableKey').val()).child('sid').exists() && newData.val() === 'default')"
+        }
       }
     },
     "guestReceipts": {

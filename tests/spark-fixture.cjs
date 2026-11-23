@@ -38,6 +38,8 @@ async function setup(page,{orders={},waiterCalls={},menu2,tables}={}){
       const write=(p,value)=>{const parts=p.split('/').filter(Boolean);if(!parts.length){data=clone(value);return;}let node=data;for(const key of parts.slice(0,-1))node=node[key]??={};if(value==null)delete node[parts.at(-1)];else node[parts.at(-1)]=clone(value);};
       const emit=()=>{for(const [p,cbs]of listeners)for(const cb of cbs)if(!(p==='menu2'&&window.__pauseMenuListener))queueMicrotask(()=>cb(snap(p)));};
       export const initializeApp=()=>({}),getDatabase=()=>({}),ref=(db,p='')=>({path:p});
+      export const orderByChild=key=>({key}),startAt=min=>({min}),endAt=max=>({max}),equalTo=eq=>({eq});
+      export const query=(r,...constraints)=>Object.assign({},r,...constraints);
       const manager={email:'manager@1708.local',uid:'staff'},auth={currentUser:manager};
       export const getAuth=()=>auth,signInAnonymously=async()=>{auth.currentUser={uid:'guest'};return{user:auth.currentUser};},signInWithEmailAndPassword=async()=>{auth.currentUser=manager;return{user:manager};};
       export function onAuthStateChanged(a,cb){queueMicrotask(()=>cb(a.currentUser));return ()=>{};}
@@ -52,17 +54,36 @@ async function setup(page,{orders={},waiterCalls={},menu2,tables}={}){
         if(window.__databaseReady===false)await new Promise(resolve=>waitingReads.push(resolve));
         return snap(r.path);
       };
+      export const increment=n=>({'.sv':{increment:n}});
       export const push=r=>({key:'order_'+Date.now()+'_'+(++counter)}),serverTimestamp=()=>Date.now();
       export function forceLongPolling(){window.__longPollingFallbacks=(window.__longPollingFallbacks||0)+1;}
       export function goOffline(){window.__connected=false;emit();}
       export function goOnline(){window.__connected=true;window.__databaseReady=true;waitingReads.splice(0).forEach(done=>done());emit();}
-      export function onValue(r,cb){if(!listeners.has(r.path))listeners.set(r.path,new Set());listeners.get(r.path).add(cb);queueMicrotask(()=>cb(snap(r.path)));return ()=>listeners.get(r.path).delete(cb);}
+      export function onValue(r,listener){
+        const cb=!r.key?listener:snapshot=>{
+          const values=Object.fromEntries(Object.entries(snapshot.val()||{}).filter(([,o])=>{
+            const v=o?.[r.key]??'';
+            return (r.min===undefined||v>=r.min)&&(r.max===undefined||v<=r.max)&&(r.eq===undefined||v===r.eq);
+          }));
+          listener({val:()=>values});
+        };
+        if(!listeners.has(r.path))listeners.set(r.path,new Set());listeners.get(r.path).add(cb);queueMicrotask(()=>cb(snap(r.path)));return ()=>listeners.get(r.path).delete(cb);}
       export async function update(r,values){
         const hasOrder=r.path===''&&Object.keys(values).some(key=>key.startsWith('orders/'));
         if(window.__failCalls&&r.path==='waiterCalls'){window.__failCalls=false;throw new Error('PERMISSION_DENIED');}
         if(window.__failTables&&r.path.startsWith('tables')){window.__failTables=false;throw new Error('Test table write rejected');}
         if(window.__failOrder&&(/^orders\\/[^/]+$/.test(r.path)||(r.path===''&&Object.keys(values).some(key=>/^orders\\/[^/]+$/.test(key))))){window.__failOrder=false;throw new Error('Test rejected write');}
         if(window.__hangOrder&&hasOrder){window.__hangOrder=false;return new Promise(()=>{});}
+        const receipt=Object.entries(values).find(([key])=>key.startsWith('staffReceipts/'));
+        if(receipt){
+          if(window.__staffRace){const race=window.__staffRace;delete window.__staffRace;write(race.path,race.value);await window.__syncDb(clone(data));emit();}
+          const [key,v]=receipt,table=read('tables/'+v.tableKey);
+          if(read(key)||(table?.status||'missing')!==v.previousStatus||(table?.sid||'default')!==v.previousSid||(table?.openedAt||0)!==v.previousOpenedAt)throw Error('Visit changed');
+          for(const [path,value]of Object.entries(values))if(value?.['.sv']){
+            const stock=Number(read(path))+value['.sv'].increment;
+            if(stock<0)throw Error('Stock exhausted');values[path]=stock;
+          }
+        }
         for(const [key,value]of Object.entries(values))write([r.path,key].filter(Boolean).join('/'),value);
         await window.__syncDb(clone(data));emit();
         if(window.__ackLostOrder&&hasOrder){window.__ackLostOrder=false;throw new Error('Test lost acknowledgement');}

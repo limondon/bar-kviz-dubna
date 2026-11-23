@@ -105,7 +105,7 @@ test('a changed bill requires a new preview and a failed write can retry without
   await page.locator('[data-cash-send]').click();
   await expect(page.locator('.cash-transfer-status')).toContainText('Состав или цена изменились');
   await expect(page.locator('[data-cash-send]')).toBeDisabled();expect(env.data().config.evotor).toBeUndefined();
-  await page.locator('[data-cash-close]').click();await page.locator('.tb-header').click();await page.locator('[data-action=cashTransfer]').click();
+  await page.locator('[data-cash-close]').click();await page.locator('[data-action=cashTransfer]').click();
   await expect(page.locator('[data-cash-send]')).toBeEnabled();await page.evaluate(()=>{window.__failCash=true;});
   await page.locator('[data-cash-send]').click();await expect(page.locator('.cash-transfer-status')).toContainText('Не удалось подтвердить');
   expect(env.data().config.evotor).toBeUndefined();
@@ -122,7 +122,7 @@ test('opening/unknown/opened states synchronize and block replay including later
     await expect(page.locator('[data-cash-send]')).toBeDisabled();
   }
   await page.evaluate(()=>window.__remoteSet('orders/one/items/b',{name:'Вода',qty:2,price:100}));
-  await page.locator('[data-cash-close]').click();await page.locator('.tb-header').click();await page.locator('[data-action=cashTransfer]').click();
+  await page.locator('[data-cash-close]').click();await page.locator('[data-action=cashTransfer]').click();
   await expect(page.locator('[data-cash-send]')).toBeDisabled();await expect(page.locator('.cash-transfer-status')).toContainText('Открыт на кассе');
   await expect(page.locator('.cash-transfer-status')).toContainText('отличается от последней передачи');
   expect(Object.keys(env.data().config.evotor.v1.transfers[date()])).toHaveLength(1);expect(env.errors).toEqual([]);
