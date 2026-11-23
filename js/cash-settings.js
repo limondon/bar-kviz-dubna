@@ -5,7 +5,7 @@ import{esc,escAttr,lockScroll,unlockScroll,DEFAULT_ADDON_PRICE}from'./utils.js';
 import{cashDevicesPath,cashRuleKey,addonName,cashPartsTotal,cashRuleState,editCashRules,cashCatalogReady,cashSuggestion}from'./cash-rules.js';
 
 let opened=false;
-export function openCashSettings(){
+export function openCashSettings({deviceId:requestedDevice='',onClose}={}){
   if(opened||S.role!=='admin'||auth.currentUser?.email!=='manager@1708.local')return;
   opened=true;lockScroll();
   const overlay=document.createElement('div');overlay.className='app-modal-overlay cash-settings';
@@ -22,7 +22,7 @@ export function openCashSettings(){
     else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first?.focus();}
   });
   const content=overlay.querySelector('[data-content]'),status=overlay.querySelector('[role=status]'),scrollBody=overlay.querySelector('.cash-settings-body'),editorActions=overlay.querySelector('[data-editor-actions]');
-  let devices={},devicesReady=false,deviceId='',deviceChosen=false,query='',view='all',kind='products',editing=null,pending=false,closed=false,menu=S.BUILTIN_MENU_LIVE;
+  let devices={},devicesReady=false,deviceId=requestedDevice,deviceChosen=!!requestedDevice,query='',view='all',kind='products',editing=null,pending=false,closed=false,menu=S.BUILTIN_MENU_LIVE;
   const selected=new Set();
   const device=()=>devices[deviceId]||{};
   const settings=()=>device().settings||{schema:1,revision:0};
@@ -275,7 +275,7 @@ export function openCashSettings(){
     const nextButton=editorActions.querySelector('[data-save-next]');if(nextButton)nextButton.onclick=()=>persist(false,true);
     cards();paint();
   }
-  overlay.querySelector('[data-close]').onclick=()=>{closed=true;opened=false;unsubscribe();unsubscribeMenu();overlay.remove();unlockScroll();if(previousFocus?.isConnected)previousFocus.focus();};
+  overlay.querySelector('[data-close]').onclick=()=>{closed=true;opened=false;unsubscribe();unsubscribeMenu();overlay.remove();unlockScroll();if(previousFocus?.isConnected)previousFocus.focus();onClose?.();};
   const unsubscribe=onValue(ref(db,cashDevicesPath),snapshot=>{
     devices=snapshot.val()||{};devicesReady=true;
     chooseDevice();
