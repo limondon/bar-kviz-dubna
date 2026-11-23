@@ -1,3 +1,10 @@
+// Staff services are available in the order picker and cash settings only.
+export function staffOrderMenu(menu){
+  const name='Кальян классический';
+  if(menu.some(category=>category.items?.some(item=>item?.name===name)))return menu;
+  return [...menu,{cat:'Кальяны',items:[{name,price:1300}]}];
+}
+
 export const BUILTIN_MENU=[
   {cat:'🍺 Пиво', items:[
     {name:'Hoegarden',price:250},

@@ -16,7 +16,7 @@ test('failed table close stays open, reports the error and allows retry',async({
   await expect(page.locator('.tb-st')).toContainText('Открыт');
   expect(env.data().tables[date()+'_1'].status).toBe('open');
 
-  await page.locator('.tb-header').click();
+  await expect(page.locator('.tb-header')).toHaveAttribute('aria-expanded','true');
   await page.locator('.btn-pay').click();await page.locator('#confirmOkBtn').click();
   await expect(page.locator('#fOk')).toContainText('Стол 1 закрыт');
   expect(env.data().tables[date()+'_1'].status).toBe('closed');

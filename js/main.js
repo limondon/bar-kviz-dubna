@@ -1,7 +1,7 @@
 import{S}from'./state.js';
 import{openCashTransfer}from'./cash-transfer.js';
 import{openCashSettings}from'./cash-settings.js';
-import{db,auth,ref,update,set,remove,onValue,runTransaction,onAuthStateChanged,setConnStatus}from'./firebase.js';
+import{db,auth,query,orderByChild,startAt,endAt,ref,update,set,remove,onValue,runTransaction,onAuthStateChanged,setConnStatus}from'./firebase.js';
 import{todayStr,normalizeOrder,fl,closeConfirmModal,confirmOk,setBadge}from'./utils.js';
 import{registerSW,checkNewOrders,playBeep,notifMuted,swReg,updateNotifBtn}from'./notifications.js';
 import{renderAll,startPoll}from'./render.js';
@@ -10,7 +10,7 @@ import{renderMenuPage,receiveMenuSnapshot}from'./menu.js';
 import{renderStats}from'./render.js';
 import{renderCalls}from'./calls.js';
 import{barItemAction,waiterDeliverItem,waiterDeliverAll,reopenOrder,delOrder,openEditModal,closeEditModal,saveEditOrder,addOrder,updateEditRow,removeEditRow,addEditItem}from'./orders.js';
-import{closeTable,reopenTable,renameTable,doRenameTable,deleteTable,logTable,unlogTable,showQR,closeQrModal,openQrPicker,closeQrPicker,closeRenameModal,confirmRename,shiftDate,jumpDate,shiftClosedDate,jumpClosedDate,toggleBill as _toggleBill,openCorkagePicker,closeCorkageModal,confirmCorkage,corkageAdj,toggleDatesExpanded,toggleClosedDatesExpanded,toggleQuickCorkage,_quickCorkagePick,editTableNote,openDeliveryLog,renderDeliveryLogSidebar}from'./tables.js';
+import{closeTable,reopenTable,renameTable,doRenameTable,deleteTable,logTable,unlogTable,showQR,closeQrModal,openQrPicker,closeQrPicker,closeRenameModal,confirmRename,shiftDate,jumpDate,shiftClosedDate,jumpClosedDate,openCorkagePicker,closeCorkageModal,confirmCorkage,corkageAdj,toggleDatesExpanded,toggleClosedDatesExpanded,toggleQuickCorkage,_quickCorkagePick,editTableNote,openDeliveryLog,renderDeliveryLogSidebar}from'./tables.js';
 import{sw,setQF,pickTable,openRoleModal,closeRoleModal,pickRole,confirmRole,applyRole,checkPassword,openPasswordModal,checkAuth,changePassword,buildTabs,toggleSettingsMenu,toggleBill}from'./ui.js';
 import{openMenuPicker,closeMenuPicker,confirmMenuPicker,switchPickerCat,pickerToggleGroup,openMenuEditor,closeMenuEditor,updateMenuCatItem,removeMenuCatItem,addMenuCatItem,addMenuCategory,removeMenuCategory,moveMenuCat,renderMenuEditor,updateMenuItem,removeMenuItem,addNewMenuItem,buildMenuButtons,updateMenuCat,toggleMenuCatHidden,restructureLemonades,openItemEditor,closeItemEditor,saveItemEditor}from'./menu.js';
 import{prepareQuiz,finishQuiz,printAllQr,watchQrControls,renderQrControls}from'./quiz.js';
@@ -44,21 +44,25 @@ async function loadAll(){
 
   onValue(ref(db,'.info/connected'),snap=>setConnStatus(snap.val()===true));
 
-  onValue(ref(db,'orders'),(snap)=>{
-    const raw=snap.val();
-    const rows=Object.entries(raw||{});
+  S.ordersCutoff=cutoffDate;
+  const ordersRef=ref(db,'orders'),working={recent:null,undated:null};
+  function receiveOrders(part,snapshot){
+    working[part]=snapshot.val()||{};
+    if(!working.recent||!working.undated)return;
+    const rows=Object.entries({...working.undated,...working.recent});
     const valid=rows.filter(([,o])=>o&&typeof o==='object'&&o.table&&o.table!=='undefined');
     if(valid.length!==rows.length)fl('fErr','Некоторые старые заказы не удалось отобразить. Исходные записи сохранены.');
-    S.orders=valid.filter(([,o])=>!o.date||o.date>=cutoffDate).map(([id,o])=>normalizeOrder({...o,id}));
-    S.statsOlderOrders=valid.filter(([,o])=>o.date&&o.date<cutoffDate);
+    S.orders=valid.map(([id,o])=>normalizeOrder({...o,id}));
     _ordersLoaded=true;_seedOrderCounter();
     checkNewOrders(S.orders);
     renderAll();
-  },(e)=>console.error(e));
+  }
+  const readFailed=()=>fl('fErr','Не удалось загрузить заказы. Проверьте подключение и обновите страницу.');
+  onValue(query(ordersRef,orderByChild('date'),startAt(cutoffDate)),s=>receiveOrders('recent',s),readFailed);
+  onValue(query(ordersRef,orderByChild('date'),endAt('')),s=>receiveOrders('undated',s),readFailed);
 
   onValue(ref(db,'tables'),(snap)=>{
     S.tablesMeta=snap.val()||{};
-    if(S.activeTab==='tables')renderTables();
     renderAll();
     void autoCloseExpiredTables();
   });

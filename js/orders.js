@@ -1,16 +1,17 @@
 import{S}from'./state.js';
-import{db,ref,push,update,remove,runTransaction}from'./firebase.js';
+import{db,get,increment,ref,push,update,remove,runTransaction}from'./firebase.js';
 
 function logDelivery(o,it){
   const key=push(ref(db,'config/deliveryLog')).key;
   const entry={at:Date.now(),table:o.table,orderNum:o.num,name:it.name,qty:it.qty};
   update(ref(db,'config/deliveryLog/'+key),entry).catch(e=>console.error('logDelivery',e));
 }
-import{parseItems,normalizeOrder,aggStatus,esc,escAttr,fl,safeDb,showConfirm,todayStr,lockScroll,unlockScroll,itemKey}from'./utils.js';
-import{applyStockDeltas,deductMenuStock}from'./stock.js';
-import{getTMeta}from'./tables.js';
+import{parseItems,normalizeOrder,aggStatus,esc,escAttr,fl,showConfirm,todayStr,lockScroll,unlockScroll,itemKey}from'./utils.js';
+import{applyStockDeltas,staffStockWrites}from'./stock.js';
+import{genToken}from'./tables.js';
 import{buildQuickTableBtns,isInstantItem,renderAll}from'./render.js';
 import{nextOrderNum}from'./counters.js';
+import{isCashCup}from'./cash-bill.js';
 import{savedMenuPrice}from'./menu.js';
 
 function withOrderPrice(item){
@@ -40,52 +41,83 @@ function restoreStaffDraft(){
 restoreStaffDraft();
 for(const id of staffFieldIds)document.getElementById(id)?.addEventListener(id==='inpPriority'?'change':'input',saveStaffDraft);
 
-export async function addOrder(){
-  const btn=document.querySelector('.btn-add');
-  if(btn&&btn.disabled)return;
-  if(btn){btn.disabled=true;btn.style.opacity='.5';}
-  try{
-    const tableRaw=document.getElementById('inpTable').value.trim().toUpperCase();
-    const rawItems=document.getElementById('inpItems').value.trim();
-    const note=document.getElementById('inpNote').value.trim();
-    const prio=document.getElementById('inpPriority').value;
-    if(!tableRaw){fl('fInfo','Укажите номер стола!');}
-    else if(!rawItems){fl('fInfo','Введите позиции!');}
-    else{
-      const tNum=tableRaw;const items=parseItems(rawItems).map(withOrderPrice);
-      if(!items.length){fl('fInfo','Не удалось распознать позиции!');}
-      else{
-        const num=await nextOrderNum();
-        const date=todayStr();
-        const existingMeta=getTMeta(date,tNum);
-        if(existingMeta.status==='closed'){
-          const newSid=Date.now().toString(36);
-          existingMeta.sessions=existingMeta.sessions||[];
-          existingMeta.sessions.push({sid:existingMeta.sid,closedAt:existingMeta.closedAt,openedAt:existingMeta.openedAt});
-          existingMeta.sid=newSid;existingMeta.status='open';existingMeta.openedAt=Date.now();
-          delete existingMeta.closedAt;
-          delete existingMeta.autoClosed;
-        }
-        const sid=existingMeta.sid||(existingMeta.sid=Date.now().toString(36));
-        const newRef=push(ref(db,'orders'));
-        const itemsObj={};items.forEach(it=>itemsObj[it.id]=it);
-        const newOrder={id:newRef.key,table:tNum,items:itemsObj,note,priority:prio,status:'new',createdAt:Date.now(),num,date,sid};
-        await deductMenuStock(items);
-        const ok=await safeDb(update(ref(db,'orders/'+newRef.key),newOrder),'❌ Не удалось создать заказ — проверь интернет');
-        if(!ok){await applyStockDeltas(items.map(it=>({name:it.name,delta:-it.qty})));return;}
-        await safeDb(update(ref(db,'tables/'+date+'_'+tNum),existingMeta));
-        fl('fOk','✅ Заказ #'+num+' — Стол '+tNum+' ('+items.length+' поз.)');
-        ['inpTable','inpItems','inpNote'].forEach(id=>document.getElementById(id).value='');
-        document.getElementById('inpPriority').value='normal';
-        clearStaffDraft();
-        buildQuickTableBtns();
-        if(S.role==='waiter')window.sw('queue');
+async function saveStaffOrder(tNum,rawItems,items,note,prio){
+  const date=todayStr(),tableKey=date+'_'+tNum;
+  const signature=JSON.stringify([date,tNum,rawItems,note,prio]);
+  const pendingKey='bar_staff_submission';
+  const previous=JSON.parse(sessionStorage.getItem(pendingKey)||'null');
+  const receipt=previous&&(await get(ref(db,'staffReceipts/'+previous.id))).val();
+  if(previous&&receipt&&previous.signature!==signature){
+    sessionStorage.removeItem(pendingKey);
+    throw Error('Предыдущий заказ #'+receipt.num+' сохранён. Проверьте изменённый черновик перед отправкой.');
+  }
+  const id=previous?.signature===signature?previous.id:push(ref(db,'orders')).key;
+  const num=receipt?.num||(previous?.signature===signature?previous.num:await nextOrderNum());
+  if(!receipt){
+    const meta=(await get(ref(db,'tables/'+tableKey))).val();
+    const now=Date.now(),newVisit=!meta||meta.status==='closed';
+    const sid=newVisit?id:(meta.sid||'default');
+    const itemsObj=Object.fromEntries(items.map(it=>[it.id,it]));
+    const {writes,stockRows}=staffStockWrites(items,increment);
+    writes['orders/'+id]={id,table:tNum,items:itemsObj,note,priority:prio,status:'new',createdAt:now,num,date,sid,source:'staff'};
+    writes['staffReceipts/'+id]={num,tableKey,sid,stockRows,previousStatus:meta?.status||'missing',previousSid:meta?.sid||'default',previousOpenedAt:meta?.openedAt||0};
+    if(newVisit){
+      const path='tables/'+tableKey+'/';
+      if(meta&&!meta.closedSessions?.some(session=>session.sid===(meta.sid||'default'))){
+        const history=meta.closedSessions||[];
+        writes[path+'closedSessions/'+history.length]={sid:meta.sid||'default',closedAt:meta.closedAt||now,...(meta.openedAt?{openedAt:meta.openedAt}:{})};
+      }
+      for(const [field,value] of Object.entries({date,tNum,sid,status:'open',openedAt:now,token:genToken(),closedAt:null,autoClosed:null,loggedAt:null,note:null}))writes[path+field]=value;
+    }
+    sessionStorage.setItem(pendingKey,JSON.stringify({id,num,signature}));
+    try{await update(ref(db),writes);}
+    catch(error){
+      if(!(await get(ref(db,'staffReceipts/'+id))).exists()){
+        throw Error('Заказ не подтверждён. Проверьте стол, остатки и соединение перед повтором.');
       }
     }
+  }
+  sessionStorage.removeItem(pendingKey);
+  return num;
+}
+
+export async function addOrder(){
+  const btn=document.querySelector('.btn-add');
+  if(btn.disabled)return;
+  btn.disabled=true;
+  const originalLabel=btn.textContent;
+  const slow=setTimeout(()=>{btn.textContent='Ждём подтверждения…';},3000);
+  const values=()=>staffFieldIds.map(id=>document.getElementById(id).value);
+  const original=values();
+  try{
+    const tNum=original[0].trim().toUpperCase(),rawItems=original[1].trim();
+    const note=original[2].trim(),prio=original[3];
+    if(!tNum){fl('fInfo','Укажите номер стола!');return;}
+    if(!rawItems){fl('fInfo','Введите позиции!');return;}
+    if(/[.#$\[\]/]/.test(tNum))throw Error('В названии стола недопустимый символ.');
+    const items=parseItems(rawItems).map(withOrderPrice);
+    if(!items.length||items.some(item=>!Number.isSafeInteger(item.qty)||item.qty<1||item.qty>100))throw Error('Количество каждой позиции должно быть от 1 до 100.');
+    if(!S.BUILTIN_MENU_LIVE.length)throw Error('Меню ещё не загружено. Проверьте соединение и повторите.');
+    const unpriced=items.filter(item=>item.price==null&&!isCashCup(item.name));
+    if(unpriced.length){
+      const names=[...new Set(unpriced.map(item=>item.name))].join(', ');
+      const ok=await showConfirm('Позиции без цены',names+'. Их стоимость не войдёт в итог стола, пока цена не будет указана.','Добавить без цены');
+      if(!ok)return;
+    }
+    const num=await saveStaffOrder(tNum,rawItems,items,note,prio);
+    fl('fOk','✅ Заказ #'+num+' — Стол '+tNum+' ('+items.length+' поз.)');
+    if(values().some((value,index)=>value!==original[index]))return;
+    ['inpTable','inpItems','inpNote'].forEach(id=>document.getElementById(id).value='');
+    document.getElementById('inpPriority').value='normal';
+    clearStaffDraft();
+    buildQuickTableBtns();
+    if(S.role==='waiter')window.sw('queue');
   }catch(e){
     console.error('addOrder',e);
     fl('fErr',e?.message||'Ошибка создания заказа');
-  }finally{if(btn){btn.disabled=false;btn.style.opacity='';}}
+  }finally{
+    clearTimeout(slow);btn.textContent=originalLabel;btn.disabled=false;
+  }
 }
 
 // ─── ITEM ACTIONS ─────────────────────────────────────

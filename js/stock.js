@@ -3,6 +3,24 @@ import{db,ref,runTransaction}from'./firebase.js';
 import{BUILTIN_MENU}from'./menu-data.js';
 import{itemKey}from'./utils.js';
 
+// Firebase applies these increments in the same commit as the order.
+export function staffStockWrites(items,increment){
+  const quantities=new Map();
+  for(const item of items){
+    const key=itemKey(item.name);
+    quantities.set(key,(quantities.get(key)||0)+item.qty);
+  }
+  const writes={},stockRows=[];
+  S.BUILTIN_MENU_LIVE.forEach((category,ci)=>(category.items||[]).forEach((item,ii)=>{
+    const qty=quantities.get(itemKey(item.name));
+    if(!qty||item.stock==null||item.stock==='')return;
+    if(Number(item.stock)<qty)throw Error('Недостаточно остатков: '+item.name);
+    writes['menu2/'+ci+'/items/'+ii+'/stock']=increment(-qty);
+    stockRows.push({category:String(ci),item:String(ii),name:item.name});
+  }));
+  return {writes,stockRows};
+}
+
 export async function applyStockDeltas(deltas){
   const menu=S.BUILTIN_MENU_LIVE.length?S.BUILTIN_MENU_LIVE:BUILTIN_MENU;
   const txs=[];

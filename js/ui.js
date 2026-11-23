@@ -2,19 +2,21 @@ import{S}from'./state.js';
 import{auth,signInWithEmailAndPassword}from'./firebase.js';
 import{fl,lockScroll,unlockScroll}from'./utils.js';
 import{updateNotifBtn,enableNotifications}from'./notifications.js';
-import{renderAll,buildQuickTableBtns,renderStats}from'./render.js';
+import{renderAll,buildQuickTableBtns,renderStats,stopStatsArchive}from'./render.js';
 import{renderTables,renderClosed,showQR,openQrPicker}from'./tables.js';
 import{renderMenuPage}from'./menu.js';
 import{renderCalls}from'./calls.js';
 
 // ─── TAB SWITCH ───────────────────────────────────────
 export function sw(tab){
+  if(tab!=='stats')stopStatsArchive();
   S.activeTab=tab;
   document.querySelectorAll('#tabsBar .tab').forEach(t=>t.classList.toggle('active',(t.getAttribute('onclick')||'').includes("'"+tab+"'")));
   document.querySelectorAll('.bnav-item').forEach(t=>t.classList.toggle('active',t.id==='bn-'+tab));
   document.querySelectorAll('.sidebar-item').forEach(t=>t.classList.toggle('active',t.id==='sb-'+tab));
   document.querySelectorAll('.section-page').forEach(p=>p.classList.remove('active'));
   const pg=document.getElementById('page-'+tab);if(pg)pg.classList.add('active');
+  if(tab==='queue'||tab==='ready')renderAll();
   if(tab==='tables')renderTables();
   if(tab==='done')renderClosed();
   if(tab==='stats')renderStats();
