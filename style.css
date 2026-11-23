@@ -1656,6 +1656,11 @@ textarea{resize:vertical;min-height:clamp(70px,18vw,100px);}
 .cash-transfer-lines{max-height:28vh;overflow:auto;border-block:1px solid var(--border,#555);padding:8px 0}
 .cash-transfer-lines p{margin:8px 0;overflow-wrap:anywhere}
 .cash-transfer-status{min-height:3em;overflow-wrap:anywhere}
+.cash-preflight{overflow-wrap:anywhere}
+.cash-transfer .app-modal-panel{max-height:100%;overflow:auto}
+.cash-preflight ul{padding-inline-start:1.3em}
+.cash-preflight li+li{margin-top:.5em}
+.cash-preflight [hidden]{display:none}
 .cash-settings-panel{display:flex;flex-direction:column;max-width:1040px;width:100%;max-height:calc(100dvh - 40px);overflow:hidden;padding:0;font-family:Arial,sans-serif;line-height:1.45}
 .cash-settings-body{min-height:0;overflow-y:auto;overscroll-behavior:contain;padding:20px}
 .cash-settings h2,.cash-settings h3{margin:0;color:var(--text)}

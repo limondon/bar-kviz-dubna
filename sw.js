@@ -1,4 +1,4 @@
-const CACHE_NAME = 'bar-spark-v25-staff-orders';
+const CACHE_NAME = 'bar-spark-v26-cash-preflight';
 const ASSETS = [
   './',
   'index.html',
@@ -9,6 +9,7 @@ const ASSETS = [
   'js/main.js',
   'js/cash-bill.js',
   'js/cash-transfer.js',
+  'js/cash-preflight.js',
   'js/cash-rules.js',
   'js/cash-settings.js',
   'js/state.js',
